@@ -7,7 +7,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Commercial extends Model
 {
-    protected $fillable = ['name', 'phone_number', 'gender'];
+    protected $fillable = [
+        'name',
+        'phone_number',
+        'gender',
+        'secret_code'
+    ];
+
+    protected $hidden = [
+        'secret_code'
+    ];
 
     public function clients(): HasMany
     {

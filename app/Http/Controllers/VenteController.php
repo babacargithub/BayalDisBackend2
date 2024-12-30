@@ -14,36 +14,39 @@ class VenteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Vente::with(['produit', 'client', 'commercial']);
+        $query = Vente::with(['produit', 'client', 'commercial'])
+            ->when($request->date_debut, function ($q) use ($request) {
+                return $q->whereDate('created_at', '>=', $request->date_debut);
+            })
+            ->when($request->date_fin, function ($q) use ($request) {
+                return $q->whereDate('created_at', '<=', $request->date_fin);
+            })
+            ->when(isset($request->paid), function ($q) use ($request) {
+                return $q->where('paid', $request->paid);
+            })
+            ->when($request->commercial_id, function ($q) use ($request) {
+                return $q->where('commercial_id', $request->commercial_id);
+            });
 
-        if ($request->date_debut) {
-            $query->whereDate('created_at', '>=', $request->date_debut);
-        }
+        $ventes = $query->latest()->get();
 
-        if ($request->date_fin) {
-            $query->whereDate('created_at', '<=', $request->date_fin);
-        }
-
-        if ($request->has('paid')) {
-            $query->where('paid', $request->paid);
-        }
-
-        if ($request->commercial_id) {
-            $query->where('commercial_id', $request->commercial_id);
-        }
+        // Calculate statistics
+        $statistics = [
+            'total_ventes' => $ventes->count(),
+            'total_amount' => $ventes->sum(fn($v) => $v->price * $v->quantity),
+            'unpaid_amount' => $ventes->where('paid', false)->sum(fn($v) => $v->price * $v->quantity),
+            'paid_amount' => $ventes->where('paid', true)->sum(fn($v) => $v->price * $v->quantity),
+            'unpaid_count' => $ventes->where('paid', false)->count(),
+            'paid_count' => $ventes->where('paid', true)->count(),
+        ];
 
         return Inertia::render('Ventes/Index', [
-            'ventes' => $query->latest()->get(),
+            'ventes' => $ventes,
             'produits' => Product::all(),
             'clients' => Customer::all(),
             'commerciaux' => Commercial::all(),
-            'filters' => $request->all(),
-            'statistics' => [
-                'total_ventes' => $query->count(),
-                'montant_total' => $query->sum(DB::raw('price * quantity')),
-                'montant_impaye' => $query->where('paid', false)->sum(DB::raw('price * quantity')),
-                'ventes_par_produit' => Product::withCount('ventes')->get(),
-            ],
+            'filters' => $request->only(['date_debut', 'date_fin', 'paid', 'commercial_id']),
+            'statistics' => $statistics,
         ]);
     }
 

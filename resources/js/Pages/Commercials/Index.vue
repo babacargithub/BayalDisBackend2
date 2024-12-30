@@ -5,13 +5,28 @@ import { ref } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
-    commerciaux: Array
+    commerciaux: Array,
+    statistics: Object
 });
+
+const formatNumber = (number) => {
+    return new Intl.NumberFormat('fr-FR').format(number || 0);
+};
+
+const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('fr-FR', { 
+        style: 'currency', 
+        currency: 'XOF',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount || 0);
+};
 
 const form = useForm({
     name: '',
     phone_number: '',
     gender: '',
+    secret_code: '',
 });
 
 const dialog = ref(false);
@@ -25,6 +40,7 @@ const editForm = useForm({
     name: '',
     phone_number: '',
     gender: '',
+    secret_code: '',
 });
 
 const openEditDialog = (commercial) => {
@@ -32,6 +48,7 @@ const openEditDialog = (commercial) => {
     editForm.name = commercial.name;
     editForm.phone_number = commercial.phone_number;
     editForm.gender = commercial.gender;
+    editForm.secret_code = commercial.secret_code;
     editDialog.value = true;
 };
 
@@ -104,6 +121,9 @@ const submit = () => {
                                 <th>Téléphone</th>
                                 <th>Genre</th>
                                 <th>Clients</th>
+                                <th>Ventes</th>
+                                <th>Montant Total</th>
+                                <th>Ventes Impayées</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -113,6 +133,9 @@ const submit = () => {
                                 <td>{{ commercial.phone_number }}</td>
                                 <td>{{ commercial.gender === 'male' ? 'Homme' : 'Femme' }}</td>
                                 <td>{{ commercial.clients?.length || 0 }}</td>
+                                <td>{{ commercial.ventes_count || 0 }}</td>
+                                <td>{{ formatCurrency(commercial.ventes_sum_price_multiply_by_quantity) }}</td>
+                                <td>{{ commercial.ventes_impayees_count || 0 }}</td>
                                 <td class="d-flex">
                                     <v-btn 
                                         icon="mdi-pencil"
@@ -164,6 +187,14 @@ const submit = () => {
                             label="Genre"
                             :error-messages="form.errors.gender"
                         />
+                        <v-text-field
+                            v-model="form.secret_code"
+                            label="Code secret"
+                            :error-messages="form.errors.secret_code"
+                            type="password"
+                            hint="Minimum 4 caractères"
+                            persistent-hint
+                        />
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="dialog = false">Annuler</v-btn>
@@ -202,6 +233,14 @@ const submit = () => {
                             item-value="value"
                             label="Genre"
                             :error-messages="editForm.errors.gender"
+                        />
+                        <v-text-field
+                            v-model="editForm.secret_code"
+                            label="Code secret"
+                            :error-messages="editForm.errors.secret_code"
+                            type="password"
+                            hint="Minimum 4 caractères"
+                            persistent-hint
                         />
                         <v-card-actions>
                             <v-spacer />

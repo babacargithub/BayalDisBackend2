@@ -6,6 +6,7 @@ use App\Models\Commercial;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class CommercialController extends Controller
 {
@@ -35,7 +36,11 @@ class CommercialController extends Controller
             'name' => 'required|string|max:255',
             'phone_number' => 'required|string|unique:commercials',
             'gender' => 'required|in:male,female',
+            'secret_code' => 'required|string|min:4|max:20',
         ]);
+
+        // Hash the secret code
+        $validated['secret_code'] = Hash::make($validated['secret_code']);
 
         Commercial::create($validated);
 
@@ -48,29 +53,29 @@ class CommercialController extends Controller
 
         // Debug incoming request data
         \Log::info('Update Commercial Request:', [
-            'request_data' => $request->all(),
-            'commercial_id' => $id,
-            'commercial' => $commercial->toArray()
+            'request_data' => $request->except('secret_code'), // Don't log the secret code
+            'commercial_id' => $id
         ]);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'phone_number' => 'required|string|unique:commercials,phone_number,' . $commercial->id,
             'gender' => 'required|in:male,female',
+            'secret_code' => 'required|string|min:4|max:20',
         ]);
 
         try {
-            // Debug validated data
-            \Log::info('Validated data:', $validated);
+            // Hash the secret code
+            $validated['secret_code'] = Hash::make($validated['secret_code']);
 
-            // Check if commercial exists before update
-            \Log::info('Commercial before update:', $commercial->toArray());
+            // Debug validated data (excluding secret code)
+            \Log::info('Validated data:', array_diff_key($validated, ['secret_code' => '']));
 
             $commercial->update($validated);
 
-            // Verify the update
+            // Verify the update (excluding secret code from logs)
             $commercial->refresh();
-            \Log::info('Commercial after update:', $commercial->toArray());
+            \Log::info('Commercial after update:', array_diff_key($commercial->toArray(), ['secret_code' => '']));
 
             return redirect()->back()->with('success', 'Commercial mis à jour avec succès');
         } catch (\Exception $e) {

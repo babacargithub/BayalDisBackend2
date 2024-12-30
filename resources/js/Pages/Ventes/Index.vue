@@ -9,7 +9,8 @@ const props = defineProps({
     produits: Array,
     clients: Array,
     commerciaux: Array,
-    filters: Object
+    filters: Object,
+    statistics: Object
 });
 
 const form = useForm({
@@ -66,6 +67,19 @@ const togglePaid = (vente) => {
         paid: !vente.paid,
     }).patch(route('ventes.update', vente.id));
 };
+
+const formatNumber = (number) => {
+    return new Intl.NumberFormat('fr-FR').format(number || 0);
+};
+
+const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('fr-FR', { 
+        style: 'currency', 
+        currency: 'XOF',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount || 0);
+};
 </script>
 
 <template>
@@ -88,6 +102,80 @@ const togglePaid = (vente) => {
 
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <!-- Statistics Cards -->
+                <v-row class="mb-6">
+                    <v-col cols="12" md="3">
+                        <v-card elevation="2" class="rounded-lg">
+                            <v-card-item>
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <div class="text-subtitle-2 mb-1">Total Ventes</div>
+                                        <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.total_amount) }}</div>
+                                        <div class="text-caption mt-1">
+                                            {{ formatNumber(statistics.total_ventes) }} ventes
+                                        </div>
+                                    </div>
+                                    <v-icon size="48" color="primary">mdi-cart</v-icon>
+                                </div>
+                            </v-card-item>
+                        </v-card>
+                    </v-col>
+
+                    <v-col cols="12" md="3">
+                        <v-card elevation="2" class="rounded-lg">
+                            <v-card-item>
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <div class="text-subtitle-2 mb-1">Ventes Payées</div>
+                                        <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.paid_amount) }}</div>
+                                        <div class="text-caption mt-1">
+                                            {{ formatNumber(statistics.paid_count) }} ventes payées
+                                        </div>
+                                    </div>
+                                    <v-icon size="48" color="success">mdi-cash-check</v-icon>
+                                </div>
+                            </v-card-item>
+                        </v-card>
+                    </v-col>
+
+                    <v-col cols="12" md="3">
+                        <v-card elevation="2" class="rounded-lg">
+                            <v-card-item>
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <div class="text-subtitle-2 mb-1">Ventes Impayées</div>
+                                        <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.unpaid_amount) }}</div>
+                                        <div class="text-caption mt-1">
+                                            {{ formatNumber(statistics.unpaid_count) }} ventes impayées
+                                        </div>
+                                    </div>
+                                    <v-icon size="48" color="error">mdi-cash-remove</v-icon>
+                                </div>
+                            </v-card-item>
+                        </v-card>
+                    </v-col>
+
+                    <v-col cols="12" md="3">
+                        <v-card elevation="2" class="rounded-lg">
+                            <v-card-item>
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <div class="text-subtitle-2 mb-1">Taux de Paiement</div>
+                                        <div class="text-h5 font-weight-bold">
+                                            {{ formatNumber((statistics.paid_count / statistics.total_ventes) * 100) }}%
+                                        </div>
+                                        <div class="text-caption mt-1">
+                                            des ventes sont payées
+                                        </div>
+                                    </div>
+                                    <v-icon size="48" color="info">mdi-chart-pie</v-icon>
+                                </div>
+                            </v-card-item>
+                        </v-card>
+                    </v-col>
+                </v-row>
+
+                <!-- Main Table -->
                 <v-card>
                     <v-table>
                         <thead>
