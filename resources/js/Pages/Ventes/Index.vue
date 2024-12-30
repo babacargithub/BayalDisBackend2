@@ -25,10 +25,10 @@ const dialog = ref(false);
 const filterDialog = ref(false);
 
 const filterForm = useForm({
-    date_debut: filters?.date_debut || '',
-    date_fin: filters?.date_fin || '',
-    paid: filters?.paid || '',
-    commercial_id: filters?.commercial_id || '',
+    date_debut: props.filters?.date_debut || '',
+    date_fin: props.filters?.date_fin || '',
+    paid: props.filters?.paid || '',
+    commercial_id: props.filters?.commercial_id || '',
 });
 
 const submit = () => {
