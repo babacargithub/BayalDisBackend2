@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
     commerciaux: Array
@@ -15,6 +15,61 @@ const form = useForm({
 });
 
 const dialog = ref(false);
+const editDialog = ref(false);
+const deleteDialog = ref(false);
+const commercialToDelete = ref(null);
+const editingCommercial = ref(null);
+const isDeleting = ref(false);
+
+const editForm = useForm({
+    name: '',
+    phone_number: '',
+    gender: '',
+});
+
+const openEditDialog = (commercial) => {
+    editingCommercial.value = commercial;
+    editForm.name = commercial.name;
+    editForm.phone_number = commercial.phone_number;
+    editForm.gender = commercial.gender;
+    editDialog.value = true;
+};
+
+const submitEdit = () => {
+    editForm.patch(route('commerciaux.update', editingCommercial.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            editDialog.value = false;
+            editingCommercial.value = null;
+        },
+        onError: (errors) => {
+            console.error('Update failed:', errors);
+        }
+    });
+};
+
+const confirmDelete = (commercial) => {
+    commercialToDelete.value = commercial;
+    deleteDialog.value = true;
+};
+
+const deleteCommercial = () => {
+    isDeleting.value = true;
+    router.delete(route('commerciaux.destroy', commercialToDelete.value.id), {
+        onSuccess: () => {
+            deleteDialog.value = false;
+            commercialToDelete.value = null;
+            isDeleting.value = false;
+        },
+        onError: (errors) => {
+            console.error('Delete failed:', errors);
+            isDeleting.value = false;
+        },
+        onFinish: () => {
+            isDeleting.value = false;
+        }
+    });
+};
 
 const submit = () => {
     form.post(route('commerciaux.store'), {
@@ -57,10 +112,23 @@ const submit = () => {
                                 <td>{{ commercial.name }}</td>
                                 <td>{{ commercial.phone_number }}</td>
                                 <td>{{ commercial.gender === 'male' ? 'Homme' : 'Femme' }}</td>
-                                <td>{{ commercial.clients.length }}</td>
-                                <td>
-                                    <v-btn icon="mdi-pencil" variant="text" color="primary" />
-                                    <v-btn icon="mdi-delete" variant="text" color="error" />
+                                <td>{{ commercial.clients?.length || 0 }}</td>
+                                <td class="d-flex">
+                                    <v-btn 
+                                        icon="mdi-pencil"
+                                        variant="text"
+                                        color="primary"
+                                        class="mr-2"
+                                        @click="openEditDialog(commercial)"
+                                        title="Modifier"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-delete"
+                                        variant="text"
+                                        color="error"
+                                        @click="confirmDelete(commercial)"
+                                        title="Supprimer"
+                                    />
                                 </td>
                             </tr>
                         </tbody>
@@ -69,6 +137,7 @@ const submit = () => {
             </div>
         </div>
 
+        <!-- Create Dialog -->
         <v-dialog v-model="dialog" max-width="500px">
             <v-card>
                 <v-card-title>Nouveau Commercial</v-card-title>
@@ -90,6 +159,8 @@ const submit = () => {
                                 { title: 'Homme', value: 'male' },
                                 { title: 'Femme', value: 'female' }
                             ]"
+                            item-title="title"
+                            item-value="value"
                             label="Genre"
                             :error-messages="form.errors.gender"
                         />
@@ -102,6 +173,76 @@ const submit = () => {
                         </v-card-actions>
                     </v-form>
                 </v-card-text>
+            </v-card>
+        </v-dialog>
+
+        <!-- Edit Dialog -->
+        <v-dialog v-model="editDialog" max-width="500px">
+            <v-card>
+                <v-card-title>Modifier le Commercial</v-card-title>
+                <v-card-text>
+                    <v-form @submit.prevent="submitEdit">
+                        <v-text-field
+                            v-model="editForm.name"
+                            label="Nom"
+                            :error-messages="editForm.errors.name"
+                        />
+                        <v-text-field
+                            v-model="editForm.phone_number"
+                            label="Téléphone"
+                            :error-messages="editForm.errors.phone_number"
+                        />
+                        <v-select
+                            v-model="editForm.gender"
+                            :items="[
+                                { title: 'Homme', value: 'male' },
+                                { title: 'Femme', value: 'female' }
+                            ]"
+                            item-title="title"
+                            item-value="value"
+                            label="Genre"
+                            :error-messages="editForm.errors.gender"
+                        />
+                        <v-card-actions>
+                            <v-spacer />
+                            <v-btn color="error" @click="editDialog = false">Annuler</v-btn>
+                            <v-btn color="primary" type="submit" :loading="editForm.processing">
+                                Mettre à jour
+                            </v-btn>
+                        </v-card-actions>
+                    </v-form>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
+
+        <!-- Delete Confirmation Dialog -->
+        <v-dialog v-model="deleteDialog" max-width="500px">
+            <v-card>
+                <v-card-title class="text-h5">Confirmer la suppression</v-card-title>
+                <v-card-text>
+                    Êtes-vous sûr de vouloir supprimer ce commercial ? Cette action est irréversible.
+                    <div v-if="commercialToDelete" class="mt-4">
+                        <strong>Commercial à supprimer :</strong>
+                        <div>Nom : {{ commercialToDelete.name }}</div>
+                        <div>Téléphone : {{ commercialToDelete.phone_number }}</div>
+                        <div v-if="commercialToDelete.clients?.length > 0" class="mt-2 text-error">
+                            Attention : Ce commercial a {{ commercialToDelete.clients.length }} client(s) associé(s).
+                        </div>
+                    </div>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" variant="text" @click="deleteDialog = false" :disabled="isDeleting">Annuler</v-btn>
+                    <v-btn 
+                        color="error" 
+                        variant="text" 
+                        @click="deleteCommercial" 
+                        :loading="isDeleting"
+                        :disabled="isDeleting || (commercialToDelete?.clients?.length > 0)"
+                    >
+                        Confirmer la suppression
+                    </v-btn>
+                </v-card-actions>
             </v-card>
         </v-dialog>
     </AuthenticatedLayout>

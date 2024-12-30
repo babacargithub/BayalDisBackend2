@@ -42,22 +42,79 @@ class CommercialController extends Controller
         return redirect()->back()->with('success', 'Commercial ajouté avec succès');
     }
 
-    public function update(Request $request, Commercial $commercial)
+    public function update(Request $request, $id)
     {
+        $commercial = Commercial::findOrFail($id);
+
+        // Debug incoming request data
+        \Log::info('Update Commercial Request:', [
+            'request_data' => $request->all(),
+            'commercial_id' => $id,
+            'commercial' => $commercial->toArray()
+        ]);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'phone_number' => 'required|string|unique:commercials,phone_number,' . $commercial->id,
             'gender' => 'required|in:male,female',
         ]);
 
-        $commercial->update($validated);
+        try {
+            // Debug validated data
+            \Log::info('Validated data:', $validated);
 
-        return redirect()->back()->with('success', 'Commercial mis à jour avec succès');
+            // Check if commercial exists before update
+            \Log::info('Commercial before update:', $commercial->toArray());
+
+            $commercial->update($validated);
+
+            // Verify the update
+            $commercial->refresh();
+            \Log::info('Commercial after update:', $commercial->toArray());
+
+            return redirect()->back()->with('success', 'Commercial mis à jour avec succès');
+        } catch (\Exception $e) {
+            \Log::error('Update failed:', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->back()->with('error', 'Erreur lors de la mise à jour du commercial: ' . $e->getMessage());
+        }
     }
 
-    public function destroy(Commercial $commercial)
+    public function destroy($id)
     {
-        $commercial->delete();
-        return redirect()->back()->with('success', 'Commercial supprimé avec succès');
+        try {
+            $commercial = Commercial::findOrFail($id);
+
+            // Log the delete attempt
+            \Log::info('Attempting to delete commercial:', [
+                'commercial_id' => $id,
+                'commercial_name' => $commercial->name
+            ]);
+
+            // Check if commercial has related clients
+            if ($commercial->clients()->exists()) {
+                \Log::warning('Cannot delete commercial - has related clients:', [
+                    'commercial_id' => $id,
+                    'clients_count' => $commercial->clients()->count()
+                ]);
+                return redirect()->back()->with('error', 'Impossible de supprimer ce commercial car il a des clients associés');
+            }
+
+            $commercial->delete();
+            \Log::info('Commercial deleted successfully:', [
+                'commercial_id' => $id
+            ]);
+            
+            return redirect()->back()->with('success', 'Commercial supprimé avec succès');
+        } catch (\Exception $e) {
+            \Log::error('Error deleting commercial:', [
+                'commercial_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->back()->with('error', 'Erreur lors de la suppression du commercial: ' . $e->getMessage());
+        }
     }
 } 
