@@ -13,6 +13,8 @@ return new class extends Migration
     {
         Schema::table('commercials', function (Blueprint $table) {
             //
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
 
@@ -22,6 +24,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('commercials', function (Blueprint $table) {
+            $table->dropForeign(['user_id']);
+            
             //
         });
     }
