@@ -19,6 +19,11 @@ const form = useForm({
 
 const dialog = ref(false);
 
+const openGoogleMaps = (coordinates) => {
+    const url = `https://www.google.com/maps?q=${coordinates}`;
+    window.open(url, '_blank');
+};
+
 const submit = () => {
     form.post(route('clients.store'), {
         onSuccess: () => {
@@ -60,10 +65,27 @@ const submit = () => {
                                 <td>{{ client.name }}</td>
                                 <td>{{ client.phone_number }}</td>
                                 <td>{{ client.owner_number }}</td>
-                                <td>{{ client.commercial.name }}</td>
-                                <td>
-                                    <v-btn icon="mdi-pencil" variant="text" color="primary" />
-                                    <v-btn icon="mdi-delete" variant="text" color="error" />
+                                <td>{{ client.commercial?.name }}</td>
+                                <td class="d-flex">
+                                    <v-btn 
+                                        icon="mdi-map-marker"
+                                        variant="text"
+                                        color="success"
+                                        class="mr-2"
+                                        @click="openGoogleMaps(client.gps_coordinates)"
+                                        title="Voir sur Google Maps"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-pencil"
+                                        variant="text"
+                                        color="primary"
+                                        class="mr-2"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-delete"
+                                        variant="text"
+                                        color="error"
+                                    />
                                 </td>
                             </tr>
                         </tbody>

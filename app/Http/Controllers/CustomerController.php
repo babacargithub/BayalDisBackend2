@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\Commercial;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -11,7 +12,8 @@ class CustomerController extends Controller
     public function index()
     {
         return Inertia::render('Clients/Index', [
-            'clients' => Customer::with(['commercial', 'ventes'])->latest()->get()
+            'clients' => Customer::with(['commercial', 'ventes'])->latest()->get(),
+            'commerciaux' => Commercial::all()
         ]);
     }
 
