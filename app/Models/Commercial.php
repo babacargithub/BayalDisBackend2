@@ -26,8 +26,12 @@ class Commercial extends Model
     {
         return $this->belongsTo(User::class);
     }
-
     public function clients(): HasMany
+    {
+        return $this->hasMany(Client::class);
+    }
+
+    public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);
     }
