@@ -31,7 +31,19 @@ class SalespersonController extends Controller
         $ventes = $query->get();
 
         return response()->json([
-            'ventes' => $ventes,
+            'ventes' => $ventes->map(function (Vente $vente){
+                return [
+                    'id' => $vente->id,
+                    'product' => $vente->product->name,
+                    'customer' => $vente->customer->name,
+                    'customer_phone_number' => $vente->customer->phone_number,
+                    'quantity' => $vente->quantity,
+                    'price' => $vente->price,
+                    "total" => $vente->price * $vente->quantity,
+                    'paid' => (bool)$vente->paid,
+                    'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
+                    'created_at' => $vente->created_at?->format('Y-m-d H:i:s')];
+            }),
             'total' => $ventes->sum(function ($vente) {
                 return $vente->price * $vente->quantity;
             }),

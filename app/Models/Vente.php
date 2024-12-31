@@ -22,7 +22,7 @@ class Vente extends Model
         'should_be_paid_at' => 'datetime',
     ];
 
-    public function produit(): BelongsTo
+    public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
     }
@@ -31,6 +31,11 @@ class Vente extends Model
     {
         return $this->belongsTo(Customer::class, 'customer_id');
     }
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class, 'customer_id');
+    }
+    
 
     public function commercial(): BelongsTo
     {
