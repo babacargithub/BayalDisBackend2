@@ -98,12 +98,36 @@ class SalespersonController extends Controller
      */
     public function createCustomer(Request $request)
     {
+        $messages = [
+            'name.required' => 'Le nom est obligatoire',
+            'name.string' => 'Le nom doit être une chaîne de caractères',
+            'name.max' => 'Le nom ne doit pas dépasser 255 caractères',
+            
+            'phone_number.required' => 'Le numéro de téléphone est obligatoire',
+            'phone_number.numeric' => 'Le numéro de téléphone doit être numérique',
+            'phone_number.digits' => 'Le numéro de téléphone doit contenir 9 chiffres',
+            'phone_number.unique' => 'Ce numéro de téléphone est déjà utilisé',
+            
+            'owner_phone_number.required' => 'Le numéro du propriétaire est obligatoire',
+            'owner_phone_number.numeric' => 'Le numéro du propriétaire doit être numérique',
+            'owner_phone_number.digits' => 'Le numéro du propriétaire doit contenir 9 chiffres',
+            
+            'latitude.required' => 'La latitude est obligatoire',
+            'latitude.numeric' => 'La latitude doit être un nombre',
+            
+            'longitude.required' => 'La longitude est obligatoire',
+            'longitude.numeric' => 'La longitude doit être un nombre',
+            
+            'address.max' => 'L\'adresse ne doit pas dépasser 255 caractères',
+        ];
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'phone_number' => 'required|numeric|digits:9|unique:customers,phone_number',
-            'owner_number' => 'required|numeric|digits:9|string|max:9',
+            'owner_number' => 'required|numeric|digits:9',
+            'gps_coordinates' => 'required|string',
             'address' => 'nullable|string|max:255',
-        ]);
+        ], $messages);
 
         $commercial = $request->user()->commercial;
         
@@ -122,14 +146,36 @@ class SalespersonController extends Controller
             return response()->json(['message' => 'Non autorisé'], 403);
         }
 
+        $messages = [
+            'name.required' => 'Le nom est obligatoire',
+            'name.string' => 'Le nom doit être une chaîne de caractères',
+            'name.max' => 'Le nom ne doit pas dépasser 255 caractères',
+            
+            'phone_number.required' => 'Le numéro de téléphone est obligatoire',
+            'phone_number.numeric' => 'Le numéro de téléphone doit être numérique',
+            'phone_number.digits' => 'Le numéro de téléphone doit contenir 9 chiffres',
+            
+            'owner_phone_number.required' => 'Le numéro du propriétaire est obligatoire',
+            'owner_phone_number.numeric' => 'Le numéro du propriétaire doit être numérique',
+            'owner_phone_number.digits' => 'Le numéro du propriétaire doit contenir 9 chiffres',
+            
+            'latitude.required' => 'La latitude est obligatoire',
+            'latitude.numeric' => 'La latitude doit être un nombre',
+            
+            'longitude.required' => 'La longitude est obligatoire',
+            'longitude.numeric' => 'La longitude doit être un nombre',
+            
+            'address.max' => 'L\'adresse ne doit pas dépasser 255 caractères',
+        ];
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'phone_number' => 'required|string|max:255',
-            'owner_phone_number' => 'required|string|max:255',
+            'phone_number' => 'required|numeric|digits:9',
+            'owner_phone_number' => 'required|numeric|digits:9',
             'latitude' => 'required|numeric',
             'longitude' => 'required|numeric',
             'address' => 'nullable|string|max:255',
-        ]);
+        ], $messages);
 
         $customer->update($validated);
 
@@ -141,6 +187,28 @@ class SalespersonController extends Controller
      */
     public function createVente(Request $request)
     {
+        $messages = [
+            'customer_id.required' => 'Le client est obligatoire',
+            'customer_id.exists' => 'Le client sélectionné n\'existe pas',
+            
+            'product_id.required' => 'Le produit est obligatoire',
+            'product_id.exists' => 'Le produit sélectionné n\'existe pas',
+            
+            'quantity.required' => 'La quantité est obligatoire',
+            'quantity.integer' => 'La quantité doit être un nombre entier',
+            'quantity.min' => 'La quantité doit être au moins 1',
+            
+            'price.required' => 'Le prix est obligatoire',
+            'price.numeric' => 'Le prix doit être un nombre',
+            'price.min' => 'Le prix doit être positif',
+            
+            'paid.required' => 'Le statut de paiement est obligatoire',
+            'paid.boolean' => 'Le statut de paiement doit être vrai ou faux',
+            
+            'should_be_paid_at.required_if' => 'La date de paiement est obligatoire si la vente n\'est pas payée',
+            'should_be_paid_at.date' => 'La date de paiement n\'est pas valide',
+        ];
+
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'product_id' => 'required|exists:products,id',
@@ -148,7 +216,7 @@ class SalespersonController extends Controller
             'price' => 'required|numeric|min:0',
             'paid' => 'required|boolean',
             'should_be_paid_at' => 'nullable|required_if:paid,false|date',
-        ]);
+        ], $messages);
 
         $commercial = $request->user()->commercial;
 

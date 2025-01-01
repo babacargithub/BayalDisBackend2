@@ -14,9 +14,10 @@ class Customer extends Model
     protected $fillable = [
         'name',
         'phone_number',
-        'owner_phone_number',
+        'owner_number',
         'address',
         'commercial_id',
+        'gps_coordinates',
     ];
 
     protected $casts = [
