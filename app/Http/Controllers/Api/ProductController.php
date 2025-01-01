@@ -15,15 +15,15 @@ class ProductController extends Controller
         return response()->json($products);
     }
 
-    public function show(Product $product)
+    public function show(Product $produit)
     {
-        return $product;
+        return $produit;
     }
 
     public function getCustomersAndProducts(Request $request)
     {
         $commercial = $request->user()->commercial;
-        $products = Product::latest()->get();
+        $products = Product::orderBy('name', 'asc')->get();
         $customers = $commercial->customers()->latest()->get();
 
         return response()->json([

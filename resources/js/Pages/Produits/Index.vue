@@ -14,14 +14,54 @@ const form = useForm({
 });
 
 const dialog = ref(false);
+const editedItem = ref(null);
+const deleteDialog = ref(false);
+const itemToDelete = ref(null);
+
+const openDialog = (item = null) => {
+    editedItem.value = item;
+    if (item) {
+        form.name = item.name;
+        form.price = item.price;
+    } else {
+        form.reset();
+    }
+    dialog.value = true;
+};
+
+const openDeleteDialog = (item) => {
+    itemToDelete.value = item;
+    deleteDialog.value = true;
+};
 
 const submit = () => {
-    form.post(route('produits.store'), {
-        onSuccess: () => {
-            dialog.value = false;
-            form.reset();
-        },
-    });
+    if (editedItem.value) {
+        form.put(route('produits.update', editedItem.value.id), {
+            onSuccess: () => {
+                dialog.value = false;
+                form.reset();
+                editedItem.value = null;
+            },
+        });
+    } else {
+        form.post(route('produits.store'), {
+            onSuccess: () => {
+                dialog.value = false;
+                form.reset();
+            },
+        });
+    }
+};
+
+const deleteProduct = () => {
+    if (itemToDelete.value) {
+        useForm().delete(route('produits.destroy', itemToDelete.value.id), {
+            onSuccess: () => {
+                deleteDialog.value = false;
+                itemToDelete.value = null;
+            },
+        });
+    }
 };
 
 const formatPrice = (price) => {
@@ -39,7 +79,7 @@ const formatPrice = (price) => {
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Produits</h2>
-                <v-btn color="primary" @click="dialog = true">
+                <v-btn color="primary" @click="openDialog()">
                     Ajouter un produit
                 </v-btn>
             </div>
@@ -63,8 +103,18 @@ const formatPrice = (price) => {
                                 <td>{{ formatPrice(produit.price) }}</td>
                                 <td>{{ produit.ventes_count }}</td>
                                 <td>
-                                    <v-btn icon="mdi-pencil" variant="text" color="primary" />
-                                    <v-btn icon="mdi-delete" variant="text" color="error" />
+                                    <v-btn 
+                                        icon="mdi-pencil" 
+                                        variant="text" 
+                                        color="primary"
+                                        @click="openDialog(produit)"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-delete" 
+                                        variant="text" 
+                                        color="error"
+                                        @click="openDeleteDialog(produit)"
+                                    />
                                 </td>
                             </tr>
                         </tbody>
@@ -75,7 +125,7 @@ const formatPrice = (price) => {
 
         <v-dialog v-model="dialog" max-width="500px">
             <v-card>
-                <v-card-title>Nouveau Produit</v-card-title>
+                <v-card-title>{{ editedItem ? 'Modifier le Produit' : 'Nouveau Produit' }}</v-card-title>
                 <v-card-text>
                     <v-form @submit.prevent="submit">
                         <v-text-field
@@ -92,12 +142,40 @@ const formatPrice = (price) => {
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="dialog = false">Annuler</v-btn>
-                            <v-btn color="primary" type="submit" :loading="form.processing">
-                                Sauvegarder
+                            <v-btn 
+                                color="primary" 
+                                type="submit" 
+                                :loading="form.processing"
+                            >
+                                {{ editedItem ? 'Mettre à jour' : 'Sauvegarder' }}
                             </v-btn>
                         </v-card-actions>
                     </v-form>
                 </v-card-text>
+            </v-card>
+        </v-dialog>
+
+        <v-dialog v-model="deleteDialog" max-width="500px">
+            <v-card>
+                <v-card-title class="text-h5">Supprimer le produit</v-card-title>
+                <v-card-text>
+                    Êtes-vous sûr de vouloir supprimer ce produit ?
+                    <br>
+                    Cette action est irréversible.
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn color="primary" variant="text" @click="deleteDialog = false">
+                        Annuler
+                    </v-btn>
+                    <v-btn 
+                        color="error" 
+                        variant="text" 
+                        @click="deleteProduct"
+                    >
+                        Confirmer
+                    </v-btn>
+                </v-card-actions>
             </v-card>
         </v-dialog>
     </AuthenticatedLayout>
