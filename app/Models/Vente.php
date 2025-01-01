@@ -8,42 +8,32 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Vente extends Model
 {
     protected $fillable = [
-        'product_id',
         'customer_id',
-        'commercial_id',
+        'product_id',
         'quantity',
         'price',
+        'total',
         'paid',
         'paid_at',
-        'should_be_paid_at'
+        'payment_method',
+        'should_be_paid_at',
     ];
 
     protected $casts = [
         'paid' => 'boolean',
         'paid_at' => 'datetime',
         'should_be_paid_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class, 'product_id');
-    }
-     public function produit(): BelongsTo
-    {
-        return $this->belongsTo(Product::class, 'product_id');
-    }
-
-    public function client(): BelongsTo
-    {
-        return $this->belongsTo(Customer::class, 'customer_id');
-    }
-    public function customer(): BelongsTo
-    {
-        return $this->belongsTo(Customer::class, 'customer_id');
-    }
-
-    public function commercial(): BelongsTo
-    {
-        return $this->belongsTo(Commercial::class);
+        return $this->belongsTo(Product::class);
     }
 } 

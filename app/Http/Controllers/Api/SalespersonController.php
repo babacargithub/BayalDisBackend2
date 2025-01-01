@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Vente;
+use Doctrine\DBAL\Query\QueryBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -44,28 +45,7 @@ class SalespersonController extends Controller
             $query->whereDate('created_at', $date);
         }
 
-        $ventes = $query->get();
-
-        return response()->json([
-            'ventes' => $ventes->map(function (Vente $vente) {
-                return [
-                    'id' => $vente->id,
-                    'product' => $vente->product->name,
-                    'customer' => $vente->customer->name,
-                    'customer_phone_number' => $vente->customer->phone_number,
-                    'quantity' => $vente->quantity,
-                    'price' => $vente->price,
-                    'total' => $vente->price * $vente->quantity,
-                    'paid' => (bool)$vente->paid,
-                    'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
-                    'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
-                    'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
-                ];
-            }),
-            'total' => $ventes->sum(function ($vente) {
-                return $vente->price * $vente->quantity;
-            }),
-        ]);
+        return $this->venteResource($query);
     }
 
     /**
@@ -171,9 +151,8 @@ class SalespersonController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'phone_number' => 'required|numeric|digits:9',
-            'owner_phone_number' => 'required|numeric|digits:9',
-            'latitude' => 'required|numeric',
-            'longitude' => 'required|numeric',
+            'owner_number' => 'required|numeric|digits:9',
+            'gps_coordinates' => 'string',
             'address' => 'nullable|string|max:255',
         ], $messages);
 
@@ -214,6 +193,7 @@ class SalespersonController extends Controller
             'product_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
             'price' => 'required|numeric|min:0',
+            'payment_method' => 'required_if:paid,true|string|nullable',
             'paid' => 'required|boolean',
             'should_be_paid_at' => 'nullable|required_if:paid,false|date',
         ], $messages);
@@ -251,5 +231,87 @@ class SalespersonController extends Controller
                 'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
             ],
         ], 201);
+    }
+
+    public function getCustomerVentes(Request $request, Customer $customer)
+    {
+        // Verify that the customer belongs to the authenticated commercial
+        if ($customer->commercial_id !== $request->user()->commercial->id) {
+            return response()->json([
+                'message' => 'Ce client ne vous appartient pas'
+            ], 403);
+        }
+
+        $query = $customer->ventes()->with('product')->latest();
+
+        // Filter by payment status if specified
+        if ($request->has('paid')) {
+            $query->where('paid', $request->boolean('paid'));
+        }
+        return $this->venteResource($query);
+    }
+
+    public function payVente(Request $request, Vente $vente)
+    {
+
+        // Verify that the vente is not already paid
+        if ($vente->paid) {
+            return response()->json([
+                'message' => 'Cette vente est déjà payée'
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'payment_method' => 'required|string|in:Wave,OM,Cash',
+        ], [
+            'payment_method.required' => 'La méthode de paiement est requise',
+            'payment_method.in' => 'La méthode de paiement doit être Wave, OM ou Cash',
+        ]);
+
+        // if payement method is Cash we update the paid_at field
+        if (strtolower($validated['payment_method']) === 'cash') {
+            $vente->update([
+                'paid' => true,
+                'paid_at' => now()
+            ]);
+        } else {
+            // if Wave
+            if (strtolower($validated['payment_method']) === 'wave') {
+                // TODO fetch the wave payment url and return it
+            }else if (strtolower($validated['payment_method']) === 'om') {
+                // TODO trigger the orange money payment  and return it
+            }
+        }
+
+        return response()->json([
+            'message' => 'Paiement enregistré avec succès',
+            'vente' => $vente->load('product'),
+        ]);
+    }
+
+
+    public function venteResource($query): \Illuminate\Http\JsonResponse
+    {
+        $ventes = $query->get();
+        return response()->json([
+            'ventes' => $ventes->map(function (Vente $vente) {
+                return [
+                    'id' => $vente->id,
+                    'product' => $vente->product->name,
+                    'customer' => $vente->customer->name,
+                    'customer_phone_number' => $vente->customer->phone_number,
+                    'quantity' => $vente->quantity,
+                    'price' => $vente->price,
+                    'total' => $vente->price * $vente->quantity,
+                    'paid' => (bool)$vente->paid,
+                    'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
+                    'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
+                    'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
+                ];
+            }),
+            'total' => $ventes->sum(function ($vente) {
+                return $vente->price * $vente->quantity;
+            }),
+        ]);
     }
 }

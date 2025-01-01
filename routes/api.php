@@ -28,5 +28,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/products', [ProductController::class, 'index']);
         Route::get('/products/{product}', [ProductController::class, 'show']);
         Route::get('/customers_and_products', [ProductController::class, 'getCustomersAndProducts']);
+        
+        // Customer ventes history
+        Route::get('customers/{customer}/ventes', [SalespersonController::class, 'getCustomerVentes']);
+        
+        // Vente payment
+        Route::post('ventes/{vente}/pay', [SalespersonController::class, 'payVente']);
     });
 });
