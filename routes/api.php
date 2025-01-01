@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // Customers
         Route::get('/customers', [SalespersonController::class, 'getCustomers']);
+        Route::get('/customers/today-count', [SalespersonController::class, 'getTodayCustomersCount']);
         Route::post('/customers', [SalespersonController::class, 'createCustomer']);
         Route::put('/customers/{customer}', [SalespersonController::class, 'updateCustomer']);
         

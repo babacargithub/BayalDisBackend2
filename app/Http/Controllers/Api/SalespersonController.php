@@ -12,6 +12,22 @@ use Illuminate\Support\Facades\Auth;
 class SalespersonController extends Controller
 {
     /**
+     * Get today's customer count for the authenticated salesperson
+     */
+    public function getTodayCustomersCount(Request $request)
+    {
+        $commercial = $request->user()->commercial;
+        
+        $count = $commercial->customers()
+            ->whereDate('created_at', today())
+            ->count();
+
+        return response()->json([
+            'count' => $count,
+        ]);
+    }
+
+    /**
      * Get all ventes created by the authenticated salesperson
      */
     public function getVentes(Request $request)
@@ -31,7 +47,7 @@ class SalespersonController extends Controller
         $ventes = $query->get();
 
         return response()->json([
-            'ventes' => $ventes->map(function (Vente $vente){
+            'ventes' => $ventes->map(function (Vente $vente) {
                 return [
                     'id' => $vente->id,
                     'product' => $vente->product->name,
@@ -39,10 +55,12 @@ class SalespersonController extends Controller
                     'customer_phone_number' => $vente->customer->phone_number,
                     'quantity' => $vente->quantity,
                     'price' => $vente->price,
-                    "total" => $vente->price * $vente->quantity,
+                    'total' => $vente->price * $vente->quantity,
                     'paid' => (bool)$vente->paid,
+                    'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
                     'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
-                    'created_at' => $vente->created_at?->format('Y-m-d H:i:s')];
+                    'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
+                ];
             }),
             'total' => $ventes->sum(function ($vente) {
                 return $vente->price * $vente->quantity;
@@ -82,19 +100,14 @@ class SalespersonController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'phone_number' => 'required|string|max:255',
-            'owner_number' => 'required|string|max:255',
-            'gps_coordinates' => 'required|string',
+            'phone_number' => 'required|numeric|digits:9|unique:customers,phone_number',
+            'owner_number' => 'required|numeric|digits:9|string|max:9',
+            'address' => 'nullable|string|max:255',
         ]);
 
         $commercial = $request->user()->commercial;
         
-        $customer = $commercial->customers()->create([
-            'name' => $validated['name'],
-            'phone_number' => $validated['phone_number'],
-            'owner_number' => $validated['owner_number'],
-            'gps_coordinates' => $validated['gps_coordinates'],
-        ]);
+        $customer = $commercial->customers()->create($validated);
 
         return response()->json($customer, 201);
     }
@@ -112,8 +125,10 @@ class SalespersonController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'phone_number' => 'required|string|max:255',
-            'owner_number' => 'required|string|max:255',
-            'gps_coordinates' => 'required|string',
+            'owner_phone_number' => 'required|string|max:255',
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+            'address' => 'nullable|string|max:255',
         ]);
 
         $customer->update($validated);
@@ -127,31 +142,46 @@ class SalespersonController extends Controller
     public function createVente(Request $request)
     {
         $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
             'customer_id' => 'required|exists:customers,id',
+            'product_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
             'price' => 'required|numeric|min:0',
             'paid' => 'required|boolean',
-            'should_be_paid_at' => 'required|date',
+            'should_be_paid_at' => 'nullable|required_if:paid,false|date',
         ]);
 
         $commercial = $request->user()->commercial;
 
         // Verify that the customer belongs to this salesperson
-        $customer = Customer::findOrFail($validated['customer_id']);
-        if ($customer->commercial_id !== $commercial->id) {
-            return response()->json(['message' => 'Client non autorisé'], 403);
-        }
-
+        $customer = $commercial->customers()->findOrFail($validated['customer_id']);
+        
         $vente = $commercial->ventes()->create([
             'product_id' => $validated['product_id'],
             'customer_id' => $validated['customer_id'],
             'quantity' => $validated['quantity'],
             'price' => $validated['price'],
             'paid' => $validated['paid'],
-            'should_be_paid_at' => $validated['should_be_paid_at'],
+            'paid_at' => $validated['paid'] ? now() : null,
+            'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
         ]);
 
-        return response()->json($vente->load(['customer:id,name', 'product:id,name']), 201);
+        // Load the relationships
+        $vente->load(['customer', 'product']);
+
+        return response()->json([
+            'vente' => [
+                'id' => $vente->id,
+                'product' => $vente->product->name,
+                'customer' => $vente->customer->name,
+                'customer_phone_number' => $vente->customer->phone_number,
+                'quantity' => $vente->quantity,
+                'price' => $vente->price,
+                'total' => $vente->price * $vente->quantity,
+                'paid' => (bool)$vente->paid,
+                'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
+                'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
+                'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
+            ],
+        ], 201);
     }
 }

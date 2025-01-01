@@ -14,15 +14,21 @@ class Vente extends Model
         'quantity',
         'price',
         'paid',
+        'paid_at',
         'should_be_paid_at'
     ];
 
     protected $casts = [
         'paid' => 'boolean',
+        'paid_at' => 'datetime',
         'should_be_paid_at' => 'datetime',
     ];
 
     public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+     public function produit(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id');
     }
@@ -35,7 +41,6 @@ class Vente extends Model
     {
         return $this->belongsTo(Customer::class, 'customer_id');
     }
-    
 
     public function commercial(): BelongsTo
     {
