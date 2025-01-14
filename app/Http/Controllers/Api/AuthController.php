@@ -45,6 +45,7 @@ class AuthController extends Controller
             }
 
         }
+        $commercial->load("user");
 
         $user = $commercial->user;
         $token = $user->createToken('mobile-app')->plainTextToken;

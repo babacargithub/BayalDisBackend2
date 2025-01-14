@@ -36,4 +36,19 @@ class Vente extends Model
     {
         return $this->belongsTo(Product::class);
     }
+    public function produit(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+
+    }
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function commercial()
+    {
+        return $this->belongsTo(Commercial::class);
+    }
 } 

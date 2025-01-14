@@ -216,7 +216,7 @@ class SalespersonController extends Controller
         // Load the relationships
         $vente->load(['customer', 'product']);
 
-        return response()->json([
+        $response = [
             'vente' => [
                 'id' => $vente->id,
                 'product' => $vente->product->name,
@@ -230,7 +230,16 @@ class SalespersonController extends Controller
                 'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
                 'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
             ],
-        ], 201);
+        ];
+        $response['vente']['wave_payment_url'] = 'https://pay.wave.com/c/cos-1v1pv1vmr10e8?a=3550&c=XOF&m=Golob%20One';
+
+
+        // Add Wave payment URL if Wave is selected as payment method
+        if (strtolower($validated['payment_method']) == 'wave') {
+            $response['vente']['wave_payment_url'] = 'https://pay.wave.com/c/cos-1v1pv1vmr10e8?a=3550&c=XOF&m=Golob%20One';
+        }
+
+        return response()->json($response, 201);
     }
 
     public function getCustomerVentes(Request $request, Customer $customer)
