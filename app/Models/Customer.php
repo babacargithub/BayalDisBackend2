@@ -18,6 +18,7 @@ class Customer extends Model
         'address',
         'commercial_id',
         'gps_coordinates',
+        'ligne_id'
     ];
 
     protected $casts = [
@@ -33,5 +34,13 @@ class Customer extends Model
     public function ventes(): HasMany
     {
         return $this->hasMany(Vente::class);
+    }
+
+    /**
+     * Get the ligne that owns the restaurant.
+     */
+    public function ligne()
+    {
+        return $this->belongsTo(Ligne::class);
     }
 } 

@@ -231,12 +231,10 @@ class SalespersonController extends Controller
                 'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
             ],
         ];
-        $response['vente']['wave_payment_url'] = 'https://pay.wave.com/c/cos-1v1pv1vmr10e8?a=3550&c=XOF&m=Golob%20One';
-
 
         // Add Wave payment URL if Wave is selected as payment method
         if (strtolower($validated['payment_method']) == 'wave') {
-            $response['vente']['wave_payment_url'] = 'https://pay.wave.com/c/cos-1v1pv1vmr10e8?a=3550&c=XOF&m=Golob%20One';
+            $response['vente']['wave_payment_url'] = 'https://pay.wave.com/m/M_lzWrf_pI8keK/c/sn/?amount=' . $vente->price * $vente->quantity;
         }
 
         return response()->json($response, 201);
