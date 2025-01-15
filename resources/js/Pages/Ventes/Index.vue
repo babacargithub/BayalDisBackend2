@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
     ventes: Array,
@@ -24,6 +24,8 @@ const form = useForm({
 
 const dialog = ref(false);
 const filterDialog = ref(false);
+const deleteDialog = ref(false);
+const venteToDelete = ref(null);
 
 const filterForm = useForm({
     date_debut: props.filters?.date_debut || '',
@@ -79,6 +81,20 @@ const formatCurrency = (amount) => {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
     }).format(amount || 0);
+};
+
+const confirmDelete = (vente) => {
+    venteToDelete.value = vente;
+    deleteDialog.value = true;
+};
+
+const deleteVente = () => {
+    router.delete(route('ventes.destroy', venteToDelete.value.id), {
+        onSuccess: () => {
+            deleteDialog.value = false;
+            venteToDelete.value = null;
+        },
+    });
 };
 </script>
 
@@ -210,8 +226,13 @@ const formatCurrency = (amount) => {
                               <td>{{ vente.commercial?.name }}</td>
 
                               <td>
-                                    <v-btn icon="mdi-pencil" variant="text" color="primary" />
-                                    <v-btn icon="mdi-delete" variant="text" color="error" />
+                                
+                                    <v-btn 
+                                        icon="mdi-delete" 
+                                        variant="text" 
+                                        color="error"
+                                        @click="confirmDelete(vente)"
+                                    />
                                 </td>
                             </tr>
                         </tbody>
@@ -321,6 +342,31 @@ const formatCurrency = (amount) => {
                         </v-card-actions>
                     </v-form>
                 </v-card-text>
+            </v-card>
+        </v-dialog>
+
+        <!-- Delete Confirmation Dialog -->
+        <v-dialog v-model="deleteDialog" max-width="500px">
+            <v-card>
+                <v-card-title class="text-h5">Confirmer la suppression</v-card-title>
+                <v-card-text>
+                    Êtes-vous sûr de vouloir supprimer cette vente ? Cette action est irréversible.
+                    <div v-if="venteToDelete" class="mt-4">
+                        <strong>Détails de la vente :</strong>
+                        <div>Produit : {{ venteToDelete.product?.name }}</div>
+                        <div>Client : {{ venteToDelete.customer?.name }}</div>
+                        <div>Montant : {{ formatPrice(venteToDelete.price * venteToDelete.quantity) }}</div>
+                    </div>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" variant="text" @click="deleteDialog = false">
+                        Annuler
+                    </v-btn>
+                    <v-btn color="error" variant="text" @click="deleteVente">
+                        Confirmer la suppression
+                    </v-btn>
+                </v-card-actions>
             </v-card>
         </v-dialog>
     </AuthenticatedLayout>

@@ -77,4 +77,14 @@ class VenteController extends Controller
 
         return redirect()->back()->with('success', 'Vente mise à jour avec succès');
     }
+
+    public function destroy(Vente $vente)
+    {
+        try {
+            $vente->delete();
+            return redirect()->back()->with('success', 'Vente supprimée avec succès');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Erreur lors de la suppression de la vente');
+        }
+    }
 } 
