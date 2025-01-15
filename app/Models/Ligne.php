@@ -32,9 +32,9 @@ class Ligne extends Model
     }
 
     /**
-     * Get the restaurants for the ligne.
+     * Get the customers for the ligne.
      */
-    public function restaurants()
+    public function customers()
     {
         return $this->hasMany(Customer::class);
     }

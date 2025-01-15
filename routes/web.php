@@ -6,6 +6,8 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\VenteController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ZoneController;
+use App\Http\Controllers\LigneController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -40,6 +42,12 @@ Route::middleware('auth')->group(function () {
     Route::resource('clients', CustomerController::class);
     Route::resource('produits', ProductController::class);
     Route::resource('ventes', VenteController::class);
+    Route::resource('zones', ZoneController::class);
+    Route::get('zones/{zone}/lignes', [ZoneController::class, 'lignes'])->name('zones.lignes');
+    Route::get('lignes/unassigned-customers', [LigneController::class, 'getUnassignedCustomers'])->name('lignes.unassigned-customers');
+    Route::resource('lignes', LigneController::class)->only(['index', 'store', 'update', 'destroy', 'show']);
+    Route::get('lignes/{ligne}/customers', [LigneController::class, 'customers'])->name('lignes.customers');
+    Route::post('lignes/{ligne}/assign-customer', [LigneController::class, 'assignCustomer'])->name('lignes.assign-customer');
 });
 
 require __DIR__.'/auth.php';

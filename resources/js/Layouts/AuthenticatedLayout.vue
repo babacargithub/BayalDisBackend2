@@ -11,6 +11,7 @@ const menuItems = [
     { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant' },
     { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
     { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
+    { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
 ];
 </script>
 
