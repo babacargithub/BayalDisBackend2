@@ -183,20 +183,19 @@ const formatCurrency = (amount) => {
                                 <th>Date</th>
                                 <th>Produit</th>
                                 <th>Client</th>
-                                <th>Commercial</th>
                                 <th>Quantité</th>
                                 <th>Prix Total</th>
                                 <th>Statut</th>
                                 <th>Date Échéance</th>
+                                <th>Commercial</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="vente in ventes" :key="vente.id">
                                 <td>{{ formatDate(vente.created_at) }}</td>
-                                <td>{{ vente.produit.name }}</td>
-                                <td>{{ vente.client.name }}</td>
-                                <td>{{ vente.commercial.name }}</td>
+                                <td>{{ vente.product?.name }}</td>
+                                <td>{{ vente.customer?.name }}</td>
                                 <td>{{ vente.quantity }}</td>
                                 <td>{{ formatPrice(vente.price * vente.quantity) }}</td>
                                 <td>
@@ -208,7 +207,9 @@ const formatCurrency = (amount) => {
                                     </v-chip>
                                 </td>
                                 <td>{{ formatDate(vente.should_be_paid_at) }}</td>
-                                <td>
+                              <td>{{ vente.commercial?.name }}</td>
+
+                              <td>
                                     <v-btn icon="mdi-pencil" variant="text" color="primary" />
                                     <v-btn icon="mdi-delete" variant="text" color="error" />
                                 </td>

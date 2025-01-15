@@ -15,7 +15,6 @@ class Vente extends Model
         'total',
         'paid',
         'paid_at',
-        'payment_method',
         'should_be_paid_at',
     ];
 
@@ -36,18 +35,8 @@ class Vente extends Model
     {
         return $this->belongsTo(Product::class);
     }
-    public function produit(): BelongsTo
-    {
-        return $this->belongsTo(Product::class);
 
-    }
-
-    public function client(): BelongsTo
-    {
-        return $this->belongsTo(Customer::class);
-    }
-
-    public function commercial()
+    public function commercial(): BelongsTo
     {
         return $this->belongsTo(Commercial::class);
     }

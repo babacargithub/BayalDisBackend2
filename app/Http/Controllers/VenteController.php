@@ -14,7 +14,7 @@ class VenteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Vente::with(['produit', 'client', 'commercial'])
+        $query = Vente::with(['product', 'customer', 'commercial'])
             ->when($request->date_debut, function ($q) use ($request) {
                 return $q->whereDate('created_at', '>=', $request->date_debut);
             })
