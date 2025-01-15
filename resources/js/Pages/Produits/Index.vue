@@ -17,6 +17,7 @@ const dialog = ref(false);
 const editedItem = ref(null);
 const deleteDialog = ref(false);
 const itemToDelete = ref(null);
+const deleteForm = ref(null);
 
 const openDialog = (item = null) => {
     editedItem.value = item;
@@ -55,11 +56,17 @@ const submit = () => {
 
 const deleteProduct = () => {
     if (itemToDelete.value) {
-        useForm().delete(route('produits.destroy', itemToDelete.value.id), {
+        deleteForm.value = useForm({});
+        deleteForm.value.delete(route('produits.destroy', itemToDelete.value.id), {
+            preserveScroll: true,
             onSuccess: () => {
                 deleteDialog.value = false;
                 itemToDelete.value = null;
+                deleteForm.value = null;
             },
+            onError: (errors) => {
+                console.error('Delete failed:', errors);
+            }
         });
     }
 };
@@ -162,16 +169,31 @@ const formatPrice = (price) => {
                     Êtes-vous sûr de vouloir supprimer ce produit ?
                     <br>
                     Cette action est irréversible.
+                    <div v-if="itemToDelete" class="mt-4">
+                        <strong>Détails du produit :</strong>
+                        <div>Nom : {{ itemToDelete.name }}</div>
+                        <div>Prix : {{ formatPrice(itemToDelete.price) }}</div>
+                        <div v-if="itemToDelete.ventes_count > 0" class="mt-2 text-error">
+                            Attention : Ce produit a {{ itemToDelete.ventes_count }} vente(s) associée(s).
+                        </div>
+                    </div>
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer></v-spacer>
-                    <v-btn color="primary" variant="text" @click="deleteDialog = false">
+                    <v-btn 
+                        color="primary" 
+                        variant="text" 
+                        @click="deleteDialog = false"
+                        :disabled="deleteForm?.processing"
+                    >
                         Annuler
                     </v-btn>
                     <v-btn 
                         color="error" 
                         variant="text" 
                         @click="deleteProduct"
+                        :loading="deleteForm?.processing"
+                        :disabled="deleteForm?.processing || (itemToDelete?.ventes_count > 0)"
                     >
                         Confirmer
                     </v-btn>
