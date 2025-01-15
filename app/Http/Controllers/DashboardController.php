@@ -2,28 +2,153 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Vente;
+use App\Models\Commercial;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
     public function index()
     {
-        $statistics = [
-            'customers_count' => Customer::count(),
-            'commercials_count' => Commercial::count(),
-            'total_sales' => Vente::sum(DB::raw('price * quantity')),
-            'total_ventes' => Vente::count(),
-            'unpaid_ventes' => Vente::where('paid', false)->count(),
-            'total_unpaid_amount' => Vente::where('paid', false)->sum(DB::raw('price * quantity')),
-        ];
+        try {
+            $stats = [
+                'dailyStats' => $this->getDailyStats(),
+                'weeklyStats' => $this->getWeeklyStats(),
+                'monthlyStats' => $this->getMonthlyStats(),
+                'overallStats' => $this->getOverallStats(),
+            ];
 
-        return Inertia::render('Dashboard', [
-            'statistics' => $statistics
-        ]);
+            return Inertia::render('Dashboard', $stats);
+        } catch (\Exception $e) {
+            Log::error('Error fetching dashboard stats: ' . $e->getMessage());
+            return Inertia::render('Dashboard', [
+                'dailyStats' => [],
+                'weeklyStats' => [],
+                'monthlyStats' => [],
+                'overallStats' => [],
+            ]);
+        }
+    }
+
+    private function getDailyStats()
+    {
+        try {
+            $today = Carbon::today();
+            
+            $total_amount_paid = Vente::whereDate('created_at', $today)
+                ->where('paid', true)
+                ->sum(DB::raw('price * quantity'));
+            
+            $total_amount_unpaid = Vente::whereDate('created_at', $today)
+                ->where('paid', false)
+                ->sum(DB::raw('price * quantity'));
+            
+            return [
+                'total_customers' => Customer::whereDate('created_at', $today)->count(),
+                'total_prospects' => Customer::whereDate('created_at', $today)->prospects()->count(),
+                'total_confirmed_customers' => Customer::whereDate('created_at', $today)->nonProspects()->count(),
+                'total_ventes' => Vente::whereDate('created_at', $today)->count(),
+                'total_ventes_paid' => Vente::whereDate('created_at', $today)->where('paid', true)->count(),
+                'total_ventes_unpaid' => Vente::whereDate('created_at', $today)->where('paid', false)->count(),
+                'total_amount_paid' => $total_amount_paid,
+                'total_amount_unpaid' => $total_amount_unpaid,
+                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error getting daily stats: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function getWeeklyStats()
+    {
+        try {
+            $startOfWeek = Carbon::now()->startOfWeek();
+            
+            $total_amount_paid = Vente::where('created_at', '>=', $startOfWeek)
+                ->where('paid', true)
+                ->sum(DB::raw('price * quantity'));
+            
+            $total_amount_unpaid = Vente::where('created_at', '>=', $startOfWeek)
+                ->where('paid', false)
+                ->sum(DB::raw('price * quantity'));
+            
+            return [
+                'total_customers' => Customer::where('created_at', '>=', $startOfWeek)->count(),
+                'total_prospects' => Customer::where('created_at', '>=', $startOfWeek)->prospects()->count(),
+                'total_confirmed_customers' => Customer::where('created_at', '>=', $startOfWeek)->nonProspects()->count(),
+                'total_ventes' => Vente::where('created_at', '>=', $startOfWeek)->count(),
+                'total_ventes_paid' => Vente::where('created_at', '>=', $startOfWeek)->where('paid', true)->count(),
+                'total_ventes_unpaid' => Vente::where('created_at', '>=', $startOfWeek)->where('paid', false)->count(),
+                'total_amount_paid' => $total_amount_paid,
+                'total_amount_unpaid' => $total_amount_unpaid,
+                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error getting weekly stats: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function getMonthlyStats()
+    {
+        try {
+            $startOfMonth = Carbon::now()->startOfMonth();
+            
+            $total_amount_paid = Vente::where('created_at', '>=', $startOfMonth)
+                ->where('paid', true)
+                ->sum(DB::raw('price * quantity'));
+            
+            $total_amount_unpaid = Vente::where('created_at', '>=', $startOfMonth)
+                ->where('paid', false)
+                ->sum(DB::raw('price * quantity'));
+            
+            return [
+                'total_customers' => Customer::where('created_at', '>=', $startOfMonth)->count(),
+                'total_prospects' => Customer::where('created_at', '>=', $startOfMonth)->prospects()->count(),
+                'total_confirmed_customers' => Customer::where('created_at', '>=', $startOfMonth)->nonProspects()->count(),
+                'total_ventes' => Vente::where('created_at', '>=', $startOfMonth)->count(),
+                'total_ventes_paid' => Vente::where('created_at', '>=', $startOfMonth)->where('paid', true)->count(),
+                'total_ventes_unpaid' => Vente::where('created_at', '>=', $startOfMonth)->where('paid', false)->count(),
+                'total_amount_paid' => $total_amount_paid,
+                'total_amount_unpaid' => $total_amount_unpaid,
+                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error getting monthly stats: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function getOverallStats()
+    {
+        try {
+            $total_amount_paid = Vente::where('paid', true)
+                ->sum(DB::raw('price * quantity'));
+            
+            $total_amount_unpaid = Vente::where('paid', false)
+                ->sum(DB::raw('price * quantity'));
+            
+            return [
+                'total_customers' => Customer::count(),
+                'total_prospects' => Customer::prospects()->count(),
+                'total_confirmed_customers' => Customer::nonProspects()->count(),
+                'total_ventes' => Vente::count(),
+                'total_ventes_paid' => Vente::where('paid', true)->count(),
+                'total_ventes_unpaid' => Vente::where('paid', false)->count(),
+                'total_amount_paid' => $total_amount_paid,
+                'total_amount_unpaid' => $total_amount_unpaid,
+                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+                'total_commerciaux' => Commercial::count(),
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error getting overall stats: ' . $e->getMessage());
+            return [];
+        }
     }
 } 
