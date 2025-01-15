@@ -57,6 +57,7 @@ const editForm = useForm({
     owner_number: '',
     gps_coordinates: '',
     commercial_id: '',
+    description: '',
 });
 
 const openEditDialog = (client) => {
@@ -66,6 +67,7 @@ const openEditDialog = (client) => {
     editForm.owner_number = client.owner_number;
     editForm.gps_coordinates = client.gps_coordinates;
     editForm.commercial_id = client.commercial_id;
+    editForm.description = client.description || '';
     editDialog.value = true;
 };
 
@@ -183,7 +185,27 @@ watch(() => props.flash, (newFlash) => {
                         </thead>
                         <tbody>
                             <tr v-for="client in clients" :key="client.id">
-                                <td>{{ client.name }}</td>
+                                <td>
+                                    <div class="d-flex align-center">
+                                        <div>
+                                            <div class="font-weight-bold">{{ client.name }}</div>
+                                            <div class="text-caption text-grey">{{ client.address }}</div>
+                                        </div>
+                                        <v-tooltip v-if="client.description" location="top">
+                                            <template v-slot:activator="{ props }">
+                                                <v-icon
+                                                    size="small"
+                                                    color="grey-darken-1"
+                                                    class="ml-2"
+                                                    v-bind="props"
+                                                >
+                                                    mdi-information
+                                                </v-icon>
+                                            </template>
+                                            {{ client.description }}
+                                        </v-tooltip>
+                                    </div>
+                                </td>
                                 <td>{{ client.phone_number }}</td>
                                 <td>{{ client.owner_number }}</td>
                                 <td>{{ client.commercial?.name }}</td>
@@ -306,6 +328,14 @@ watch(() => props.flash, (newFlash) => {
                             item-value="id"
                             label="Commercial"
                             :error-messages="editForm.errors.commercial_id"
+                        />
+                        <v-textarea
+                            v-model="editForm.description"
+                            label="Description"
+                            :error-messages="editForm.errors.description"
+                            rows="3"
+                            auto-grow
+                            placeholder="Ajoutez une description pour ce client..."
                         />
                         <v-card-actions>
                             <v-spacer />

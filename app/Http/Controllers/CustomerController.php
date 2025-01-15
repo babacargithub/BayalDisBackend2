@@ -13,8 +13,7 @@ class CustomerController extends Controller
     {
         $query = Customer::with(['commercial', 'ventes']);
 
-        // Filter by prospect status if specified
-        if ($request->has('prospect_status')) {
+        if ($request->filled('prospect_status')) {
             if ($request->prospect_status === 'prospects') {
                 $query->prospects();
             } elseif ($request->prospect_status === 'customers') {
@@ -25,7 +24,7 @@ class CustomerController extends Controller
         return Inertia::render('Clients/Index', [
             'clients' => $query->latest()->get(),
             'commerciaux' => Commercial::all(),
-            'filters' => $request->only(['prospect_status'])
+            'filters' => $request->only('prospect_status')
         ]);
     }
 
@@ -33,89 +32,53 @@ class CustomerController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'phone_number' => 'required|string',
-            'owner_number' => 'required|string',
-            'gps_coordinates' => 'required|string',
-            'commercial_id' => 'required|exists:commercials,id',
+            'phone_number' => 'required|string|max:255',
+            'owner_number' => 'nullable|string|max:255',
+            'gps_coordinates' => 'nullable|string|max:255',
+            'commercial_id' => 'nullable|exists:commercials,id',
+            'description' => 'nullable|string',
         ]);
 
         Customer::create($validated);
 
-        return redirect()->back()->with('success', 'Client ajouté avec succès');
+        return redirect()->back()->with('success', 'Client créé avec succès');
     }
 
     public function update(Request $request, $id)
     {
-        $client = Customer::findOrFail($id);
+        $customer = Customer::findOrFail($id);
 
         // Debug incoming request data
         \Log::info('Update Client Request:', [
             'request_data' => $request->all(),
-            'client_id' => $client->id
+            'client_id' => $customer->id
         ]);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'phone_number' => 'required|string',
-            'owner_number' => 'required|string',
-            'gps_coordinates' => 'required|string',
-            'commercial_id' => 'required|exists:commercials,id',
+            'phone_number' => 'required|string|max:255',
+            'owner_number' => 'nullable|string|max:255',
+            'gps_coordinates' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
         ]);
 
-        try {
-            // Debug validated data
-            \Log::info('Validated data:', $validated);
+        $customer->update($validated);
 
-            // Check if client exists before update
-            \Log::info('Client before update:', $client->toArray());
-
-            $client->update($validated);
-
-            // Verify the update
-            $client->refresh();
-            \Log::info('Client after update:', $client->toArray());
-
-            return redirect()->back()->with('success', 'Client mis à jour avec succès');
-        } catch (\Exception $e) {
-            \Log::error('Update failed:', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return redirect()->back()->with('error', 'Erreur lors de la mise à jour du client: ' . $e->getMessage());
-        }
+        return redirect()->back()->with('success', 'Client mis à jour avec succès');
     }
 
     public function destroy(Customer $client)
     {
         try {
-            // Log the delete attempt
-            \Log::info('Attempting to delete client:', [
-                'client_id' => $client->id,
-                'client_name' => $client->name
-            ]);
-
-            // Check if client has related ventes
-            if ($client->ventes()->exists()) {
-                \Log::warning('Cannot delete client - has related ventes:', [
-                    'client_id' => $client->id,
-                    'ventes_count' => $client->ventes()->count()
-                ]);
+            $customer = $client;
+            if ($customer->ventes()->exists()) {
                 return back()->with('error', 'Impossible de supprimer ce client car il a des ventes associées');
             }
 
-            $client->delete();
-            \Log::info('Client deleted successfully:', [
-                'client_id' => $client->id
-            ]);
-            
+            $customer->delete();
             return back()->with('success', 'Client supprimé avec succès');
         } catch (\Exception $e) {
-            \Log::error('Error deleting client:', [
-                'client_id' => $client->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return back()->with('error', 'Erreur lors de la suppression du client: ' . $e->getMessage());
+            return back()->with('error', 'Erreur lors de la suppression du client');
         }
     }
 } 

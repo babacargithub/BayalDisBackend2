@@ -86,6 +86,7 @@ class SalespersonController extends Controller
             'phone_number' => 'required|numeric|digits:9|unique:customers,phone_number',
             'owner_number' => 'required|numeric|digits:9',
             'gps_coordinates' => 'required|string',
+            'description' => 'nullable|string',
             'address' => 'nullable|string|max:255',
         ], $messages);
 
@@ -133,6 +134,7 @@ class SalespersonController extends Controller
             'phone_number' => 'required|numeric|digits:9',
             'owner_number' => 'required|numeric|digits:9',
             'gps_coordinates' => 'string',
+            'description' => 'nullable|string',
             'address' => 'nullable|string|max:255',
         ], $messages);
 
