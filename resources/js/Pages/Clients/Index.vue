@@ -8,7 +8,8 @@ const props = defineProps({
     clients: Array,
     commerciaux: Array,
     errors: Object,
-    flash: Object
+    flash: Object,
+    filters: Object
 });
 
 const form = useForm({
@@ -28,6 +29,22 @@ const deleteForm = ref(null);
 const snackbar = ref(false);
 const snackbarText = ref('');
 const snackbarColor = ref('');
+
+const filterForm = useForm({
+    prospect_status: props.filters?.prospect_status || ''
+});
+
+const applyFilter = (status) => {
+    filterForm.get(route('clients.index'), {
+        preserveState: true,
+        preserveScroll: true,
+        only: ['clients']
+    });
+};
+
+watch(() => filterForm.prospect_status, (newValue) => {
+    applyFilter();
+});
 
 const openGoogleMaps = (coordinates) => {
     const url = `https://www.google.com/maps?q=${coordinates}`;
@@ -122,9 +139,31 @@ watch(() => props.flash, (newFlash) => {
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Clients</h2>
-                <v-btn color="primary" @click="dialog = true">
-                    Ajouter un client
-                </v-btn>
+                <div class="flex gap-2">
+                    <v-btn-group>
+                        <v-btn 
+                            :color="filterForm.prospect_status === '' ? 'primary' : undefined"
+                            @click="filterForm.prospect_status = ''"
+                        >
+                            Tous
+                        </v-btn>
+                        <v-btn 
+                            :color="filterForm.prospect_status === 'prospects' ? 'primary' : undefined"
+                            @click="filterForm.prospect_status = 'prospects'"
+                        >
+                            Prospects
+                        </v-btn>
+                        <v-btn 
+                            :color="filterForm.prospect_status === 'customers' ? 'primary' : undefined"
+                            @click="filterForm.prospect_status = 'customers'"
+                        >
+                            Clients
+                        </v-btn>
+                    </v-btn-group>
+                    <v-btn color="primary" @click="dialog = true">
+                        Ajouter un client
+                    </v-btn>
+                </div>
             </div>
         </template>
 
@@ -138,6 +177,7 @@ watch(() => props.flash, (newFlash) => {
                                 <th>Téléphone</th>
                                 <th>Numéro Propriétaire</th>
                                 <th>Commercial</th>
+                                <th>Type</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -147,6 +187,14 @@ watch(() => props.flash, (newFlash) => {
                                 <td>{{ client.phone_number }}</td>
                                 <td>{{ client.owner_number }}</td>
                                 <td>{{ client.commercial?.name }}</td>
+                                <td>
+                                    <v-icon
+                                        v-if="client.is_prospect"
+                                        icon="mdi-account-question"
+                                        color="warning"
+                                        title="Prospect"
+                                    />
+                                </td>
                                 <td class="d-flex">
                                     <v-btn 
                                         icon="mdi-map-marker"

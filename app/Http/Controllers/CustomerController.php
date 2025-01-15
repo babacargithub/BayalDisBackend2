@@ -9,11 +9,23 @@ use Inertia\Inertia;
 
 class CustomerController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $query = Customer::with(['commercial', 'ventes']);
+
+        // Filter by prospect status if specified
+        if ($request->has('prospect_status')) {
+            if ($request->prospect_status === 'prospects') {
+                $query->prospects();
+            } elseif ($request->prospect_status === 'customers') {
+                $query->nonProspects();
+            }
+        }
+
         return Inertia::render('Clients/Index', [
-            'clients' => Customer::with(['commercial', 'ventes'])->latest()->get(),
-            'commerciaux' => Commercial::all()
+            'clients' => $query->latest()->get(),
+            'commerciaux' => Commercial::all(),
+            'filters' => $request->only(['prospect_status'])
         ]);
     }
 
