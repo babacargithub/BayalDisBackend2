@@ -20,7 +20,7 @@ class ProductController extends Controller
         return $produit;
     }
 
-    public function getCustomersAndProducts(Request $request)
+    public function getClientsAndProducts(Request $request)
     {
         $commercial = $request->user()->commercial;
         $products = Product::orderBy('name', 'asc')->get();

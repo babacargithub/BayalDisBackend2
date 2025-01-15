@@ -1,12 +1,14 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
     clients: Array,
-    commerciaux: Array
+    commerciaux: Array,
+    errors: Object,
+    flash: Object
 });
 
 const form = useForm({
@@ -22,6 +24,10 @@ const deleteDialog = ref(false);
 const editDialog = ref(false);
 const clientToDelete = ref(null);
 const editingClient = ref(null);
+const deleteForm = ref(null);
+const snackbar = ref(false);
+const snackbarText = ref('');
+const snackbarColor = ref('');
 
 const openGoogleMaps = (coordinates) => {
     const url = `https://www.google.com/maps?q=${coordinates}`;
@@ -66,11 +72,21 @@ const confirmDelete = (client) => {
 };
 
 const deleteClient = () => {
-    router.delete(route('clients.destroy', clientToDelete.value.id), {
+    deleteForm.value = useForm({});
+    deleteForm.value.delete(route('clients.destroy', clientToDelete.value.id), {
+        preserveScroll: true,
         onSuccess: () => {
             deleteDialog.value = false;
             clientToDelete.value = null;
+            deleteForm.value = null;
+            window.location.reload();
         },
+        onError: (errors) => {
+            console.error('Delete failed:', errors);
+            snackbarText.value = errors.message || 'Une erreur est survenue lors de la suppression du client';
+            snackbarColor.value = 'error';
+            snackbar.value = true;
+        }
     });
 };
 
@@ -82,6 +98,21 @@ const submit = () => {
         },
     });
 };
+
+watch(() => props.flash, (newFlash) => {
+    if (!newFlash) return;
+    
+    if (newFlash.success) {
+        snackbarText.value = newFlash.success;
+        snackbarColor.value = 'success';
+        snackbar.value = true;
+    }
+    if (newFlash.error) {
+        snackbarText.value = newFlash.error;
+        snackbarColor.value = 'error';
+        snackbar.value = true;
+    }
+}, { deep: true, immediate: true });
 </script>
 
 <template>
@@ -240,24 +271,49 @@ const submit = () => {
             </v-card>
         </v-dialog>
 
-        <!-- Delete Confirmation Dialog -->
+        <!-- Delete Dialog -->
         <v-dialog v-model="deleteDialog" max-width="500px">
             <v-card>
-                <v-card-title class="text-h5">Confirmer la suppression</v-card-title>
+                <v-card-title>Supprimer le Client</v-card-title>
                 <v-card-text>
-                    Êtes-vous sûr de vouloir supprimer ce client ? Cette action est irréversible.
-                    <div v-if="clientToDelete" class="mt-4">
-                        <strong>Client à supprimer :</strong>
-                        <div>Nom : {{ clientToDelete.name }}</div>
-                        <div>Téléphone : {{ clientToDelete.phone_number }}</div>
+                    <div class="mb-4">
+                        Êtes-vous sûr de vouloir supprimer ce client ? Cette action est irréversible.
+                    </div>
+                    <div v-if="clientToDelete" class="text-subtitle-1">
+                        <div><strong>Nom:</strong> {{ clientToDelete.name }}</div>
+                        <div><strong>Téléphone:</strong> {{ clientToDelete.phone_number }}</div>
                     </div>
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer />
-                    <v-btn color="primary" variant="text" @click="deleteDialog = false">Annuler</v-btn>
-                    <v-btn color="error" variant="text" @click="deleteClient">Supprimer</v-btn>
+                    <v-btn color="primary" @click="deleteDialog = false" :disabled="deleteForm?.processing">Annuler</v-btn>
+                    <v-btn 
+                        color="error" 
+                        @click="deleteClient" 
+                        :loading="deleteForm?.processing"
+                        :disabled="deleteForm?.processing"
+                    >
+                        Supprimer
+                    </v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <!-- Snackbar -->
+        <v-snackbar
+            v-model="snackbar"
+            :color="snackbarColor"
+            :timeout="3000"
+        >
+            {{ snackbarText }}
+            <template v-slot:actions>
+                <v-btn
+                    variant="text"
+                    @click="snackbar = false"
+                >
+                    Fermer
+                </v-btn>
+            </template>
+        </v-snackbar>
     </AuthenticatedLayout>
 </template> 

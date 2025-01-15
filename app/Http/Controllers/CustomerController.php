@@ -34,12 +34,12 @@ class CustomerController extends Controller
 
     public function update(Request $request, $id)
     {
-        $customer = Customer::findOrFail($id);
+        $client = Customer::findOrFail($id);
 
         // Debug incoming request data
-        \Log::info('Update Customer Request:', [
+        \Log::info('Update Client Request:', [
             'request_data' => $request->all(),
-            'customer_id' => $customer->id
+            'client_id' => $client->id
         ]);
 
         $validated = $request->validate([
@@ -54,14 +54,14 @@ class CustomerController extends Controller
             // Debug validated data
             \Log::info('Validated data:', $validated);
 
-            // Check if customer exists before update
-            \Log::info('Customer before update:', $customer->toArray());
+            // Check if client exists before update
+            \Log::info('Client before update:', $client->toArray());
 
-            $customer->update($validated);
+            $client->update($validated);
 
             // Verify the update
-            $customer->refresh();
-            \Log::info('Customer after update:', $customer->toArray());
+            $client->refresh();
+            \Log::info('Client after update:', $client->toArray());
 
             return redirect()->back()->with('success', 'Client mis à jour avec succès');
         } catch (\Exception $e) {
@@ -73,37 +73,37 @@ class CustomerController extends Controller
         }
     }
 
-    public function destroy(Customer $customer)
+    public function destroy(Customer $client)
     {
         try {
             // Log the delete attempt
-            \Log::info('Attempting to delete customer:', [
-                'customer_id' => $customer->id,
-                'customer_name' => $customer->name
+            \Log::info('Attempting to delete client:', [
+                'client_id' => $client->id,
+                'client_name' => $client->name
             ]);
 
-            // Check if customer has related ventes
-            if ($customer->ventes()->exists()) {
-                \Log::warning('Cannot delete customer - has related ventes:', [
-                    'customer_id' => $customer->id,
-                    'ventes_count' => $customer->ventes()->count()
+            // Check if client has related ventes
+            if ($client->ventes()->exists()) {
+                \Log::warning('Cannot delete client - has related ventes:', [
+                    'client_id' => $client->id,
+                    'ventes_count' => $client->ventes()->count()
                 ]);
-                return redirect()->back()->with('error', 'Impossible de supprimer ce client car il a des ventes associées');
+                return back()->with('error', 'Impossible de supprimer ce client car il a des ventes associées');
             }
 
-            $customer->delete();
-            \Log::info('Customer deleted successfully:', [
-                'customer_id' => $customer->id
+            $client->delete();
+            \Log::info('Client deleted successfully:', [
+                'client_id' => $client->id
             ]);
             
-            return redirect()->back()->with('success', 'Client supprimé avec succès');
+            return back()->with('success', 'Client supprimé avec succès');
         } catch (\Exception $e) {
-            \Log::error('Error deleting customer:', [
-                'customer_id' => $customer->id,
+            \Log::error('Error deleting client:', [
+                'client_id' => $client->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            return redirect()->back()->with('error', 'Erreur lors de la suppression du client: ' . $e->getMessage());
+            return back()->with('error', 'Erreur lors de la suppression du client: ' . $e->getMessage());
         }
     }
 } 

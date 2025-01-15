@@ -13,13 +13,13 @@ use Illuminate\Support\Facades\Auth;
 class SalespersonController extends Controller
 {
     /**
-     * Get today's customer count for the authenticated salesperson
+     * Get today's client count for the authenticated salesperson
      */
-    public function getTodayCustomersCount(Request $request)
+    public function getTodayClientsCount(Request $request)
     {
         $commercial = $request->user()->commercial;
         
-        $count = $commercial->customers()
+        $count = $commercial->clients()
             ->whereDate('created_at', today())
             ->count();
 
@@ -29,54 +29,34 @@ class SalespersonController extends Controller
     }
 
     /**
-     * Get all ventes created by the authenticated salesperson
+     * Get all clients created by the authenticated salesperson
      */
-    public function getVentes(Request $request)
+    public function getClients(Request $request)
     {
         $commercial = $request->user()->commercial;
         
-        $query = $commercial->ventes()
-            ->with(['customer:id,name,phone_number', 'product:id,name,price'])
-            ->latest();
-
-        // Filter by date if provided
-        if ($request->has('date')) {
-            $date = $request->date;
-            $query->whereDate('created_at', $date);
-        }
-
-        return $this->venteResource($query);
-    }
-
-    /**
-     * Get all customers created by the authenticated salesperson
-     */
-    public function getCustomers(Request $request)
-    {
-        $commercial = $request->user()->commercial;
-        
-        $query = $commercial->customers()->latest();
+        $query = $commercial->clients()->latest();
 
         // Get today's count if requested
         $todayCount = null;
         if ($request->has('include_today_count')) {
-            $todayCount = $commercial->customers()
+            $todayCount = $commercial->clients()
                 ->whereDate('created_at', today())
                 ->count();
         }
 
-        $customers = $query->get();
+        $clients = $query->get();
 
         return response()->json([
-            'customers' => $customers,
+            'clients' => $clients,
             'today_count' => $todayCount,
         ]);
     }
 
     /**
-     * Create a new customer
+     * Create a new client
      */
-    public function createCustomer(Request $request)
+    public function createClient(Request $request)
     {
         $messages = [
             'name.required' => 'Le nom est obligatoire',
@@ -111,18 +91,18 @@ class SalespersonController extends Controller
 
         $commercial = $request->user()->commercial;
         
-        $customer = $commercial->customers()->create($validated);
+        $client = $commercial->clients()->create($validated);
 
-        return response()->json($customer, 201);
+        return response()->json($client, 201);
     }
 
     /**
-     * Update an existing customer
+     * Update an existing client
      */
-    public function updateCustomer(Request $request, Customer $customer)
+    public function updateClient(Request $request, Customer $client)
     {
-        // Check if the customer belongs to the authenticated salesperson
-        if ($customer->commercial_id !== $request->user()->commercial->id) {
+        // Check if the client belongs to the authenticated salesperson
+        if ($client->commercial_id !== $request->user()->commercial->id) {
             return response()->json(['message' => 'Non autorisé'], 403);
         }
 
@@ -156,9 +136,9 @@ class SalespersonController extends Controller
             'address' => 'nullable|string|max:255',
         ], $messages);
 
-        $customer->update($validated);
+        $client->update($validated);
 
-        return response()->json($customer);
+        return response()->json($client);
     }
 
     /**
@@ -200,8 +180,8 @@ class SalespersonController extends Controller
 
         $commercial = $request->user()->commercial;
 
-        // Verify that the customer belongs to this salesperson
-        $customer = $commercial->customers()->findOrFail($validated['customer_id']);
+        // Verify that the client belongs to this salesperson
+        $client = $commercial->clients()->findOrFail($validated['customer_id']);
         
         $vente = $commercial->ventes()->create([
             'product_id' => $validated['product_id'],
@@ -240,16 +220,16 @@ class SalespersonController extends Controller
         return response()->json($response, 201);
     }
 
-    public function getCustomerVentes(Request $request, Customer $customer)
+    public function getClientVentes(Request $request, Customer $client)
     {
-        // Verify that the customer belongs to the authenticated commercial
-        if ($customer->commercial_id !== $request->user()->commercial->id) {
+        // Verify that the client belongs to the authenticated commercial
+        if ($client->commercial_id !== $request->user()->commercial->id) {
             return response()->json([
                 'message' => 'Ce client ne vous appartient pas'
             ], 403);
         }
 
-        $query = $customer->ventes()->with('product')->latest();
+        $query = $client->ventes()->with('product')->latest();
 
         // Filter by payment status if specified
         if ($request->has('paid')) {
