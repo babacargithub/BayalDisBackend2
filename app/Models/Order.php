@@ -10,6 +10,10 @@ class Order extends Model
 {
     use HasFactory;
 
+    const STATUS_WAITING = 'WAITING';
+    const STATUS_DELIVERED = 'DELIVERED';
+    const STATUS_CANCELLED = 'CANCELLED';
+
     protected $fillable = [
         'customer_id',
         'quantity',
@@ -17,6 +21,8 @@ class Order extends Model
         'product_id',
         'commercial_id',
         'livreur_id',
+        'status',
+        'comment',
     ];
 
     protected $casts = [

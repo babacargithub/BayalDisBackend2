@@ -18,6 +18,8 @@ return new class extends Migration
             $table->foreignId('commercial_id')->nullable()->constrained()->onDelete('set null');
             $table->foreignId('livreur_id')->nullable()->constrained()->onDelete('set null');
             $table->integer('quantity');
+            $table->enum('status', ['WAITING', 'DELIVERED', 'CANCELLED'])->default('WAITING');
+            $table->text('comment')->nullable();
             $table->dateTime('should_be_delivered_at');
             $table->timestamps();
         });

@@ -25,6 +25,11 @@ class OrderController extends Controller
             'products' => Product::all(['id', 'name']),
             'commercials' => Commercial::all(['id', 'name']),
             'livreurs' => Livreur::all(['id', 'name']),
+            'statuses' => [
+                ['value' => Order::STATUS_WAITING, 'text' => 'En attente'],
+                ['value' => Order::STATUS_DELIVERED, 'text' => 'Livrée'],
+                ['value' => Order::STATUS_CANCELLED, 'text' => 'Annulée'],
+            ],
         ]);
     }
 
@@ -38,6 +43,12 @@ class OrderController extends Controller
                 'should_be_delivered_at' => 'required|date',
                 'commercial_id' => 'nullable|exists:commercials,id',
                 'livreur_id' => 'nullable|exists:livreurs,id',
+                'status' => 'in:' . implode(',', [
+                    Order::STATUS_WAITING,
+                    Order::STATUS_DELIVERED,
+                    Order::STATUS_CANCELLED,
+                ]),
+                'comment' => 'nullable|string',
             ]);
 
             Order::create($validated);
@@ -53,18 +64,39 @@ class OrderController extends Controller
     public function update(Request $request, Order $order)
     {
         try {
-            $validated = $request->validate([
-                'customer_id' => 'required|exists:customers,id',
-                'product_id' => 'required|exists:products,id',
-                'quantity' => 'required|integer|min:1',
-                'should_be_delivered_at' => 'required|date',
-                'commercial_id' => 'nullable|exists:commercials,id',
-                'livreur_id' => 'nullable|exists:livreurs,id',
-            ]);
+            // If only status is being updated
+            if ($request->has('status') && count($request->all()) === 1) {
+                $validated = $request->validate([
+                    'status' => 'required|in:' . implode(',', [
+                        Order::STATUS_WAITING,
+                        Order::STATUS_DELIVERED,
+                        Order::STATUS_CANCELLED,
+                    ]),
+                ]);
+            } else {
+                $validated = $request->validate([
+                    'customer_id' => 'required|exists:customers,id',
+                    'product_id' => 'required|exists:products,id',
+                    'quantity' => 'required|integer|min:1',
+                    'should_be_delivered_at' => 'required|date',
+                    'commercial_id' => 'nullable|exists:commercials,id',
+                    'livreur_id' => 'nullable|exists:livreurs,id',
+                    'status' => 'in:' . implode(',', [
+                        Order::STATUS_WAITING,
+                        Order::STATUS_DELIVERED,
+                        Order::STATUS_CANCELLED,
+                    ]),
+                    'comment' => 'nullable|string',
+                ]);
+            }
 
             $order->update($validated);
 
-            Log::info('Order updated successfully', ['order_id' => $order->id]);
+            Log::info('Order updated successfully', [
+                'order_id' => $order->id,
+                'updated_fields' => array_keys($validated)
+            ]);
+            
             return redirect()->back()->with('success', 'Commande mise à jour avec succès');
         } catch (\Exception $e) {
             Log::error('Error updating order: ' . $e->getMessage(), ['order_id' => $order->id]);

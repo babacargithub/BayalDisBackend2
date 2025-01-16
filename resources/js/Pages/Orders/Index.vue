@@ -23,73 +23,125 @@ const props = defineProps({
     livreurs: {
         type: Array,
         required: true
+    },
+    statuses: {
+        type: Array,
+        required: true
     }
 });
 
-// Form for creating/editing orders
-const orderForm = useForm({
+const dialog = ref(false);
+const editedItem = ref(null);
+const deleteDialog = ref(false);
+const itemToDelete = ref(null);
+
+const form = useForm({
     customer_id: '',
     product_id: '',
+    commercial_id: '',
+    livreur_id: '',
     quantity: '',
     should_be_delivered_at: '',
-    commercial_id: '',
-    livreur_id: ''
+    status: 'WAITING',
+    comment: '',
 });
 
-// Dialog states
-const createDialog = ref(false);
-const editDialog = ref(false);
-const deleteDialog = ref(false);
-const editingOrder = ref(null);
-const orderToDelete = ref(null);
+const statusForm = useForm({
+    status: '',
+});
 
-// Create order
-const submitCreate = () => {
-    orderForm.post(route('orders.store'), {
-        onSuccess: () => {
-            createDialog.value = false;
-            orderForm.reset();
-        },
-    });
+const formatDate = (date) => {
+    return new Date(date).toLocaleString('fr-FR');
 };
 
-// Edit order
-const openEditDialog = (order) => {
-    editingOrder.value = order;
-    orderForm.customer_id = order.customer_id;
-    orderForm.product_id = order.product_id;
-    orderForm.quantity = order.quantity;
-    orderForm.should_be_delivered_at = order.should_be_delivered_at;
-    orderForm.commercial_id = order.commercial_id;
-    orderForm.livreur_id = order.livreur_id;
-    editDialog.value = true;
+const getStatusColor = (status) => {
+    switch (status) {
+        case 'WAITING':
+            return 'warning';
+        case 'DELIVERED':
+            return 'success';
+        case 'CANCELLED':
+            return 'error';
+        default:
+            return 'grey';
+    }
 };
 
-const submitEdit = () => {
-    orderForm.put(route('orders.update', editingOrder.value.id), {
-        onSuccess: () => {
-            editDialog.value = false;
-            editingOrder.value = null;
-            orderForm.reset();
-        },
-    });
+const getStatusIcon = (status) => {
+    switch (status) {
+        case 'WAITING':
+            return 'mdi-clock-outline';
+        case 'DELIVERED':
+            return 'mdi-check-circle';
+        case 'CANCELLED':
+            return 'mdi-close-circle';
+        default:
+            return 'mdi-help-circle';
+    }
 };
 
-// Delete order
-const confirmDelete = (order) => {
-    orderToDelete.value = order;
+const openDialog = (item = null) => {
+    editedItem.value = item;
+    if (item) {
+        form.customer_id = item.customer_id;
+        form.product_id = item.product_id;
+        form.commercial_id = item.commercial_id;
+        form.livreur_id = item.livreur_id;
+        form.quantity = item.quantity;
+        form.should_be_delivered_at = item.should_be_delivered_at;
+        form.status = item.status;
+        form.comment = item.comment;
+    } else {
+        form.reset();
+        form.status = 'WAITING';
+    }
+    dialog.value = true;
+};
+
+const openDeleteDialog = (item) => {
+    itemToDelete.value = item;
     deleteDialog.value = true;
 };
 
-const submitDelete = () => {
-    if (orderToDelete.value) {
-        orderForm.delete(route('orders.destroy', orderToDelete.value.id), {
+const submit = () => {
+    if (editedItem.value) {
+        form.put(route('orders.update', editedItem.value.id), {
             onSuccess: () => {
-                deleteDialog.value = false;
-                orderToDelete.value = null;
+                dialog.value = false;
+                form.reset();
+                editedItem.value = null;
+            },
+        });
+    } else {
+        form.post(route('orders.store'), {
+            onSuccess: () => {
+                dialog.value = false;
+                form.reset();
             },
         });
     }
+};
+
+const deleteOrder = () => {
+    if (itemToDelete.value) {
+        form.delete(route('orders.destroy', itemToDelete.value.id), {
+            onSuccess: () => {
+                deleteDialog.value = false;
+                itemToDelete.value = null;
+            },
+        });
+    }
+};
+
+const updateStatus = (order, newStatus) => {
+    statusForm.status = newStatus;
+    statusForm.put(route('orders.update', order.id), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            statusForm.reset();
+        },
+    });
 };
 </script>
 
@@ -100,14 +152,13 @@ const submitDelete = () => {
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Commandes</h2>
-                <v-btn color="primary" @click="createDialog = true">
-                    Nouvelle Commande
+                <v-btn color="primary" @click="openDialog()">
+                    Nouvelle commande
                 </v-btn>
             </div>
         </template>
 
         <v-container>
-            <!-- Orders Table -->
             <v-card>
                 <v-table>
                     <thead>
@@ -115,9 +166,10 @@ const submitDelete = () => {
                             <th>Client</th>
                             <th>Produit</th>
                             <th>Quantité</th>
-                            <th>Date de livraison</th>
                             <th>Commercial</th>
                             <th>Livreur</th>
+                            <th>Date de livraison</th>
+                            <th>Statut</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -126,178 +178,179 @@ const submitDelete = () => {
                             <td>{{ order.customer?.name }}</td>
                             <td>{{ order.product?.name }}</td>
                             <td>{{ order.quantity }}</td>
-                            <td>{{ new Date(order.should_be_delivered_at).toLocaleString() }}</td>
-                            <td>{{ order.commercial?.name || '-' }}</td>
-                            <td>{{ order.livreur?.name || '-' }}</td>
+                            <td>{{ order.commercial?.name || 'Non assigné' }}</td>
+                            <td>{{ order.livreur?.name || 'Non assigné' }}</td>
+                            <td>{{ formatDate(order.should_be_delivered_at) }}</td>
                             <td>
-                                <v-btn icon="mdi-pencil" size="small" class="mr-2" @click="openEditDialog(order)" />
-                                <v-btn icon="mdi-delete" size="small" color="error" @click="confirmDelete(order)" />
+                                <div class="d-flex align-center">
+                                    <v-menu>
+                                        <template v-slot:activator="{ props: menu }">
+                                            <v-chip
+                                                v-bind="menu"
+                                                :color="getStatusColor(order.status)"
+                                                :prepend-icon="getStatusIcon(order.status)"
+                                                class="cursor-pointer"
+                                            >
+                                                {{ statuses.find(s => s.value === order.status)?.text }}
+                                            </v-chip>
+                                        </template>
+                                        <v-list>
+                                            <v-list-item
+                                                v-for="status in statuses"
+                                                :key="status.value"
+                                                :value="status.value"
+                                                @click="updateStatus(order, status.value)"
+                                                :active="order.status === status.value"
+                                            >
+                                                <template v-slot:prepend>
+                                                    <v-icon :color="getStatusColor(status.value)">
+                                                        {{ getStatusIcon(status.value) }}
+                                                    </v-icon>
+                                                </template>
+                                                <v-list-item-title>{{ status.text }}</v-list-item-title>
+                                            </v-list-item>
+                                        </v-list>
+                                    </v-menu>
+                                    <v-tooltip
+                                        v-if="order.comment"
+                                        location="top"
+                                        :text="order.comment"
+                                    >
+                                        <template v-slot:activator="{ props }">
+                                            <v-icon
+                                                v-bind="props"
+                                                size="small"
+                                                color="grey"
+                                                class="ml-2"
+                                            >
+                                                mdi-comment-text-outline
+                                            </v-icon>
+                                        </template>
+                                    </v-tooltip>
+                                </div>
+                            </td>
+                            <td>
+                                <v-btn 
+                                    icon="mdi-pencil" 
+                                    variant="text" 
+                                    color="primary"
+                                    @click="openDialog(order)"
+                                />
+                                <v-btn 
+                                    icon="mdi-delete" 
+                                    variant="text" 
+                                    color="error"
+                                    @click="openDeleteDialog(order)"
+                                />
                             </td>
                         </tr>
                     </tbody>
                 </v-table>
             </v-card>
 
-            <!-- Create Dialog -->
-            <v-dialog v-model="createDialog" max-width="600px">
+            <!-- Create/Edit Dialog -->
+            <v-dialog v-model="dialog" max-width="600px">
                 <v-card>
-                    <v-card-title>Nouvelle Commande</v-card-title>
+                    <v-card-title>
+                        {{ editedItem ? 'Modifier la commande' : 'Nouvelle commande' }}
+                    </v-card-title>
                     <v-card-text>
-                        <v-form @submit.prevent="submitCreate">
+                        <v-form @submit.prevent="submit">
                             <v-select
-                                v-model="orderForm.customer_id"
+                                v-model="form.customer_id"
                                 :items="customers"
                                 item-title="name"
                                 item-value="id"
                                 label="Client"
-                                :error-messages="orderForm.errors.customer_id"
-                                required
+                                :error-messages="form.errors.customer_id"
                             />
                             <v-select
-                                v-model="orderForm.product_id"
+                                v-model="form.product_id"
                                 :items="products"
                                 item-title="name"
                                 item-value="id"
                                 label="Produit"
-                                :error-messages="orderForm.errors.product_id"
-                                required
+                                :error-messages="form.errors.product_id"
                             />
                             <v-text-field
-                                v-model="orderForm.quantity"
+                                v-model="form.quantity"
                                 label="Quantité"
                                 type="number"
-                                :error-messages="orderForm.errors.quantity"
-                                required
-                            />
-                            <v-text-field
-                                v-model="orderForm.should_be_delivered_at"
-                                label="Date de livraison"
-                                type="datetime-local"
-                                :error-messages="orderForm.errors.should_be_delivered_at"
-                                required
+                                :error-messages="form.errors.quantity"
                             />
                             <v-select
-                                v-model="orderForm.commercial_id"
+                                v-model="form.commercial_id"
                                 :items="commercials"
                                 item-title="name"
                                 item-value="id"
                                 label="Commercial"
-                                :error-messages="orderForm.errors.commercial_id"
+                                :error-messages="form.errors.commercial_id"
                                 clearable
                             />
                             <v-select
-                                v-model="orderForm.livreur_id"
+                                v-model="form.livreur_id"
                                 :items="livreurs"
                                 item-title="name"
                                 item-value="id"
                                 label="Livreur"
-                                :error-messages="orderForm.errors.livreur_id"
+                                :error-messages="form.errors.livreur_id"
                                 clearable
                             />
-                        </v-form>
-                    </v-card-text>
-                    <v-card-actions>
-                        <v-spacer />
-                        <v-btn color="error" @click="createDialog = false">Annuler</v-btn>
-                        <v-btn 
-                            color="primary" 
-                            @click="submitCreate"
-                            :loading="orderForm.processing"
-                        >
-                            Créer
-                        </v-btn>
-                    </v-card-actions>
-                </v-card>
-            </v-dialog>
-
-            <!-- Edit Dialog -->
-            <v-dialog v-model="editDialog" max-width="600px">
-                <v-card>
-                    <v-card-title>Modifier la Commande</v-card-title>
-                    <v-card-text>
-                        <v-form @submit.prevent="submitEdit">
-                            <v-select
-                                v-model="orderForm.customer_id"
-                                :items="customers"
-                                item-title="name"
-                                item-value="id"
-                                label="Client"
-                                :error-messages="orderForm.errors.customer_id"
-                                required
-                            />
-                            <v-select
-                                v-model="orderForm.product_id"
-                                :items="products"
-                                item-title="name"
-                                item-value="id"
-                                label="Produit"
-                                :error-messages="orderForm.errors.product_id"
-                                required
-                            />
                             <v-text-field
-                                v-model="orderForm.quantity"
-                                label="Quantité"
-                                type="number"
-                                :error-messages="orderForm.errors.quantity"
-                                required
-                            />
-                            <v-text-field
-                                v-model="orderForm.should_be_delivered_at"
+                                v-model="form.should_be_delivered_at"
                                 label="Date de livraison"
                                 type="datetime-local"
-                                :error-messages="orderForm.errors.should_be_delivered_at"
-                                required
+                                :error-messages="form.errors.should_be_delivered_at"
                             />
                             <v-select
-                                v-model="orderForm.commercial_id"
-                                :items="commercials"
-                                item-title="name"
-                                item-value="id"
-                                label="Commercial"
-                                :error-messages="orderForm.errors.commercial_id"
-                                clearable
+                                v-model="form.status"
+                                :items="statuses"
+                                item-title="text"
+                                item-value="value"
+                                label="Statut"
+                                :error-messages="form.errors.status"
                             />
-                            <v-select
-                                v-model="orderForm.livreur_id"
-                                :items="livreurs"
-                                item-title="name"
-                                item-value="id"
-                                label="Livreur"
-                                :error-messages="orderForm.errors.livreur_id"
-                                clearable
+                            <v-textarea
+                                v-model="form.comment"
+                                label="Commentaire"
+                                :error-messages="form.errors.comment"
+                                rows="3"
+                                class="mt-2"
+                                placeholder="Ajouter un commentaire (optionnel)"
                             />
+                            <v-card-actions>
+                                <v-spacer />
+                                <v-btn color="error" @click="dialog = false">Annuler</v-btn>
+                                <v-btn 
+                                    color="primary" 
+                                    type="submit" 
+                                    :loading="form.processing"
+                                >
+                                    {{ editedItem ? 'Mettre à jour' : 'Créer' }}
+                                </v-btn>
+                            </v-card-actions>
                         </v-form>
                     </v-card-text>
-                    <v-card-actions>
-                        <v-spacer />
-                        <v-btn color="error" @click="editDialog = false">Annuler</v-btn>
-                        <v-btn 
-                            color="primary" 
-                            @click="submitEdit"
-                            :loading="orderForm.processing"
-                        >
-                            Mettre à jour
-                        </v-btn>
-                    </v-card-actions>
                 </v-card>
             </v-dialog>
 
             <!-- Delete Confirmation Dialog -->
             <v-dialog v-model="deleteDialog" max-width="500px">
                 <v-card>
-                    <v-card-title>Confirmer la suppression</v-card-title>
+                    <v-card-title>Supprimer la commande</v-card-title>
                     <v-card-text>
                         Êtes-vous sûr de vouloir supprimer cette commande ?
+                        Cette action est irréversible.
                     </v-card-text>
                     <v-card-actions>
                         <v-spacer />
                         <v-btn color="primary" @click="deleteDialog = false">Annuler</v-btn>
                         <v-btn 
                             color="error" 
-                            @click="submitDelete"
-                            :loading="orderForm.processing"
+                            @click="deleteOrder"
+                            :loading="form.processing"
                         >
-                            Supprimer
+                            Confirmer
                         </v-btn>
                     </v-card-actions>
                 </v-card>
