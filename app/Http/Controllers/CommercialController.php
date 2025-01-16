@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Commercial;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Inertia\Inertia;
 
 class CommercialController extends Controller
 {
@@ -24,7 +24,7 @@ class CommercialController extends Controller
             'commerciaux' => $commerciaux,
             'statistics' => [
                 'total_commerciaux' => $commerciaux->count(),
-                'total_clients' => $commerciaux->sum(fn($c) => $c->clients->count()),
+                'total_clients' => $commerciaux->sum(fn($c) => $c->customers->count()),
                 'moyenne_ventes' => $commerciaux->avg('ventes_count'),
             ],
         ]);
