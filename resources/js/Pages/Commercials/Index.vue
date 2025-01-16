@@ -149,7 +149,7 @@ const submit = () => {
                                         icon="mdi-pencil"
                                         size="small"
                                         class="mr-2"
-                                        @click="editCommercial(commercial)"
+                                        @click="openEditDialog(commercial)"
                                     />
                                     <v-btn 
                                         icon="mdi-delete"
