@@ -142,6 +142,36 @@ const openAssignCustomerDialog = (ligne) => {
     selectedLigne.value = ligne;
     assignCustomerDialog.value = true;
 };
+
+const openInGoogleMaps = (ligne) => {
+    if (!ligne.customers?.length) {
+        snackbarText.value = 'Aucun client dans cette ligne';
+        snackbarColor.value = 'warning';
+        snackbar.value = true;
+        return;
+    }
+
+    const customersWithGPS = ligne.customers.filter(customer => customer.gps_coordinates);
+
+    if (!customersWithGPS.length) {
+        snackbarText.value = 'Aucune coordonnée GPS disponible';
+        snackbarColor.value = 'warning';
+        snackbar.value = true;
+        return;
+    }
+
+    // Split customers into groups of 10 (Google Maps limit)
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < customersWithGPS.length; i += BATCH_SIZE) {
+        const batch = customersWithGPS.slice(i, i + BATCH_SIZE);
+        
+        // Create a simple URL with coordinates only
+        const coordinates = batch.map(customer => customer.gps_coordinates).join('/');
+        const url = `https://www.google.com/maps/dir/${encodeURIComponent(coordinates)}`;
+        
+        window.open(url, '_blank');
+    }
+};
 </script>
 
 <template>
@@ -266,7 +296,8 @@ const openAssignCustomerDialog = (ligne) => {
                                     <td>{{ ligne.customers?.length || 0 }}</td>
                                     <td>
                                         <v-btn icon="mdi-account-group" size="small" color="info" class="mr-2" @click="viewCustomers(ligne)" />
-                                        <v-btn icon="mdi-account-plus" size="small" color="success" @click="openAssignCustomerDialog(ligne)" />
+                                        <v-btn icon="mdi-account-plus" size="small" color="success" class="mr-2" @click="openAssignCustomerDialog(ligne)" />
+                                        <v-btn icon="mdi-map" size="small" color="primary" @click="openInGoogleMaps(ligne)" />
                                     </td>
                                 </tr>
                             </tbody>
