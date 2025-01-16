@@ -122,4 +122,66 @@ class CommercialController extends Controller
             return redirect()->back()->with('error', 'Erreur lors de la suppression du commercial: ' . $e->getMessage());
         }
     }
+
+    public function activity(Commercial $commercial)
+    {
+        $now = now();
+        $startOfDay = $now->copy()->startOfDay();
+        $startOfWeek = $now->copy()->startOfWeek();
+        $startOfMonth = $now->copy()->startOfMonth();
+
+        // Helper function to get stats for a given period
+        $getStats = function ($startDate = null) use ($commercial) {
+            // Base queries
+            $customersQuery = $commercial->clients();
+            $ventesQuery = $commercial->ventes();
+            
+            if ($startDate) {
+                $customersQuery = $customersQuery->where('created_at', '>=', $startDate);
+                $ventesQuery = $ventesQuery->where('created_at', '>=', $startDate);
+            }
+
+            // Get customers stats
+            $customersAll = (clone $customersQuery)->count();
+            $customersConfirmed = (clone $customersQuery)->whereHas('ventes')->count();
+            $customersProspects = (clone $customersQuery)->whereDoesntHave('ventes')->count();
+
+            // Get ventes stats
+            $ventesAll = (clone $ventesQuery)->count();
+            $ventesPaid = (clone $ventesQuery)->where('paid', true)->count();
+            $ventesUnpaid = (clone $ventesQuery)->where('paid', false)->count();
+
+            // Get amounts
+            $totalAll = (clone $ventesQuery)->sum(DB::raw('price * quantity'));
+            $totalPaid = (clone $ventesQuery)->where('paid', true)->sum(DB::raw('price * quantity'));
+            $totalUnpaid = (clone $ventesQuery)->where('paid', false)->sum(DB::raw('price * quantity'));
+            $commission = $totalPaid * 0.1; // 10% commission
+            
+            return [
+                'customers_count_all' => $customersAll,
+                'customers_count_confirmed' => $customersConfirmed,
+                'customers_count_prospects' => $customersProspects,
+                'ventes_count_all' => $ventesAll,
+                'ventes_count_paid' => $ventesPaid,
+                'ventes_count_unpaid' => $ventesUnpaid,
+                'total_ventes_all' => $totalAll,
+                'total_ventes_paid' => $totalPaid,
+                'total_ventes_unpaid' => $totalUnpaid,
+                'commission' => $commission,
+            ];
+        };
+
+        // Get stats for different periods
+        $stats = [
+            'daily' => $getStats($startOfDay),
+            'weekly' => $getStats($startOfWeek),
+            'monthly' => $getStats($startOfMonth),
+            'overall' => $getStats(),
+        ];
+
+        return Inertia::render('Commercials/Activity', [
+            'commercial' => $commercial,
+            'stats' => $stats,
+        ]);
+    }
 } 

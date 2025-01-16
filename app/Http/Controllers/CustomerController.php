@@ -13,6 +13,11 @@ class CustomerController extends Controller
     {
         $query = Customer::with(['commercial', 'ventes']);
 
+        // Filter by commercial_id if provided
+        if ($request->filled('commercial_id')) {
+            $query->where('commercial_id', $request->commercial_id);
+        }
+
         if ($request->filled('prospect_status')) {
             if ($request->prospect_status === 'prospects') {
                 $query->prospects();
@@ -24,7 +29,7 @@ class CustomerController extends Controller
         return Inertia::render('Clients/Index', [
             'clients' => $query->latest()->get(),
             'commerciaux' => Commercial::all(),
-            'filters' => $request->only('prospect_status')
+            'filters' => $request->only(['prospect_status', 'commercial_id'])
         ]);
     }
 

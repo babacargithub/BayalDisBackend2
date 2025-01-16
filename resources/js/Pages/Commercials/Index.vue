@@ -136,21 +136,26 @@ const submit = () => {
                                 <td>{{ commercial.ventes_count || 0 }}</td>
                                 <td>{{ formatCurrency(commercial.ventes_sum_price_multiply_by_quantity) }}</td>
                                 <td>{{ commercial.ventes_impayees_count || 0 }}</td>
-                                <td class="d-flex">
+                                <td>
+                                    <v-btn 
+                                        icon="mdi-chart-box"
+                                        size="small"
+                                        color="info"
+                                        class="mr-2"
+                                        :href="route('commerciaux.activity', commercial.id)"
+                                        title="Voir l'activité"
+                                    />
                                     <v-btn 
                                         icon="mdi-pencil"
-                                        variant="text"
-                                        color="primary"
+                                        size="small"
                                         class="mr-2"
-                                        @click="openEditDialog(commercial)"
-                                        title="Modifier"
+                                        @click="editCommercial(commercial)"
                                     />
                                     <v-btn 
                                         icon="mdi-delete"
-                                        variant="text"
+                                        size="small"
                                         color="error"
                                         @click="confirmDelete(commercial)"
-                                        title="Supprimer"
                                     />
                                 </td>
                             </tr>
