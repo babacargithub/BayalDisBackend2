@@ -12,7 +12,7 @@ class CommercialController extends Controller
 {
     public function index()
     {
-        $commerciaux = Commercial::with('clients')
+        $commerciaux = Commercial::with('customers')
             ->withCount('ventes')
             ->withSum('ventes', DB::raw('price * quantity'))
             ->withCount(['ventes as ventes_impayees_count' => function ($query) {
