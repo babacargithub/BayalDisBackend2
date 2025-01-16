@@ -8,10 +8,11 @@ const showingNavigationDropdown = ref(false);
 const menuItems = [
     { name: 'Dashboard', route: 'dashboard', icon: 'mdi-view-dashboard' },
     { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cart' },
-    { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant' },
+    { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
     { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
-    { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
+    { name: 'Clients', route: 'clients.index', icon: 'mdi-account-multiple' },
     { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
+    { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
 ];
 </script>
 
