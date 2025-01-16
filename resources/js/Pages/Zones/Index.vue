@@ -254,48 +254,19 @@ const openAssignCustomerDialog = (ligne) => {
                                 <tr v-for="ligne in lignes" :key="ligne.id">
                                     <td>
                                         <div class="font-weight-bold">{{ ligne.name }}</div>
+                                        <template v-if="ligne.customers && ligne.customers.length">
+                                            <div  class="d-flex align-center mt-2">
+                                                <!-- show customers count -->
+                                                <div class="text-caption">{{ ligne.customers?.length }} clients</div>
+                                                
+                                            </div>
+                                        </template>
                                     </td>
                                     <td>{{ ligne.livreur?.name || 'Non assigné' }}</td>
                                     <td>{{ ligne.customers?.length || 0 }}</td>
                                     <td>
                                         <v-btn icon="mdi-account-group" size="small" color="info" class="mr-2" @click="viewCustomers(ligne)" />
                                         <v-btn icon="mdi-account-plus" size="small" color="success" @click="openAssignCustomerDialog(ligne)" />
-                                    </td>
-                                </tr>
-
-                                <!-- Customers Table -->
-                                <tr v-for="customer in ligne.customers" :key="customer.id">
-                                    <td>
-                                        <div class="d-flex align-center">
-                                            <div>
-                                                <div class="font-weight-bold">{{ customer.name }}</div>
-                                                <div class="text-caption text-grey">{{ customer.address }}</div>
-                                            </div>
-                                            <v-tooltip v-if="customer.description" location="top">
-                                                <template v-slot:activator="{ props }">
-                                                    <v-icon
-                                                        size="small"
-                                                        color="grey-darken-1"
-                                                        class="ml-2"
-                                                        v-bind="props"
-                                                    >
-                                                        mdi-information
-                                                    </v-icon>
-                                                </template>
-                                                {{ customer.description }}
-                                            </v-tooltip>
-                                        </div>
-                                    </td>
-                                    <td>{{ customer.phone_number }}</td>
-                                    <td>{{ customer.ventes?.length || 0 }}</td>
-                                    <td>
-                                        <v-btn 
-                                            icon="mdi-cart" 
-                                            size="small" 
-                                            color="primary" 
-                                            class="mr-2"
-                                            :href="route('ventes.index', { customer_id: customer.id })"
-                                        />
                                     </td>
                                 </tr>
                             </tbody>
