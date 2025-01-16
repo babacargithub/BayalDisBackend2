@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('lignes', LigneController::class)->only(['index', 'store', 'update', 'destroy', 'show']);
     Route::get('lignes/{ligne}/customers', [LigneController::class, 'customers'])->name('lignes.customers');
     Route::post('lignes/{ligne}/assign-customer', [LigneController::class, 'assignCustomer'])->name('lignes.assign-customer');
+    Route::post('/lignes/{ligne}/assign-customers', [LigneController::class, 'assignCustomers'])->name('lignes.assign-customers');
     Route::resource('orders', OrderController::class);
 });
 

@@ -28,7 +28,7 @@ const ligneForm = useForm({
 
 // Assign customer form
 const assignCustomerForm = useForm({
-    customer_id: '',
+    customer_ids: [],
 });
 
 // UI state
@@ -129,7 +129,7 @@ const viewCustomers = (ligne) => {
 };
 
 const assignCustomer = () => {
-    assignCustomerForm.post(route('lignes.assign-customer', selectedLigne.value.id), {
+    assignCustomerForm.post(route('lignes.assign-customers', selectedLigne.value.id), {
         onSuccess: () => {
             assignCustomerDialog.value = false;
             assignCustomerForm.reset();
@@ -299,14 +299,16 @@ const openAssignCustomerDialog = (ligne) => {
                     <v-card-text>
                         <v-form @submit.prevent="assignCustomer">
                             <v-select 
-                                v-model="assignCustomerForm.customer_id" 
-                                label="Client" 
+                                v-model="assignCustomerForm.customer_ids" 
+                                label="Clients" 
                                 :items="unassignedCustomers" 
                                 item-title="name"
                                 item-value="id"
-                                :error-messages="errors?.customer_id"
+                                :error-messages="errors?.customer_ids"
                                 persistent-hint
-                                hint="Sélectionnez un client à assigner à cette ligne"
+                                multiple
+                                chips
+                                hint="Sélectionnez les clients à assigner à cette ligne"
                                 :loading="!unassignedCustomers.length"
                             />
                             <v-card-actions>

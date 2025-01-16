@@ -91,4 +91,18 @@ class LigneController extends Controller
     {
         return response()->json(Customer::whereNull('ligne_id')->get());
     }
+
+    public function assignCustomers(Request $request, Ligne $ligne)
+    {
+        $validated = $request->validate([
+            'customer_ids' => 'required|array',
+            'customer_ids.*' => 'exists:customers,id'
+        ]);
+
+        Customer::whereIn('id', $validated['customer_ids'])
+            ->whereNull('ligne_id')
+            ->update(['ligne_id' => $ligne->id]);
+
+        return back()->with('success', 'Clients assignés avec succès');
+    }
 } 
