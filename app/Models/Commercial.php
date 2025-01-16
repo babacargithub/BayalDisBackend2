@@ -27,7 +27,7 @@ class Commercial extends Model
         return $this->belongsTo(User::class);
     }
     
-    public function clients(): HasMany
+    public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);
     }
@@ -42,7 +42,7 @@ class Commercial extends Model
         return Hash::check($secretCode, $this->secret_code);
     }
 
-    public static function authenticate(string $phoneNumber, string $secretCode)
+    public static function authenticate(string $phoneNumber, string $secretCode): ?Commercial
     {
         $commercial = self::where('phone_number', $phoneNumber)->first();
 

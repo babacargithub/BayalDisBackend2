@@ -43,7 +43,7 @@ class ProductController extends Controller
     {
         $commercial = $request->user()->commercial;
         $products = Product::orderBy('name', 'asc')->get();
-        $clients = $commercial->clients()->latest()->get();
+        $clients = $commercial->customers()->latest()->get();
 
         return response()->json([
             'products' => $products,

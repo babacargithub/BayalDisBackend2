@@ -3,23 +3,24 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Commercial;
 use App\Models\Customer;
+use App\Models\Product;
 use App\Models\Vente;
-use Doctrine\DBAL\Query\QueryBuilder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Models\Commercial;
 
 class SalespersonController extends Controller
 {
     /**
-     * Get today's client count for the authenticated salesperson
+     * Get today's customer count for the authenticated salesperson
      */
-    public function getTodayClientsCount(Request $request)
+    public function getTodayCustomersCount(Request $request)
     {
         $commercial = $request->user()->commercial;
         
-        $count = $commercial->clients()
+        $count = $commercial->customers()
             ->whereDate('created_at', today())
             ->count();
 
@@ -29,34 +30,31 @@ class SalespersonController extends Controller
     }
 
     /**
-     * Get all clients created by the authenticated salesperson
+     * Get all customers created by the authenticated salesperson
      */
-    public function getClients(Request $request)
+    public function getCustomers(Request $request)
     {
         $commercial = $request->user()->commercial;
         
-        $query = $commercial->clients()->latest();
+        $query = $commercial->customers()->latest();
 
         // Get today's count if requested
         $todayCount = null;
         if ($request->has('include_today_count')) {
-            $todayCount = $commercial->clients()
+            $todayCount = $commercial->customers()
                 ->whereDate('created_at', today())
                 ->count();
         }
 
-        $clients = $query->get();
+        $customers = $query->get();
 
         return response()->json([
-            'clients' => $clients,
+            'customers' => $customers,
             'today_count' => $todayCount,
         ]);
     }
 
-    /**
-     * Create a new client
-     */
-    public function createClient(Request $request)
+    public function createCustomer(Request $request)
     {
         $messages = [
             'name.required' => 'Le nom est obligatoire',
@@ -92,18 +90,18 @@ class SalespersonController extends Controller
 
         $commercial = $request->user()->commercial;
         
-        $client = $commercial->clients()->create($validated);
+        $customer = $commercial->customers()->create($validated);
 
-        return response()->json($client, 201);
+        return response()->json($customer, 201);
     }
 
     /**
-     * Update an existing client
+     * Update an existing customer
      */
-    public function updateClient(Request $request, Customer $client)
+    public function updateCustomer(Request $request, Customer $customer)
     {
-        // Check if the client belongs to the authenticated salesperson
-        if ($client->commercial_id !== $request->user()->commercial->id) {
+        // Check if the customer belongs to the authenticated salesperson
+        if ($customer->commercial_id !== $request->user()->commercial->id) {
             return response()->json(['message' => 'Non autorisé'], 403);
         }
 
@@ -138,9 +136,9 @@ class SalespersonController extends Controller
             'address' => 'nullable|string|max:255',
         ], $messages);
 
-        $client->update($validated);
+        $customer->update($validated);
 
-        return response()->json($client);
+        return response()->json($customer);
     }
 
     /**
@@ -182,8 +180,8 @@ class SalespersonController extends Controller
 
         $commercial = $request->user()->commercial;
 
-        // Verify that the client belongs to this salesperson
-        $client = $commercial->clients()->findOrFail($validated['customer_id']);
+        // Verify that the customer belongs to this salesperson
+        $customer = $commercial->customers()->findOrFail($validated['customer_id']);
         
         $vente = $commercial->ventes()->create([
             'product_id' => $validated['product_id'],
@@ -222,16 +220,16 @@ class SalespersonController extends Controller
         return response()->json($response, 201);
     }
 
-    public function getClientVentes(Request $request, Customer $client)
+    public function getCustomerVentes(Request $request, Customer $customer)
     {
-        // Verify that the client belongs to the authenticated commercial
-        if ($client->commercial_id !== $request->user()->commercial->id) {
+        // Verify that the customer belongs to the authenticated commercial
+        if ($customer->commercial_id !== $request->user()->commercial->id) {
             return response()->json([
                 'message' => 'Ce client ne vous appartient pas'
             ], 403);
         }
 
-        $query = $client->ventes()->with('product')->latest();
+        $query = $customer->ventes()->with('product')->latest();
 
         // Filter by payment status if specified
         if ($request->has('paid')) {
@@ -242,7 +240,6 @@ class SalespersonController extends Controller
 
     public function payVente(Request $request, Vente $vente)
     {
-
         // Verify that the vente is not already paid
         if ($vente->paid) {
             return response()->json([
@@ -278,6 +275,24 @@ class SalespersonController extends Controller
         ]);
     }
 
+    public function getVentes(Request $request)
+    {
+        $query = Vente::with(['product', 'customer', 'commercial'])
+            ->whereHas('commercial', function ($query) {
+                $query->where('id', auth()->id());
+            })->whereDate("created_at", today()->toDateString())
+            ->latest();
+
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('paid')) {
+            $query->where('paid', $request->paid === 'true');
+        }
+
+        return $this->venteResource($query);
+    }
 
     public function venteResource($query): \Illuminate\Http\JsonResponse
     {
@@ -301,6 +316,17 @@ class SalespersonController extends Controller
             'total' => $ventes->sum(function ($vente) {
                 return $vente->price * $vente->quantity;
             }),
+        ]);
+    }
+
+    public function getCustomersAndProducts(Request $request    )
+    {
+        $customers = $request->user()->commercial->customers;
+        $products = \App\Models\Product::all();
+
+        return response()->json([
+            'customers' => $customers,
+            'products' => $products
         ]);
     }
 }

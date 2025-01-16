@@ -99,10 +99,10 @@ class CommercialController extends Controller
             ]);
 
             // Check if commercial has related clients
-            if ($commercial->clients()->exists()) {
+            if ($commercial->customers()->exists()) {
                 \Log::warning('Cannot delete commercial - has related clients:', [
                     'commercial_id' => $id,
-                    'clients_count' => $commercial->clients()->count()
+                    'clients_count' => $commercial->customers()->count()
                 ]);
                 return redirect()->back()->with('error', 'Impossible de supprimer ce commercial car il a des clients associés');
             }
@@ -133,7 +133,7 @@ class CommercialController extends Controller
         // Helper function to get stats for a given period
         $getStats = function ($startDate = null) use ($commercial) {
             // Base queries
-            $customersQuery = $commercial->clients();
+            $customersQuery = $commercial->customers();
             $ventesQuery = $commercial->ventes();
             
             if ($startDate) {

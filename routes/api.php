@@ -28,7 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/products', [ProductController::class, 'index']);
         Route::get('/products/{produit}', [ProductController::class, 'show']);
         Route::delete('/products/{produit}', [ProductController::class, 'destroy']);
-        Route::get('/customers_and_products', [ProductController::class, 'getCustomersAndProducts']);
+        Route::get('/customers_and_products', [SalespersonController::class, 'getCustomersAndProducts']);
         
         // Customer ventes history
         Route::get('customers/{customer}/ventes', [SalespersonController::class, 'getCustomerVentes']);
