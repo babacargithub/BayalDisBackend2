@@ -192,6 +192,7 @@ class SalespersonController extends Controller
             'paid' => $validated['paid'],
             'paid_at' => $validated['paid'] ? now() : null,
             'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
+            'payment_method' => $validated['payment_method'] ?? "Cash",
         ]);
 
         // Load the relationships
@@ -241,39 +242,26 @@ class SalespersonController extends Controller
 
     public function payVente(Request $request, Vente $vente)
     {
-        // Verify that the vente is not already paid
-        if ($vente->paid) {
-            return response()->json([
-                'message' => 'Cette vente est déjà payée'
-            ], 422);
-        }
-
-        $validated = $request->validate([
-            'payment_method' => 'required|string|in:Wave,OM,Cash',
-        ], [
-            'payment_method.required' => 'La méthode de paiement est requise',
-            'payment_method.in' => 'La méthode de paiement doit être Wave, OM ou Cash',
-        ]);
-
-        // if payement method is Cash we update the paid_at field
-        if (strtolower($validated['payment_method']) === 'cash') {
-            $vente->update([
-                'paid' => true,
-                'paid_at' => now()
+        try {
+            $validated = $request->validate([
+                'payment_method' => 'required|in:' . implode(',', [
+                    Vente::PAYMENT_METHOD_CASH,
+                    Vente::PAYMENT_METHOD_WAVE,
+                    Vente::PAYMENT_METHOD_OM,
+                    Vente::PAYMENT_METHOD_FREE,
+                ]),
             ]);
-        } else {
-            // if Wave
-            if (strtolower($validated['payment_method']) === 'wave') {
-                // TODO fetch the wave payment url and return it
-            }else if (strtolower($validated['payment_method']) === 'om') {
-                // TODO trigger the orange money payment  and return it
-            }
-        }
 
-        return response()->json([
-            'message' => 'Paiement enregistré avec succès',
-            'vente' => $vente->load('product'),
-        ]);
+            $vente->paid = true;
+            $vente->paid_at = now();
+            $vente->payment_method = $validated['payment_method'];
+            $vente->save();
+
+            return response()->json($vente->load(['customer', 'product']));
+        } catch (\Exception $e) {
+            \Log::error('Error paying vente: ' . $e->getMessage());
+            return response()->json(['message' => 'Error paying vente'], 500);
+        }
     }
 
     public function getVentes(Request $request)
