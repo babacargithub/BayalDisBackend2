@@ -1,9 +1,11 @@
 <?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SalespersonController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\CommercialController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -35,5 +37,6 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // Vente payment
         Route::post('ventes/{vente}/pay', [SalespersonController::class, 'payVente']);
+        Route::get('/activity_report', [SalespersonController::class, 'getActivityReport']);
     });
 });

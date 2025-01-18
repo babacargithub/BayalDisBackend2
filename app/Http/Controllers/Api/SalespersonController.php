@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Commercial;
+use Carbon\Carbon;
 
 class SalespersonController extends Controller
 {
@@ -327,6 +328,65 @@ class SalespersonController extends Controller
         return response()->json([
             'customers' => $customers,
             'products' => $products
+        ]);
+    }
+
+    /**
+     * Get activity report for the authenticated salesperson
+     */
+    public function getActivityReport(Request $request)
+    {
+        $validated = $request->validate([
+            'date' => 'required|date',
+            'type' => 'required|in:daily,weekly',
+        ]);
+
+        $date = Carbon::parse($request->date);
+        $startDate = $request->type === 'weekly' ? $date->startOfWeek() : $date->startOfDay();
+        $endDate = $request->type === 'weekly' ? $date->endOfWeek() : $date->endOfDay();
+
+        
+        $commercial = $request->user()->commercial;
+        $startDate = Carbon::parse($validated['date'])->startOfDay();
+        $endDate = $validated['type'] === 'weekly' 
+            ? Carbon::parse($validated['date'])->endOfWeek() 
+            : Carbon::parse($validated['date'])->endOfDay();
+
+        // Get total customers and prospects
+        $totalCustomers = $commercial->customers()->count();
+        $prospectsCount = $commercial->customers()->whereDoesntHave('ventes')->count();
+
+        // Get customers created in period
+        $customersCreated = $commercial->customers()
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+
+        // Get product sales
+        $productSales = DB::table('ventes')
+            ->select(
+                'products.id',
+                'products.name',
+                DB::raw('COUNT(*) as sales_count'),
+                DB::raw('SUM(ventes.quantity) as total_quantity'),
+                DB::raw('SUM(ventes.price * ventes.quantity) as total_amount')
+            )
+            ->join('products', 'ventes.product_id', '=', 'products.id')
+            ->where('ventes.commercial_id', $commercial->id)
+            ->whereBetween('ventes.created_at', [$startDate, $endDate])
+            ->groupBy('products.id', 'products.name')
+            ->get();
+
+        return response()->json([
+            'period' => [
+                'start' => $startDate->toDateTimeString(),
+                'end' => $endDate->toDateTimeString(),
+                'type' => $validated['type'],
+            ],
+            'customers_created' => $customersCreated,
+            'customers_count' => $totalCustomers,
+            'prospects_count' => $prospectsCount,
+            'product_sales' => $productSales,
+            'payment_method_sales' => [], // This will be implemented later
         ]);
     }
 }

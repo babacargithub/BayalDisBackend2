@@ -402,7 +402,7 @@ const monthlyVentesSection = `
                                                         <div class="text-h6 font-weight-bold error--text">{{ formatCurrency(monthlyStats.total_amount_unpaid) }}</div>
                                                         <div class="text-caption">Impayé</div>
                                                     </div>
-                                                </div>
+                </div>
                                             </v-card-text>
                                         </v-card>
                                     </v-col>

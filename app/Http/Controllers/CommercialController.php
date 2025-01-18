@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class CommercialController extends Controller
 {
@@ -182,6 +183,78 @@ class CommercialController extends Controller
         return Inertia::render('Commercials/Activity', [
             'commercial' => $commercial,
             'stats' => $stats,
+        ]);
+    }
+
+    public function getActivityReport(Request $request)
+    {
+        $request->validate([
+            'date' => 'required|date',
+            'type' => 'required|in:daily,weekly'
+        ]);
+
+        $commercial = auth()->user();
+        $startDate = $request->type === 'weekly' 
+            ? Carbon::parse($request->date)->startOfWeek() 
+            : Carbon::parse($request->date)->startOfDay();
+        $endDate = $request->type === 'weekly'
+            ? Carbon::parse($request->date)->endOfWeek()
+            : Carbon::parse($request->date)->endOfDay();
+
+        // Get customers created in period
+        $customersCreated = $commercial->customers()
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+
+        // Get total customers and prospects
+        $customersCount = $commercial->customers()
+            ->whereNotNull('first_vente_at')
+            ->count();
+        $prospectsCount = $commercial->customers()
+            ->whereNull('first_vente_at')
+            ->count();
+
+        // Get sales per product
+        $productSales = DB::table('ventes')
+            ->join('customers', 'ventes.customer_id', '=', 'customers.id')
+            ->join('products', 'ventes.product_id', '=', 'products.id')
+            ->where('customers.commercial_id', $commercial->id)
+            ->whereBetween('ventes.created_at', [$startDate, $endDate])
+            ->select(
+                'products.id',
+                'products.name',
+                DB::raw('COUNT(*) as sales_count'),
+                DB::raw('SUM(ventes.quantity) as total_quantity'),
+                DB::raw('SUM(ventes.total_amount) as total_amount')
+            )
+            ->groupBy('products.id', 'products.name')
+            ->having('sales_count', '>', 0)
+            ->get();
+
+        // Get sales per payment method
+        $paymentMethodSales = DB::table('ventes')
+            ->join('customers', 'ventes.customer_id', '=', 'customers.id')
+            ->where('customers.commercial_id', $commercial->id)
+            ->whereBetween('ventes.created_at', [$startDate, $endDate])
+            ->select(
+                'payment_method',
+                DB::raw('COUNT(*) as count'),
+                DB::raw('SUM(total_amount) as total_amount')
+            )
+            ->groupBy('payment_method')
+            ->get();
+
+        return response()->json([
+            'period' => [
+                'start' => $startDate->format('Y-m-d'),
+                'end' => $endDate->format('Y-m-d'),
+                'type' => $request->type
+            ],
+            'customers_created' => $customersCreated,
+            'customers_count' => $customersCount,
+            'prospects_count' => $prospectsCount,
+            'product_sales' => $productSales,
+            'payment_method_sales' => $paymentMethodSales
         ]);
     }
 } 
