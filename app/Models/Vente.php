@@ -7,23 +7,30 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Vente extends Model
 {
+    use HasFactory;
+
+    const PAYMENT_METHOD_CASH = 'CASH';
+    const PAYMENT_METHOD_WAVE = 'WAVE';
+    const PAYMENT_METHOD_OM = 'OM';
+
     protected $fillable = [
-        'customer_id',
         'product_id',
+        'customer_id',
+        'commercial_id',
         'quantity',
         'price',
-        'total',
         'paid',
-        'paid_at',
         'should_be_paid_at',
+        'paid_at',
+        'payment_method',
     ];
 
     protected $casts = [
         'paid' => 'boolean',
-        'paid_at' => 'datetime',
+        'quantity' => 'integer',
+        'price' => 'integer',
         'should_be_paid_at' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'paid_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo

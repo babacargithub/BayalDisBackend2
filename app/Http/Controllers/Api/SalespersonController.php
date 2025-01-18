@@ -380,6 +380,36 @@ class SalespersonController extends Controller
             ->groupBy('products.id', 'products.name')
             ->get();
 
+        // Get payment method sales
+        $paymentMethodSales = DB::table('ventes')
+            ->select(
+                'payment_method',
+                DB::raw('COUNT(*) as count'),
+                DB::raw('SUM(price * quantity) as total_amount')
+            )
+            ->where('commercial_id', $commercial->id)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereNotNull('payment_method')
+            ->groupBy('payment_method')
+            ->get()
+            ->map(function ($sale) {
+                return [
+                    'payment_method' => $sale->payment_method,
+                    'count' => $sale->count,
+                    'total_amount' => $sale->total_amount,
+                ];
+            });
+
+        \Log::info('Activity Report Query', [
+            'date' => $validated['date'],
+            'type' => $validated['type'],
+            'start_date' => $startDate->toDateTimeString(),
+            'end_date' => $endDate->toDateTimeString(),
+            'customers_created' => $customersCreated,
+            'product_sales_count' => $productSales->count(),
+            'payment_method_sales_count' => $paymentMethodSales->count()
+        ]);
+
         return response()->json([
             'period' => [
                 'start' => $startDate->toDateTimeString(),
@@ -390,7 +420,7 @@ class SalespersonController extends Controller
             'customers_count' => $totalCustomers,
             'prospects_count' => $prospectsCount,
             'product_sales' => $productSales,
-            'payment_method_sales' => [], // This will be implemented later
+            'payment_method_sales' => $paymentMethodSales,
         ]);
     }
 }
