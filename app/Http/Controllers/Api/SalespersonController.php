@@ -310,7 +310,7 @@ class SalespersonController extends Controller
 
     public function getCustomersAndProducts(Request $request    )
     {
-        $customers = $request->user()->commercial->customers;
+        $customers = $request->user()->commercial->customers()->latest()->get();
         $products = \App\Models\Product::all();
 
         return response()->json([
