@@ -341,20 +341,24 @@ class SalespersonController extends Controller
             'type' => 'required|in:daily,weekly',
         ]);
 
-        $date = Carbon::parse($request->date);
-        $startDate = $request->type === 'weekly' ? $date->startOfWeek() : $date->startOfDay();
-        $endDate = $request->type === 'weekly' ? $date->endOfWeek() : $date->endOfDay();
+        $commercial = auth()->user()->commercial;
+        if (!$commercial) {
+            return response()->json(['message' => 'Commercial not found'], 404);
+        }
 
-        
-        $commercial = $request->user()->commercial;
-        $startDate = Carbon::parse($validated['date'])->startOfDay();
+        // Parse the date and set the time range
+        $date = Carbon::parse($validated['date']);
+        $startDate = $validated['type'] === 'weekly' 
+            ? $date->copy()->startOfWeek() 
+            : $date->copy()->startOfDay();
         $endDate = $validated['type'] === 'weekly' 
-            ? Carbon::parse($validated['date'])->endOfWeek() 
-            : Carbon::parse($validated['date'])->endOfDay();
+            ? $date->copy()->endOfWeek() 
+            : $date->copy()->endOfDay();
 
         // Get total customers and prospects
-        $totalCustomers = $commercial->customers()->count();
-        $prospectsCount = $commercial->customers()->whereDoesntHave('ventes')->count();
+        // filter by date
+        $totalCustomers = $commercial->customers()->whereHas('ventes')->whereBetween('created_at', [$startDate, $endDate])->count();
+        $prospectsCount = $commercial->customers()->whereDoesntHave('ventes')->whereBetween('created_at', [$startDate, $endDate])->count();
 
         // Get customers created in period
         $customersCreated = $commercial->customers()
