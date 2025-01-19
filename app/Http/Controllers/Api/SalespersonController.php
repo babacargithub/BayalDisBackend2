@@ -411,4 +411,49 @@ class SalespersonController extends Controller
             'payment_method_sales' => $paymentMethodSales,
         ]);
     }
+
+    public function getOrders()
+    {
+        $commercial = auth()->user()->commercial;
+        if (!$commercial) {
+            return response()->json(['message' => 'Commercial not found'], 404);
+        }
+
+        $orders = $commercial->orders()
+            ->with(['customer', 'product'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json(['data' => $orders]);
+    }
+
+    public function createOrder(Request $request)
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+            'should_be_delivered_at' => 'required|date',
+            'comment' => 'nullable|string',
+        ]);
+
+        $commercial = auth()->user()->commercial;
+        if (!$commercial) {
+            return response()->json(['message' => 'Commercial not found'], 404);
+        }
+
+        $order = $commercial->orders()->create([
+            'customer_id' => $validated['customer_id'],
+            'product_id' => $validated['product_id'],
+            'quantity' => $validated['quantity'],
+            'should_be_delivered_at' => $validated['should_be_delivered_at'],
+            'comment' => $validated['comment'] ?? null,
+            'status' => 'WAITING',
+        ]);
+
+        return response()->json([
+            'message' => 'Order created successfully',
+            'data' => $order->load(['customer', 'product'])
+        ], 201);
+    }
 }
