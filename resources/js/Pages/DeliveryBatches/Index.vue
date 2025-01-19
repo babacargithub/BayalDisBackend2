@@ -201,6 +201,33 @@ const createOrder = () => {
         }
     });
 };
+
+const exportToPdf = async (batch) => {
+    try {
+        const response = await axios.get(
+            route('delivery-batches.export-pdf', batch.id),
+            { responseType: 'blob' }
+        );
+        
+        // Create a blob from the PDF data
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        
+        // Create a link and trigger download
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lot-${batch.name}-${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        
+        // Cleanup
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+    } catch (error) {
+        console.error('Error exporting PDF:', error);
+        alert('Erreur lors de l\'export du PDF');
+    }
+};
 </script>
 
 <template>
@@ -455,9 +482,21 @@ const createOrder = () => {
         <!-- Orders Modal -->
         <Modal :show="showingOrdersModal" @close="showingOrdersModal = false">
             <div class="p-6">
-                <h2 class="text-lg font-medium text-gray-900">
-                    Commandes du lot {{ currentBatch?.name }}
-                </h2>
+                <div class="flex justify-between items-center">
+                    <h2 class="text-lg font-medium text-gray-900">
+                        Commandes du lot {{ currentBatch?.name }}
+                    </h2>
+                    <PrimaryButton 
+                        @click="exportToPdf(currentBatch)"
+                        class="ml-4"
+                        v-if="currentBatch?.orders?.length"
+                    >
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Exporter en PDF
+                    </PrimaryButton>
+                </div>
 
                 <div v-if="currentBatch?.orders?.length" class="mt-4 space-y-4">
                     <!-- Status totals -->

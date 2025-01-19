@@ -9,6 +9,8 @@ use Illuminate\Validation\Rule;
 use App\Models\Livreur;
 use App\Models\Customer;
 use App\Models\Product;
+use Illuminate\Support\Facades\Log;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class DeliveryBatchController extends Controller
 {
@@ -107,5 +109,37 @@ class DeliveryBatchController extends Controller
             ->get();
 
         return response()->json(['orders' => $orders]);
+    }
+
+    public function exportPdf(DeliveryBatch $deliveryBatch)
+    {
+        try {
+            $batch = $deliveryBatch->load(['orders.customer', 'orders.product', 'livreur']);
+
+            // Calculate totals
+            $statusTotals = [
+                'delivered' => $batch->orders->where('status', 'DELIVERED')->count(),
+                'pending' => $batch->orders->where('status', 'WAITING')->count(),
+                'cancelled' => $batch->orders->where('status', 'CANCELLED')->count(),
+            ];
+
+            $productTotals = $batch->orders->groupBy('product.name')
+                ->map(function ($orders) {
+                    return [
+                        'quantity' => $orders->sum('quantity'),
+                    ];
+                })->toArray();
+
+            $pdf = Pdf::loadView('pdf.delivery-batch', [
+                'batch' => $batch,
+                'statusTotals' => $statusTotals,
+                'productTotals' => $productTotals,
+            ]);
+
+            return $pdf->download("lot-{$batch->name}-" . now()->format('Y-m-d') . '.pdf');
+        } catch (\Exception $e) {
+            Log::error('Error generating PDF for delivery batch: ' . $e->getMessage());
+            return response()->json(['error' => 'Erreur lors de la génération du PDF'], 500);
+        }
     }
 } 
