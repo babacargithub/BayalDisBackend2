@@ -84,7 +84,6 @@
                     <th>Client</th>
                     <th>Produit</th>
                     <th>Quantité</th>
-                    <th>Statut</th>
                 </tr>
             </thead>
             <tbody>
@@ -96,15 +95,6 @@
                     </td>
                     <td>{{ $order->product->name }}</td>
                     <td>{{ $order->quantity }}</td>
-                    <td>
-                        @if($order->status === 'DELIVERED')
-                            Livrée
-                        @elseif($order->status === 'WAITING')
-                            En attente
-                        @else
-                            Annulée
-                        @endif
-                    </td>
                 </tr>
                 @endforeach
             </tbody>

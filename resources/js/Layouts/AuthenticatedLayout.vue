@@ -6,11 +6,11 @@ import { Link } from '@inertiajs/vue3';
 const showingNavigationDropdown = ref(false);
 
 const menuItems = [
-    { name: 'Dashboard', route: 'dashboard', icon: 'mdi-view-dashboard' },
-    { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cart' },
-    { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
-    { name: 'Clients', route: 'clients.index', icon: 'mdi-account-multiple' },
+    { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
     { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
+    { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
+    { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
+    { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cash-register' },
     { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
     { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
     { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },

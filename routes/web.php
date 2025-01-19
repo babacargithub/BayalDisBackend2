@@ -43,6 +43,7 @@ Route::middleware('auth')->group(function () {
     Route::get('commerciaux/{commercial}/activity', [CommercialController::class, 'activity'])->name('commerciaux.activity');
     Route::resource('commerciaux', CommercialController::class);
     Route::resource('clients', CustomerController::class);
+    Route::resource('customers', CustomerController::class);
     Route::resource('produits', ProductController::class);
     Route::resource('ventes', VenteController::class);
     Route::resource('zones', ZoneController::class);
