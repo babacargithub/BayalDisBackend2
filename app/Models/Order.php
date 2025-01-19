@@ -23,6 +23,7 @@ class Order extends Model
         'livreur_id',
         'status',
         'comment',
+        'delivery_batch_id',
     ];
     protected $appends = ['price'];
 

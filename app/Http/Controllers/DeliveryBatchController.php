@@ -7,17 +7,27 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Models\Livreur;
+use App\Models\Customer;
+use App\Models\Product;
+
 class DeliveryBatchController extends Controller
 {
     public function index()
     {
-        $batches = DeliveryBatch::with(['livreur', 'orders'])
+        $batches = DeliveryBatch::with([
+            'livreur',
+            'orders',
+            'orders.customer',
+            'orders.product'
+        ])
             ->latest()
             ->get();
 
         return inertia('DeliveryBatches/Index', [
             'batches' => $batches,
             'livreurs' => Livreur::all(),
+            'customers' => Customer::all(),
+            'products' => Product::all(),
         ]);
     }
 

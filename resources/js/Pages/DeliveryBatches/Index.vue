@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import DangerButton from '@/Components/DangerButton.vue';
@@ -9,10 +9,13 @@ import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
+import axios from 'axios';
 
 const props = defineProps({
     batches: Array,
     livreurs: Array,
+    customers: Array,
+    products: Array,
 });
 
 const showingNewBatchModal = ref(false);
@@ -32,6 +35,19 @@ const editForm = useForm({
     name: '',
     delivery_date: null,
     livreur_id: null,
+});
+
+const showingOrdersModal = ref(false);
+const showingNewOrderModal = ref(false);
+const currentBatch = ref(null);
+
+const orderForm = useForm({
+    customer_id: '',
+    product_id: '',
+    quantity: 1,
+    delivery_batch_id: null,
+    should_be_delivered_at: null,
+    status: 'WAITING',
 });
 
 const createBatch = () => {
@@ -120,6 +136,37 @@ const assignLivreur = (batch, livreurId) => {
         { preserveScroll: true }
     );
 };
+
+const openOrdersModal = (batch) => {
+    currentBatch.value = batch;
+    showingOrdersModal.value = true;
+};
+
+const openNewOrderModal = (batch) => {
+    currentBatch.value = batch;
+    orderForm.reset();
+    orderForm.delivery_batch_id = batch.id;
+    showingNewOrderModal.value = true;
+};
+
+const createOrder = () => {
+    // Set the delivery date from the batch
+    orderForm.should_be_delivered_at = currentBatch.value.delivery_date;
+    orderForm.delivery_batch_id = currentBatch.value.id;
+    orderForm.status = 'WAITING';
+    
+    orderForm.post(route('orders.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showingNewOrderModal.value = false;
+            orderForm.reset();
+            currentBatch.value = null;
+        },
+        onError: (errors) => {
+            console.error('Error creating order:', errors);
+        }
+    });
+};
 </script>
 
 <template>
@@ -185,17 +232,17 @@ const assignLivreur = (batch, livreurId) => {
                                         </td>
                                         <td class="px-6 py-4">
                                             <div class="flex flex-col space-y-2">
-                                                <div v-for="order in batch.orders" :key="order.id" class="flex items-center justify-between">
-                                                    <span>{{ order.customer.name }} - {{ order.product.name }} ({{ order.quantity }})</span>
-                                                    <button @click="removeOrder(batch, order)" class="text-red-600 hover:text-red-900">
-                                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                                        </svg>
-                                                    </button>
+                                                <div class="flex items-center space-x-2">
+                                                    <PrimaryButton @click="openOrdersModal(batch)" class="text-sm">
+                                                        {{ batch.orders?.length || 0 }} commande(s)
+                                                    </PrimaryButton>
+                                                    <SecondaryButton @click="openAddOrdersModal(batch)" class="text-sm">
+                                                        Ajouter des commandes
+                                                    </SecondaryButton>
+                                                    <SecondaryButton @click="openNewOrderModal(batch)" class="text-sm">
+                                                        Nouvelle commande
+                                                    </SecondaryButton>
                                                 </div>
-                                                <SecondaryButton @click="openAddOrdersModal(batch)" class="mt-2">
-                                                    Ajouter des commandes
-                                                </SecondaryButton>
                                             </div>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -352,7 +399,9 @@ const assignLivreur = (batch, livreurId) => {
                                 class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                             />
                             <label class="ml-3">
-                                {{ order.customer.name }} - {{ order.product.name }} ({{ order.quantity }})
+                                {{ order.customer?.name || 'Client inconnu' }} - 
+                                {{ order.product?.name || 'Produit inconnu' }} 
+                                ({{ order.quantity }})
                             </label>
                         </div>
                     </div>
@@ -366,6 +415,101 @@ const assignLivreur = (batch, livreurId) => {
                         </PrimaryButton>
                     </div>
                 </div>
+            </div>
+        </Modal>
+
+        <!-- Orders Modal -->
+        <Modal :show="showingOrdersModal" @close="showingOrdersModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-medium text-gray-900">
+                    Commandes du lot {{ currentBatch?.name }}
+                </h2>
+
+                <div class="mt-6">
+                    <div class="space-y-4">
+                        <div v-for="order in currentBatch?.orders" :key="order.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div>
+                                <p class="font-medium">{{ order.customer?.name || 'Client inconnu' }}</p>
+                                <p class="text-sm text-gray-600">
+                                    {{ order.product?.name || 'Produit inconnu' }} - {{ order.quantity }} unité(s)
+                                </p>
+                            </div>
+                            <button @click="removeOrder(currentBatch, order)" class="text-red-600 hover:text-red-900">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end">
+                        <SecondaryButton @click="showingOrdersModal = false">
+                            Fermer
+                        </SecondaryButton>
+                    </div>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- New Order Modal -->
+        <Modal :show="showingNewOrderModal" @close="showingNewOrderModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-medium text-gray-900">
+                    Nouvelle commande pour le lot {{ currentBatch?.name }}
+                </h2>
+
+                <form @submit.prevent="createOrder" class="mt-6">
+                    <div>
+                        <InputLabel for="customer" value="Client" />
+                        <select
+                            id="customer"
+                            v-model="orderForm.customer_id"
+                            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                        >
+                            <option value="">Sélectionner un client</option>
+                            <option v-for="customer in customers" :key="customer.id" :value="customer.id">
+                                {{ customer.name }}
+                            </option>
+                        </select>
+                        <InputError :message="orderForm.errors.customer_id" class="mt-2" />
+                    </div>
+
+                    <div class="mt-4">
+                        <InputLabel for="product" value="Produit" />
+                        <select
+                            id="product"
+                            v-model="orderForm.product_id"
+                            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                        >
+                            <option value="">Sélectionner un produit</option>
+                            <option v-for="product in products" :key="product.id" :value="product.id">
+                                {{ product.name }}
+                            </option>
+                        </select>
+                        <InputError :message="orderForm.errors.product_id" class="mt-2" />
+                    </div>
+
+                    <div class="mt-4">
+                        <InputLabel for="quantity" value="Quantité" />
+                        <TextInput
+                            id="quantity"
+                            type="number"
+                            v-model="orderForm.quantity"
+                            class="mt-1 block w-full"
+                            min="1"
+                        />
+                        <InputError :message="orderForm.errors.quantity" class="mt-2" />
+                    </div>
+
+                    <div class="mt-6 flex justify-end">
+                        <SecondaryButton @click="showingNewOrderModal = false" class="mr-3">
+                            Annuler
+                        </SecondaryButton>
+                        <PrimaryButton :disabled="orderForm.processing">
+                            Créer la commande
+                        </PrimaryButton>
+                    </div>
+                </form>
             </div>
         </Modal>
     </AuthenticatedLayout>

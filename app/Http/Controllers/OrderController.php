@@ -43,6 +43,7 @@ class OrderController extends Controller
                 'should_be_delivered_at' => 'required|date',
                 'commercial_id' => 'nullable|exists:commercials,id',
                 'livreur_id' => 'nullable|exists:livreurs,id',
+                'delivery_batch_id' => 'nullable|exists:delivery_batches,id',
                 'status' => 'in:' . implode(',', [
                     Order::STATUS_WAITING,
                     Order::STATUS_DELIVERED,
