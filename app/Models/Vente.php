@@ -15,15 +15,16 @@ class Vente extends Model
     const PAYMENT_METHOD_OM = 'OM';
 
     protected $fillable = [
-        'product_id',
         'customer_id',
+        'product_id',
         'commercial_id',
         'quantity',
         'price',
         'paid',
+        'payment_method',
         'should_be_paid_at',
         'paid_at',
-        'payment_method',
+        'order_id',
     ];
 
     protected $casts = [
@@ -32,7 +33,10 @@ class Vente extends Model
         'price' => 'integer',
         'should_be_paid_at' => 'datetime',
         'paid_at' => 'datetime',
+        'order_id' => 'integer',
     ];
+
+    protected $with = ['customer', 'product', 'order'];
 
     public function customer(): BelongsTo
     {
@@ -47,5 +51,10 @@ class Vente extends Model
     public function commercial(): BelongsTo
     {
         return $this->belongsTo(Commercial::class);
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
     }
 } 

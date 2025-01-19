@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Commercial;
 use Carbon\Carbon;
+use App\Models\Order;
 
 class SalespersonController extends Controller
 {
@@ -419,8 +420,8 @@ class SalespersonController extends Controller
             return response()->json(['message' => 'Commercial not found'], 404);
         }
 
-        $orders = $commercial->orders()
-            ->with(['customer', 'product'])
+        $orders =Order::
+            with(['customer', 'product'])
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -455,5 +456,84 @@ class SalespersonController extends Controller
             'message' => 'Order created successfully',
             'data' => $order->load(['customer', 'product'])
         ], 201);
+    }
+
+    public function cancelOrder(Order $order)
+    {
+        if ($order->commercial_id !== auth()->user()->commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($order->status !== 'WAITING') {
+            return response()->json(['message' => 'Only waiting orders can be cancelled'], 422);
+        }
+
+        $order->update(['status' => 'CANCELLED']);
+
+        return response()->json([
+            'message' => 'Order cancelled successfully',
+            'data' => $order->load(['customer', 'product'])
+        ]);
+    }
+
+    public function deliverOrder(Request $request, Order $order)
+    {
+        if ($order->commercial_id !== auth()->user()->commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($order->status !== Order::STATUS_WAITING) {
+            return response()->json(['message' => 'Only waiting orders can be delivered'], 422);
+        }
+
+        $validated = $request->validate([
+            'quantity' => 'required|integer|min:1',
+            'paid' => 'required|boolean',
+            'payment_method' => 'required_if:paid,true|nullable|string|in:CASH,WAVE,OM,FREE',
+            'should_be_paid_at' => 'required_if:paid,false|nullable|date',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            // Update order status
+            $order->update([
+                'status' => Order::STATUS_DELIVERED,
+                'quantity' => $validated['quantity'],
+            ]);
+
+            // Get product price
+            $product = Product::findOrFail($order->product_id);
+
+            // Create vente from order
+            $vente = Vente::create([
+                'customer_id' => $order->customer_id,
+                'product_id' => $order->product_id,
+                'commercial_id' => $order->commercial_id,
+                'quantity' => $validated['quantity'],
+                'price' => $product->price, // Use product's price directly
+                'paid' => $validated['paid'],
+                'payment_method' => $validated['payment_method'] ?? null,
+                'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
+                'paid_at' => $validated['paid'] ? now() : null,
+                'order_id' => $order->id,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Order delivered successfully and sale created',
+                'data' => [
+                    'order' => $order->load(['customer', 'product']),
+                    'vente' => $vente->load(['customer', 'product']),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error delivering order: ' . $e->getMessage(), [
+                'order_id' => $order->id,
+                'data' => $validated,
+            ]);
+            throw $e;
+        }
     }
 }

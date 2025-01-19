@@ -24,6 +24,7 @@ class Order extends Model
         'status',
         'comment',
     ];
+    protected $appends = ['price'];
 
     protected $casts = [
         'should_be_delivered_at' => 'datetime',
@@ -48,5 +49,10 @@ class Order extends Model
     public function livreur(): BelongsTo
     {
         return $this->belongsTo(Livreur::class);
+    }
+
+    public function getPriceAttribute(): int
+    {
+        return (int)($this->quantity * $this->product->price);
     }
 }
