@@ -50,6 +50,37 @@ const orderForm = useForm({
     status: 'WAITING',
 });
 
+const getProductTotals = (orders) => {
+    if (!orders) return [];
+    const totals = {};
+    orders.forEach(order => {
+        const productName = order.product?.name || 'Produit inconnu';
+        if (!totals[productName]) {
+            totals[productName] = 0;
+        }
+        totals[productName] += order.quantity;
+    });
+    return Object.entries(totals).map(([name, quantity]) => ({ name, quantity }));
+};
+
+const getStatusTotals = (orders) => {
+    if (!orders) return { delivered: 0, pending: 0, cancelled: 0 };
+    return orders.reduce((acc, order) => {
+        switch (order.status) {
+            case 'DELIVERED':
+                acc.delivered++;
+                break;
+            case 'WAITING':
+                acc.pending++;
+                break;
+            case 'CANCELLED':
+                acc.cancelled++;
+                break;
+        }
+        return acc;
+    }, { delivered: 0, pending: 0, cancelled: 0 });
+};
+
 const createBatch = () => {
     form.post(route('delivery-batches.store'), {
         preserveScroll: true,
@@ -122,10 +153,13 @@ const addOrders = () => {
 
 const removeOrder = (batch, order) => {
     if (confirm('Êtes-vous sûr de vouloir retirer cette commande du lot ?')) {
-        router.delete(
-            route('delivery-batches.remove-order', [batch.id, order.id]),
-            { preserveScroll: true }
-        );
+        router.delete(route('delivery-batches.remove-order', { 
+            deliveryBatch: batch.id, 
+            order: order.id 
+        }), {
+            preserveScroll: true,
+            preserveState: true,
+        });
     }
 };
 
@@ -425,6 +459,34 @@ const createOrder = () => {
                     Commandes du lot {{ currentBatch?.name }}
                 </h2>
 
+                <div v-if="currentBatch?.orders?.length" class="mt-4 space-y-4">
+                    <!-- Status totals -->
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="bg-green-50 p-3 rounded-lg">
+                            <div class="text-sm text-green-700 font-medium">Livrées</div>
+                            <div class="text-2xl text-green-800">{{ getStatusTotals(currentBatch.orders).delivered }}</div>
+                        </div>
+                        <div class="bg-yellow-50 p-3 rounded-lg">
+                            <div class="text-sm text-yellow-700 font-medium">En attente</div>
+                            <div class="text-2xl text-yellow-800">{{ getStatusTotals(currentBatch.orders).pending }}</div>
+                        </div>
+                        <div class="bg-red-50 p-3 rounded-lg">
+                            <div class="text-sm text-red-700 font-medium">Annulées</div>
+                            <div class="text-2xl text-red-800">{{ getStatusTotals(currentBatch.orders).cancelled }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Product totals -->
+                    <div class="p-4 bg-gray-100 rounded-lg">
+                        <h3 class="font-medium text-gray-700 mb-2">Total par produit:</h3>
+                        <div class="space-y-1">
+                            <div v-for="total in getProductTotals(currentBatch.orders)" :key="total.name" class="text-sm">
+                                <span class="font-medium">{{ total.name }}:</span> {{ total.quantity }} unité(s)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="mt-6">
                     <div class="space-y-4">
                         <div v-for="order in currentBatch?.orders" :key="order.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -433,8 +495,19 @@ const createOrder = () => {
                                 <p class="text-sm text-gray-600">
                                     {{ order.product?.name || 'Produit inconnu' }} - {{ order.quantity }} unité(s)
                                 </p>
+                                <p class="text-xs" :class="{
+                                    'text-green-600': order.status === 'DELIVERED',
+                                    'text-yellow-600': order.status === 'WAITING',
+                                    'text-red-600': order.status === 'CANCELLED'
+                                }">
+                                    {{ order.status === 'DELIVERED' ? 'Livrée' : 
+                                       order.status === 'WAITING' ? 'En attente' : 'Annulée' }}
+                                </p>
                             </div>
-                            <button @click="removeOrder(currentBatch, order)" class="text-red-600 hover:text-red-900">
+                            <button 
+                                @click="removeOrder(currentBatch, order)" 
+                                class="text-red-600 hover:text-red-900 p-2 rounded-full hover:bg-red-50"
+                            >
                                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
