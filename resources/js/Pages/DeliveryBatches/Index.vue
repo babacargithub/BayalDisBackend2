@@ -1,0 +1,372 @@
+<script setup>
+import { ref } from 'vue';
+import { Head, useForm } from '@inertiajs/vue3';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
+import DangerButton from '@/Components/DangerButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
+import Modal from '@/Components/Modal.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import TextInput from '@/Components/TextInput.vue';
+import InputError from '@/Components/InputError.vue';
+
+const props = defineProps({
+    batches: Array,
+    livreurs: Array,
+});
+
+const showingNewBatchModal = ref(false);
+const showingEditBatchModal = ref(false);
+const showingAddOrdersModal = ref(false);
+const selectedBatch = ref(null);
+const availableOrders = ref([]);
+const selectedOrders = ref([]);
+
+const form = useForm({
+    name: '',
+    delivery_date: null,
+    livreur_id: null,
+});
+
+const editForm = useForm({
+    name: '',
+    delivery_date: null,
+    livreur_id: null,
+});
+
+const createBatch = () => {
+    form.post(route('delivery-batches.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showingNewBatchModal.value = false;
+            form.reset();
+        },
+    });
+};
+
+const editBatch = () => {
+    editForm.put(route('delivery-batches.update', selectedBatch.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showingEditBatchModal.value = false;
+            editForm.reset();
+            selectedBatch.value = null;
+        },
+    });
+};
+
+const deleteBatch = (batch) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer ce lot ?')) {
+        router.delete(route('delivery-batches.destroy', batch.id), {
+            preserveScroll: true,
+        });
+    }
+};
+
+const openEditModal = (batch) => {
+    selectedBatch.value = batch;
+    editForm.name = batch.name;
+    editForm.delivery_date = batch.delivery_date;
+    editForm.livreur_id = batch.livreur_id;
+    showingEditBatchModal.value = true;
+};
+
+const openAddOrdersModal = async (batch) => {
+    selectedBatch.value = batch;
+    selectedOrders.value = [];
+    
+    // Load available orders
+    try {
+        const response = await axios.get(route('delivery-batches.available-orders'));
+        availableOrders.value = response.data.orders;
+        showingAddOrdersModal.value = true;
+    } catch (error) {
+        console.error('Error loading available orders:', error);
+    }
+};
+
+const addOrders = () => {
+    if (selectedOrders.value.length === 0) {
+        alert('Veuillez sélectionner au moins une commande');
+        return;
+    }
+
+    router.post(
+        route('delivery-batches.add-orders', selectedBatch.value.id),
+        { order_ids: selectedOrders.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showingAddOrdersModal.value = false;
+                selectedOrders.value = [];
+            },
+        }
+    );
+};
+
+const removeOrder = (batch, order) => {
+    if (confirm('Êtes-vous sûr de vouloir retirer cette commande du lot ?')) {
+        router.delete(
+            route('delivery-batches.remove-order', [batch.id, order.id]),
+            { preserveScroll: true }
+        );
+    }
+};
+
+const assignLivreur = (batch, livreurId) => {
+    router.post(
+        route('delivery-batches.assign-livreur', batch.id),
+        { livreur_id: livreurId },
+        { preserveScroll: true }
+    );
+};
+</script>
+
+<template>
+    <Head title="Lots de livraison" />
+
+    <AuthenticatedLayout>
+        <template #header>
+            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                Lots de livraison
+            </h2>
+        </template>
+
+        <div class="py-12">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900">
+                        <div class="mb-4">
+                            <PrimaryButton @click="showingNewBatchModal = true">
+                                Nouveau lot de livraison
+                            </PrimaryButton>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead>
+                                    <tr>
+                                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Nom
+                                        </th>
+                                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Date de livraison
+                                        </th>
+                                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Livreur
+                                        </th>
+                                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Commandes
+                                        </th>
+                                        <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="batch in batches" :key="batch.id">
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            {{ batch.name }}
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            {{ batch.delivery_date || 'Non définie' }}
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <select
+                                                v-model="batch.livreur_id"
+                                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                                @change="assignLivreur(batch, $event.target.value)"
+                                            >
+                                                <option value="">Sélectionner un livreur</option>
+                                                <option v-for="livreur in livreurs" :key="livreur.id" :value="livreur.id">
+                                                    {{ livreur.name }}
+                                                </option>
+                                            </select>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <div class="flex flex-col space-y-2">
+                                                <div v-for="order in batch.orders" :key="order.id" class="flex items-center justify-between">
+                                                    <span>{{ order.customer.name }} - {{ order.product.name }} ({{ order.quantity }})</span>
+                                                    <button @click="removeOrder(batch, order)" class="text-red-600 hover:text-red-900">
+                                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                                <SecondaryButton @click="openAddOrdersModal(batch)" class="mt-2">
+                                                    Ajouter des commandes
+                                                </SecondaryButton>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button @click="openEditModal(batch)" class="text-indigo-600 hover:text-indigo-900 mr-4">
+                                                Modifier
+                                            </button>
+                                            <button @click="deleteBatch(batch)" class="text-red-600 hover:text-red-900">
+                                                Supprimer
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Batch Modal -->
+        <Modal :show="showingNewBatchModal" @close="showingNewBatchModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-medium text-gray-900">
+                    Nouveau lot de livraison
+                </h2>
+
+                <div class="mt-6">
+                    <form @submit.prevent="createBatch">
+                        <div>
+                            <InputLabel for="name" value="Nom" />
+                            <TextInput
+                                id="name"
+                                v-model="form.name"
+                                type="text"
+                                class="mt-1 block w-full"
+                                required
+                            />
+                            <InputError :message="form.errors.name" class="mt-2" />
+                        </div>
+
+                        <div class="mt-4">
+                            <InputLabel for="delivery_date" value="Date de livraison" />
+                            <TextInput
+                                id="delivery_date"
+                                v-model="form.delivery_date"
+                                type="date"
+                                class="mt-1 block w-full"
+                            />
+                            <InputError :message="form.errors.delivery_date" class="mt-2" />
+                        </div>
+
+                        <div class="mt-4">
+                            <InputLabel for="livreur" value="Livreur" />
+                            <select
+                                id="livreur"
+                                v-model="form.livreur_id"
+                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                            >
+                                <option value="">Sélectionner un livreur</option>
+                                <option v-for="livreur in livreurs" :key="livreur.id" :value="livreur.id">
+                                    {{ livreur.name }}
+                                </option>
+                            </select>
+                            <InputError :message="form.errors.livreur_id" class="mt-2" />
+                        </div>
+
+                        <div class="mt-6 flex justify-end">
+                            <SecondaryButton @click="showingNewBatchModal = false" class="mr-3">
+                                Annuler
+                            </SecondaryButton>
+                            <PrimaryButton :disabled="form.processing">
+                                Créer
+                            </PrimaryButton>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- Edit Batch Modal -->
+        <Modal :show="showingEditBatchModal" @close="showingEditBatchModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-medium text-gray-900">
+                    Modifier le lot de livraison
+                </h2>
+
+                <div class="mt-6">
+                    <form @submit.prevent="editBatch">
+                        <div>
+                            <InputLabel for="edit_name" value="Nom" />
+                            <TextInput
+                                id="edit_name"
+                                v-model="editForm.name"
+                                type="text"
+                                class="mt-1 block w-full"
+                                required
+                            />
+                            <InputError :message="editForm.errors.name" class="mt-2" />
+                        </div>
+
+                        <div class="mt-4">
+                            <InputLabel for="edit_delivery_date" value="Date de livraison" />
+                            <TextInput
+                                id="edit_delivery_date"
+                                v-model="editForm.delivery_date"
+                                type="date"
+                                class="mt-1 block w-full"
+                            />
+                            <InputError :message="editForm.errors.delivery_date" class="mt-2" />
+                        </div>
+
+                        <div class="mt-4">
+                            <InputLabel for="edit_livreur" value="Livreur" />
+                            <select
+                                id="edit_livreur"
+                                v-model="editForm.livreur_id"
+                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                            >
+                                <option value="">Sélectionner un livreur</option>
+                                <option v-for="livreur in livreurs" :key="livreur.id" :value="livreur.id">
+                                    {{ livreur.name }}
+                                </option>
+                            </select>
+                            <InputError :message="editForm.errors.livreur_id" class="mt-2" />
+                        </div>
+
+                        <div class="mt-6 flex justify-end">
+                            <SecondaryButton @click="showingEditBatchModal = false" class="mr-3">
+                                Annuler
+                            </SecondaryButton>
+                            <PrimaryButton :disabled="editForm.processing">
+                                Mettre à jour
+                            </PrimaryButton>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- Add Orders Modal -->
+        <Modal :show="showingAddOrdersModal" @close="showingAddOrdersModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-medium text-gray-900">
+                    Ajouter des commandes au lot
+                </h2>
+
+                <div class="mt-6">
+                    <div class="space-y-4">
+                        <div v-for="order in availableOrders" :key="order.id" class="flex items-center">
+                            <input
+                                type="checkbox"
+                                :value="order.id"
+                                v-model="selectedOrders"
+                                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                            />
+                            <label class="ml-3">
+                                {{ order.customer.name }} - {{ order.product.name }} ({{ order.quantity }})
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end">
+                        <SecondaryButton @click="showingAddOrdersModal = false" class="mr-3">
+                            Annuler
+                        </SecondaryButton>
+                        <PrimaryButton @click="addOrders">
+                            Ajouter les commandes
+                        </PrimaryButton>
+                    </div>
+                </div>
+            </div>
+        </Modal>
+    </AuthenticatedLayout>
+</template> 
