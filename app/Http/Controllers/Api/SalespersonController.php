@@ -460,12 +460,12 @@ class SalespersonController extends Controller
 
     public function cancelOrder(Order $order)
     {
-        if ($order->commercial_id !== auth()->user()->commercial->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+//        if ($order->commercial_id !== auth()->user()->commercial->id) {
+//            return response()->json(['message' => 'Unauthorized'], 403);
+//        }
 
         if ($order->status !== 'WAITING') {
-            return response()->json(['message' => 'Only waiting orders can be cancelled'], 422);
+            return response()->json(['message' => 'Seules les commandes en attente peuvent etre annulées'], 422);
         }
 
         $order->update(['status' => 'CANCELLED']);
@@ -478,12 +478,12 @@ class SalespersonController extends Controller
 
     public function deliverOrder(Request $request, Order $order)
     {
-        if ($order->commercial_id !== auth()->user()->commercial->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+//        if ($order->commercial_id !== auth()->user()->commercial->id) {
+//            return response()->json(['message' => 'Unauthorized'], 403);
+//        }
 
         if ($order->status !== Order::STATUS_WAITING) {
-            return response()->json(['message' => 'Only waiting orders can be delivered'], 422);
+            return response()->json(['message' => "Seules les commandes en attente peuvent etre livrées !"], 422);
         }
 
         $validated = $request->validate([
@@ -508,7 +508,7 @@ class SalespersonController extends Controller
             $vente = Vente::create([
                 'customer_id' => $order->customer_id,
                 'product_id' => $order->product_id,
-                'commercial_id' => $order->commercial_id,
+                'commercial_id' => $request->user()->commercial->id,
                 'quantity' => $validated['quantity'],
                 'price' => $product->price, // Use product's price directly
                 'paid' => $validated['paid'],
