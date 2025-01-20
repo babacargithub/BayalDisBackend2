@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -227,6 +227,19 @@ const exportToPdf = async (batch) => {
         console.error('Error exporting PDF:', error);
         alert('Erreur lors de l\'export du PDF');
     }
+};
+
+const customersForSelect = computed(() => {
+    return props.customers.map(customer => ({
+        ...customer,
+        displayText: `${customer.name} (${customer.phone_number || 'Pas de téléphone'})`
+    }));
+});
+
+const customerFilter = (item, queryText) => {
+    const searchText = queryText.toLowerCase();
+    return item.name.toLowerCase().includes(searchText) || 
+           (item.phone_number && item.phone_number.toLowerCase().includes(searchText));
 };
 </script>
 
@@ -573,17 +586,25 @@ const exportToPdf = async (batch) => {
                 <form @submit.prevent="createOrder" class="mt-6">
                     <div>
                         <InputLabel for="customer" value="Client" />
-                        <select
-                            id="customer"
+                        <v-autocomplete
                             v-model="orderForm.customer_id"
-                            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                            :items="customersForSelect"
+                            item-title="displayText"
+                            item-value="id"
+                            :error-messages="orderForm.errors.customer_id"
+                            label="Sélectionner un client"
+                            placeholder="Commencer à taper pour rechercher..."
+                            :filter="customerFilter"
+                            clearable
+                            class="mt-1"
                         >
-                            <option value="">Sélectionner un client</option>
-                            <option v-for="customer in customers" :key="customer.id" :value="customer.id">
-                                {{ customer.name }}
-                            </option>
-                        </select>
-                        <InputError :message="orderForm.errors.customer_id" class="mt-2" />
+                            <!-- <template v-slot:item="{ props, item }">
+                                <v-list-item v-bind="props">
+                                    <v-list-item-title>{{ item.raw.name }}</v-list-item-title>
+                                    <v-list-item-subtitle>{{ item.raw.phone_number || 'Pas de téléphone' }}</v-list-item-subtitle>
+                                </v-list-item>
+                            </template> -->
+                        </v-autocomplete>
                     </div>
 
                     <div class="mt-4">
