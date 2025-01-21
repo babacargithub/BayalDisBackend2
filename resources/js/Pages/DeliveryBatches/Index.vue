@@ -43,8 +43,7 @@ const currentBatch = ref(null);
 
 const orderForm = useForm({
     customer_id: '',
-    product_id: '',
-    quantity: 1,
+    items: [{ product_id: '', quantity: 1, price: null }],
     delivery_batch_id: null,
     should_be_delivered_at: null,
     status: 'WAITING',
@@ -54,11 +53,13 @@ const getProductTotals = (orders) => {
     if (!orders) return [];
     const totals = {};
     orders.forEach(order => {
-        const productName = order.product?.name || 'Produit inconnu';
-        if (!totals[productName]) {
-            totals[productName] = 0;
-        }
-        totals[productName] += order.quantity;
+        order.items.forEach(item => {
+            const productName = item.product?.name || 'Produit inconnu';
+            if (!totals[productName]) {
+                totals[productName] = 0;
+            }
+            totals[productName] += item.quantity;
+        });
     });
     return Object.entries(totals).map(([name, quantity]) => ({ name, quantity }));
 };
@@ -240,6 +241,16 @@ const customerFilter = (item, queryText) => {
     const searchText = queryText.toLowerCase();
     return item.name.toLowerCase().includes(searchText) || 
            (item.phone_number && item.phone_number.toLowerCase().includes(searchText));
+};
+
+const addItem = () => {
+    orderForm.items.push({ product_id: '', quantity: null, price: null });
+};
+
+const removeItem = (index) => {
+    if (orderForm.items.length > 1) {
+        orderForm.items.splice(index, 1);
+    }
 };
 </script>
 
@@ -542,11 +553,13 @@ const customerFilter = (item, queryText) => {
                 <div class="mt-6">
                     <div class="space-y-4">
                         <div v-for="order in currentBatch?.orders" :key="order.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div>
+                            <div class="flex-grow">
                                 <p class="font-medium">{{ order.customer?.name || 'Client inconnu' }}</p>
-                                <p class="text-sm text-gray-600">
-                                    {{ order.product?.name || 'Produit inconnu' }} - {{ order.quantity }} unité(s)
-                                </p>
+                                <div class="space-y-1">
+                                    <p v-for="item in order.items" :key="item.id" class="text-sm text-gray-600">
+                                        {{ item.product?.name || 'Produit inconnu' }} - {{ item.quantity }} unité(s) - {{ item.price }} FCFA
+                                    </p>
+                                </div>
                                 <p class="text-xs" :class="{
                                     'text-green-600': order.status === 'DELIVERED',
                                     'text-yellow-600': order.status === 'WAITING',
@@ -608,30 +621,56 @@ const customerFilter = (item, queryText) => {
                     </div>
 
                     <div class="mt-4">
-                        <InputLabel for="product" value="Produit" />
-                        <select
-                            id="product"
-                            v-model="orderForm.product_id"
-                            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                        >
-                            <option value="">Sélectionner un produit</option>
-                            <option v-for="product in products" :key="product.id" :value="product.id">
-                                {{ product.name }}
-                            </option>
-                        </select>
-                        <InputError :message="orderForm.errors.product_id" class="mt-2" />
-                    </div>
+                        <div v-for="(item, index) in orderForm.items" :key="index" class="border-b pb-4 mb-4">
+                            <div class="flex justify-between items-center mb-2">
+                                <h4 class="text-sm font-medium text-gray-700">Produit {{ index + 1 }}</h4>
+                                <button 
+                                    type="button" 
+                                    @click="removeItem(index)" 
+                                    v-if="orderForm.items.length > 1"
+                                    class="text-red-600 hover:text-red-900"
+                                >
+                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
 
-                    <div class="mt-4">
-                        <InputLabel for="quantity" value="Quantité" />
-                        <TextInput
-                            id="quantity"
-                            type="number"
-                            v-model="orderForm.quantity"
-                            class="mt-1 block w-full"
-                            min="1"
-                        />
-                        <InputError :message="orderForm.errors.quantity" class="mt-2" />
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <InputLabel :for="'product_' + index" value="Produit" />
+                                    <select
+                                        :id="'product_' + index"
+                                        v-model="item.product_id"
+                                        class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                    >
+                                        <option value="">Sélectionner un produit</option>
+                                        <option v-for="product in products" :key="product.id" :value="product.id">
+                                            {{ product.name }}
+                                        </option>
+                                    </select>
+                                    <InputError :message="orderForm.errors['items.' + index + '.product_id']" class="mt-2" />
+                                </div>
+
+                                <div>
+                                    <InputLabel :for="'quantity_' + index" value="Quantité" />
+                                    <TextInput
+                                        :id="'quantity_' + index"
+                                        type="number"
+                                        v-model="item.quantity"
+                                        class="mt-1 block w-full"
+                                        min="1"
+                                    />
+                                    <InputError :message="orderForm.errors['items.' + index + '.quantity']" class="mt-2" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <SecondaryButton type="button" @click="addItem">
+                                Ajouter un produit
+                            </SecondaryButton>
+                        </div>
                     </div>
 
                     <div class="mt-6 flex justify-end">

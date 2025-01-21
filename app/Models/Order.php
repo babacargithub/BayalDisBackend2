@@ -16,16 +16,16 @@ class Order extends Model
 
     protected $fillable = [
         'customer_id',
-        'quantity',
-        'should_be_delivered_at',
-        'product_id',
         'commercial_id',
-        'livreur_id',
         'status',
         'comment',
+        'should_be_delivered_at',
         'delivery_batch_id',
     ];
-    protected $appends = ['price'];
+
+    protected $with = ['items.product', 'customer'];
+
+    protected $appends = ['total_price'];
 
     protected $casts = [
         'should_be_delivered_at' => 'datetime',
@@ -52,8 +52,15 @@ class Order extends Model
         return $this->belongsTo(Livreur::class);
     }
 
-    public function getPriceAttribute(): int
+    public function items()
     {
-        return (int)($this->quantity * $this->product->price);
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function getTotalPriceAttribute()
+    {
+        return $this->items->sum(function ($item) {
+            return $item->price * $item->quantity;
+        });
     }
 }

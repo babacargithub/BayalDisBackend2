@@ -35,74 +35,73 @@ class OrderController extends Controller
 
     public function store(Request $request)
     {
-        try {
-            $validated = $request->validate([
-                'customer_id' => 'required|exists:customers,id',
-                'product_id' => 'required|exists:products,id',
-                'quantity' => 'required|integer|min:1',
-                'should_be_delivered_at' => 'required|date',
-                'commercial_id' => 'nullable|exists:commercials,id',
-                'livreur_id' => 'nullable|exists:livreurs,id',
-                'delivery_batch_id' => 'nullable|exists:delivery_batches,id',
-                'status' => 'in:' . implode(',', [
-                    Order::STATUS_WAITING,
-                    Order::STATUS_DELIVERED,
-                    Order::STATUS_CANCELLED,
-                ]),
-                'comment' => 'nullable|string',
+        $validated = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.price' => 'nullable|integer',
+            'delivery_batch_id' => 'nullable|exists:delivery_batches,id',
+            'should_be_delivered_at' => 'nullable|date',
+            'status' => 'required|in:WAITING,DELIVERED,CANCELLED',
+        ]);
+
+        $order = Order::create([
+            'customer_id' => $validated['customer_id'],
+            'commercial_id' => $request->user()->commercial?->id ?? null ,
+            'delivery_batch_id' => $validated['delivery_batch_id'],
+            'should_be_delivered_at' => $validated['should_be_delivered_at'],
+            'status' => $validated['status'],
+        ]);
+
+        foreach ($validated['items'] as $item) {
+            $product = Product::findOrFail($item['product_id']);
+            $order->items()->create([
+                'product_id' => $item['product_id'],
+                'quantity' => $item['quantity'],
+                'price' => $item['price'] ?? $product->price,
             ]);
-
-            Order::create($validated);
-
-            Log::info('Order created successfully');
-            return redirect()->back()->with('success', 'Commande créée avec succès');
-        } catch (\Exception $e) {
-            Log::error('Error creating order: ' . $e->getMessage());
-            return redirect()->back()->withErrors(['error' => 'Erreur lors de la création de la commande']);
         }
+
+        return redirect()->back()->with('success', 'Commande créée avec succès.');
     }
 
     public function update(Request $request, Order $order)
     {
-        try {
-            // If only status is being updated
-            if ($request->has('status') && count($request->all()) === 1) {
-                $validated = $request->validate([
-                    'status' => 'required|in:' . implode(',', [
-                        Order::STATUS_WAITING,
-                        Order::STATUS_DELIVERED,
-                        Order::STATUS_CANCELLED,
-                    ]),
-                ]);
-            } else {
-                $validated = $request->validate([
-                    'customer_id' => 'required|exists:customers,id',
-                    'product_id' => 'required|exists:products,id',
-                    'quantity' => 'required|integer|min:1',
-                    'should_be_delivered_at' => 'required|date',
-                    'commercial_id' => 'nullable|exists:commercials,id',
-                    'livreur_id' => 'nullable|exists:livreurs,id',
-                    'status' => 'in:' . implode(',', [
-                        Order::STATUS_WAITING,
-                        Order::STATUS_DELIVERED,
-                        Order::STATUS_CANCELLED,
-                    ]),
-                    'comment' => 'nullable|string',
+        $validated = $request->validate([
+            'customer_id' => 'sometimes|required|exists:customers,id',
+            'items' => 'sometimes|required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.price' => 'nullable|integer',
+            'delivery_batch_id' => 'nullable|exists:delivery_batches,id',
+            'should_be_delivered_at' => 'nullable|date',
+            'status' => 'sometimes|required|in:WAITING,DELIVERED,CANCELLED',
+        ]);
+
+        $order->update([
+            'customer_id' => $validated['customer_id'] ?? $order->customer_id,
+            'delivery_batch_id' => $validated['delivery_batch_id'],
+            'should_be_delivered_at' => $validated['should_be_delivered_at'],
+            'status' => $validated['status'] ?? $order->status,
+        ]);
+
+        if (isset($validated['items'])) {
+            // Delete existing items
+            $order->items()->delete();
+            
+            // Create new items
+            foreach ($validated['items'] as $item) {
+                $product = Product::findOrFail($item['product_id']);
+                $order->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'price' => $product->price,
                 ]);
             }
-
-            $order->update($validated);
-
-            Log::info('Order updated successfully', [
-                'order_id' => $order->id,
-                'updated_fields' => array_keys($validated)
-            ]);
-            
-            return redirect()->back()->with('success', 'Commande mise à jour avec succès');
-        } catch (\Exception $e) {
-            Log::error('Error updating order: ' . $e->getMessage(), ['order_id' => $order->id]);
-            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise à jour de la commande']);
         }
+
+        return redirect()->back()->with('success', 'Commande mise à jour avec succès.');
     }
 
     public function destroy(Order $order)
