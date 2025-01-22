@@ -6,7 +6,8 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 30px;
+            line-height: 1.6;
+            margin: 20px;
         }
         .header {
             text-align: center;
@@ -15,20 +16,12 @@
         .section {
             margin-bottom: 20px;
         }
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-bottom: 20px;
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2563eb;
         }
-        .status-box {
-            padding: 10px;
-            border-radius: 5px;
-            text-align: center;
-        }
-        .delivered { background-color: #f0fdf4; }
-        .pending { background-color: #fefce8; }
-        .cancelled { background-color: #fef2f2; }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -42,11 +35,15 @@
         th {
             background-color: #f3f4f6;
         }
-        .customer-address {
-            font-size: 11px;
-            color: #666;
-            margin-top: 2px;
+        .status-box {
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            font-size: 12px;
         }
+        .status-delivered { background-color: #dcfce7; color: #166534; }
+        .status-waiting { background-color: #fef9c3; color: #854d0e; }
+        .status-cancelled { background-color: #fee2e2; color: #991b1b; }
     </style>
 </head>
 <body>
@@ -57,47 +54,84 @@
     </div>
 
     <div class="section">
-        <h2>Total par produit</h2>
+        <div class="section-title">Statistiques par statut</div>
         <table>
-            <thead>
-                <tr>
-                    <th>Produit</th>
-                    <th>Quantité totale</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($productTotals as $product => $data)
-                <tr>
-                    <td>{{ $product }}</td>
-                    <td>{{ $data['quantity'] }}</td>
-                </tr>
-                @endforeach
-            </tbody>
+            <tr>
+                <th>Statut</th>
+                <th>Nombre de commandes</th>
+                <th>Quantité totale</th>
+            </tr>
+            <tr>
+                <td>Livrées</td>
+                <td>{{ $statusTotals['DELIVERED']['count'] }}</td>
+                <td>{{ $statusTotals['DELIVERED']['quantity'] }}</td>
+            </tr>
+            <tr>
+                <td>En attente</td>
+                <td>{{ $statusTotals['WAITING']['count'] }}</td>
+                <td>{{ $statusTotals['WAITING']['quantity'] }}</td>
+            </tr>
+            <tr>
+                <td>Annulées</td>
+                <td>{{ $statusTotals['CANCELLED']['count'] }}</td>
+                <td>{{ $statusTotals['CANCELLED']['quantity'] }}</td>
+            </tr>
         </table>
     </div>
 
     <div class="section">
-        <h2>Liste des commandes</h2>
+        <div class="section-title">Total par produit</div>
         <table>
-            <thead>
-                <tr>
-                    <th>Client</th>
-                    <th>Produit</th>
-                    <th>Quantité</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($batch->orders as $order)
-                <tr>
-                    <td>
-                        {{ $order->customer->name }}
-                        <div class="customer-address">{{ $order->customer->address }}</div>
-                    </td>
-                    <td>{{ $order->product->name }}</td>
-                    <td>{{ $order->quantity }}</td>
-                </tr>
-                @endforeach
-            </tbody>
+            <tr>
+                <th>Produit</th>
+                <th>Quantité totale</th>
+                <th>Livrées</th>
+                <th>En attente</th>
+                <th>Annulées</th>
+            </tr>
+            @foreach($productTotals as $total)
+            <tr>
+                <td>{{ $total['name'] }}</td>
+                <td>{{ $total['total_quantity'] }}</td>
+                <td>{{ $total['by_status']['DELIVERED'] }}</td>
+                <td>{{ $total['by_status']['WAITING'] }}</td>
+                <td>{{ $total['by_status']['CANCELLED'] }}</td>
+            </tr>
+            @endforeach
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Liste des commandes</div>
+        <table>
+            <tr>
+                <th>Client</th>
+                <th>Produits</th>
+                <th>Total</th>
+                <th>Statut</th>
+            </tr>
+            @foreach($batch->orders as $order)
+            <tr>
+                <td>
+                    {{ $order->customer->name }}<br>
+                    <small>{{ $order->customer->phone_number }}</small><br>
+                    <small>{{ $order->customer->address }}</small>
+                </td>
+                <td>
+                    @foreach($order->items as $item)
+                    {{ $item->product->name }} - {{ $item->quantity }} unité(s)<br>
+                    Prix unitaire: {{ number_format($item->price) }} FCFA<br>
+                    @endforeach
+                </td>
+                <td>{{ number_format($order->total_price) }} FCFA</td>
+                <td>
+                    <div class="status-box status-{{ strtolower($order->status) }}">
+                        {{ $order->status === 'DELIVERED' ? 'Livrée' : 
+                           ($order->status === 'WAITING' ? 'En attente' : 'Annulée') }}
+                    </div>
+                </td>
+            </tr>
+            @endforeach
         </table>
     </div>
 </body>

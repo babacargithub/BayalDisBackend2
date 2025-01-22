@@ -14,11 +14,15 @@ class OrderItem extends Model
         'product_id',
         'quantity',
         'price',
+        'created_at',
+        'updated_at',
     ];
 
     protected $casts = [
         'price' => 'integer',
     ];
+
+    protected $appends = ['total_price'];
 
     public function order()
     {
@@ -28,5 +32,9 @@ class OrderItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+    public function getTotalPriceAttribute()
+    {
+        return ($this->price ?? $this->product->price) * $this->quantity;
     }
 } 

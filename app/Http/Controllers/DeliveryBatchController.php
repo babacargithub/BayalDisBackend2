@@ -114,32 +114,60 @@ class DeliveryBatchController extends Controller
     public function exportPdf(DeliveryBatch $deliveryBatch)
     {
         try {
-            $batch = $deliveryBatch->load(['orders.customer', 'orders.product', 'livreur']);
+            $deliveryBatch->load(['orders.items.product', 'orders.customer', 'livreur']);
 
-            // Calculate totals
-            $statusTotals = [
-                'delivered' => $batch->orders->where('status', 'DELIVERED')->count(),
-                'pending' => $batch->orders->where('status', 'WAITING')->count(),
-                'cancelled' => $batch->orders->where('status', 'CANCELLED')->count(),
-            ];
-
-            $productTotals = $batch->orders->groupBy('product.name')
-                ->map(function ($orders) {
-                    return [
-                        'quantity' => $orders->sum('quantity'),
-                    ];
-                })->toArray();
-
-            $pdf = Pdf::loadView('pdf.delivery-batch', [
-                'batch' => $batch,
-                'statusTotals' => $statusTotals,
-                'productTotals' => $productTotals,
+            $pdf = PDF::loadView('pdf.delivery-batch', [
+                'batch' => $deliveryBatch,
+                'statusTotals' => $this->getStatusTotals($deliveryBatch->orders),
+                'productTotals' => $this->getProductTotals($deliveryBatch->orders),
             ]);
 
-            return $pdf->download("lot-{$batch->name}-" . now()->format('Y-m-d') . '.pdf');
+            return $pdf->download("lot-{$deliveryBatch->name}.pdf");
         } catch (\Exception $e) {
-            Log::error('Error generating PDF for delivery batch: ' . $e->getMessage());
+            \Log::error('PDF Generation Error: ' . $e->getMessage());
             return response()->json(['error' => 'Erreur lors de la génération du PDF'], 500);
         }
+    }
+
+    private function getStatusTotals($orders)
+    {
+        $totals = [
+            'DELIVERED' => ['count' => 0, 'quantity' => 0],
+            'WAITING' => ['count' => 0, 'quantity' => 0],
+            'CANCELLED' => ['count' => 0, 'quantity' => 0],
+        ];
+
+        foreach ($orders as $order) {
+            $totals[$order->status]['count']++;
+            foreach ($order->items as $item) {
+                $totals[$order->status]['quantity'] += $item->quantity;
+            }
+        }
+
+        return $totals;
+    }
+
+    private function getProductTotals($orders)
+    {
+        $totals = [];
+        foreach ($orders as $order) {
+            foreach ($order->items as $item) {
+                $productName = $item->product->name;
+                if (!isset($totals[$productName])) {
+                    $totals[$productName] = [
+                        'name' => $productName,
+                        'total_quantity' => 0,
+                        'by_status' => [
+                            'DELIVERED' => 0,
+                            'WAITING' => 0,
+                            'CANCELLED' => 0,
+                        ]
+                    ];
+                }
+                $totals[$productName]['total_quantity'] += $item->quantity;
+                $totals[$productName]['by_status'][$order->status] += $item->quantity;
+            }
+        }
+        return array_values($totals);
     }
 } 

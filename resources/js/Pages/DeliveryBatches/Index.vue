@@ -18,6 +18,17 @@ const props = defineProps({
     products: Array,
 });
 
+const statusFilters = ref({
+    DELIVERED: true,
+    WAITING: true,
+    CANCELLED: true,
+});
+
+const filteredBatchOrders = computed(() => {
+    if (!currentBatch.value?.orders) return [];
+    return currentBatch.value.orders.filter(order => statusFilters.value[order.status]);
+});
+
 const showingNewBatchModal = ref(false);
 const showingEditBatchModal = ref(false);
 const showingAddOrdersModal = ref(false);
@@ -49,37 +60,46 @@ const orderForm = useForm({
     status: 'WAITING',
 });
 
+const localBatches = ref(props.batches);
+
 const getProductTotals = (orders) => {
-    if (!orders) return [];
     const totals = {};
     orders.forEach(order => {
         order.items.forEach(item => {
-            const productName = item.product?.name || 'Produit inconnu';
+            const productName = item.product.name;
             if (!totals[productName]) {
-                totals[productName] = 0;
+                totals[productName] = {
+                    name: productName,
+                    total_quantity: 0,
+                    by_status: {
+                        DELIVERED: 0,
+                        WAITING: 0,
+                        CANCELLED: 0,
+                    }
+                };
             }
-            totals[productName] += item.quantity;
+            totals[productName].total_quantity += item.quantity;
+            totals[productName].by_status[order.status] += item.quantity;
         });
     });
-    return Object.entries(totals).map(([name, quantity]) => ({ name, quantity }));
+    return Object.values(totals);
 };
 
 const getStatusTotals = (orders) => {
-    if (!orders) return { delivered: 0, pending: 0, cancelled: 0 };
-    return orders.reduce((acc, order) => {
-        switch (order.status) {
-            case 'DELIVERED':
-                acc.delivered++;
-                break;
-            case 'WAITING':
-                acc.pending++;
-                break;
-            case 'CANCELLED':
-                acc.cancelled++;
-                break;
-        }
-        return acc;
-    }, { delivered: 0, pending: 0, cancelled: 0 });
+    const totals = {
+        DELIVERED: { count: 0, quantity: 0 },
+        WAITING: { count: 0, quantity: 0 },
+        CANCELLED: { count: 0, quantity: 0 },
+    };
+
+    orders.forEach(order => {
+        totals[order.status].count++;
+        order.items.forEach(item => {
+            totals[order.status].quantity += item.quantity;
+        });
+    });
+
+    return totals;
 };
 
 const createBatch = () => {
@@ -160,6 +180,21 @@ const removeOrder = (batch, order) => {
         }), {
             preserveScroll: true,
             preserveState: true,
+            onSuccess: () => {
+                // Update the local batches
+                const batchIndex = localBatches.value.findIndex(b => b.id === batch.id);
+                if (batchIndex !== -1) {
+                    // Create a new array reference for reactivity
+                    const updatedBatch = { ...localBatches.value[batchIndex] };
+                    updatedBatch.orders = updatedBatch.orders.filter(o => o.id !== order.id);
+                    
+                    // Update both local batches and current batch
+                    localBatches.value[batchIndex] = updatedBatch;
+                    if (currentBatch.value?.id === batch.id) {
+                        currentBatch.value = { ...updatedBatch };
+                    }
+                }
+            }
         });
     }
 };
@@ -173,7 +208,9 @@ const assignLivreur = (batch, livreurId) => {
 };
 
 const openOrdersModal = (batch) => {
-    currentBatch.value = batch;
+    // Find the batch in our local copy
+    const localBatch = localBatches.value.find(b => b.id === batch.id);
+    currentBatch.value = { ...localBatch };
     showingOrdersModal.value = true;
 };
 
@@ -523,43 +560,65 @@ const removeItem = (index) => {
                 </div>
 
                 <div v-if="currentBatch?.orders?.length" class="mt-4 space-y-4">
-                    <!-- Status totals -->
+                    <!-- Status Statistics -->
                     <div class="grid grid-cols-3 gap-4">
                         <div class="bg-green-50 p-3 rounded-lg">
                             <div class="text-sm text-green-700 font-medium">Livrées</div>
-                            <div class="text-2xl text-green-800">{{ getStatusTotals(currentBatch.orders).delivered }}</div>
+                            <div class="text-2xl text-green-800">{{ getStatusTotals(currentBatch.orders).DELIVERED.count }}</div>
+                            <label class="inline-flex items-center mt-2">
+                                <input type="checkbox" v-model="statusFilters.DELIVERED" class="form-checkbox h-4 w-4 text-green-600">
+                                <span class="ml-2 text-sm text-green-700">Afficher</span>
+                            </label>
                         </div>
                         <div class="bg-yellow-50 p-3 rounded-lg">
                             <div class="text-sm text-yellow-700 font-medium">En attente</div>
-                            <div class="text-2xl text-yellow-800">{{ getStatusTotals(currentBatch.orders).pending }}</div>
+                            <div class="text-2xl text-yellow-800">{{ getStatusTotals(currentBatch.orders).WAITING.count }}</div>
+                            <label class="inline-flex items-center mt-2">
+                                <input type="checkbox" v-model="statusFilters.WAITING" class="form-checkbox h-4 w-4 text-yellow-600">
+                                <span class="ml-2 text-sm text-yellow-700">Afficher</span>
+                            </label>
                         </div>
                         <div class="bg-red-50 p-3 rounded-lg">
                             <div class="text-sm text-red-700 font-medium">Annulées</div>
-                            <div class="text-2xl text-red-800">{{ getStatusTotals(currentBatch.orders).cancelled }}</div>
+                            <div class="text-2xl text-red-800">{{ getStatusTotals(currentBatch.orders).CANCELLED.count }}</div>
+                            <label class="inline-flex items-center mt-2">
+                                <input type="checkbox" v-model="statusFilters.CANCELLED" class="form-checkbox h-4 w-4 text-red-600">
+                                <span class="ml-2 text-sm text-red-700">Afficher</span>
+                            </label>
                         </div>
                     </div>
 
-                    <!-- Product totals -->
+                    <!-- Product Statistics -->
                     <div class="p-4 bg-gray-100 rounded-lg">
                         <h3 class="font-medium text-gray-700 mb-2">Total par produit:</h3>
                         <div class="space-y-1">
-                            <div v-for="total in getProductTotals(currentBatch.orders)" :key="total.name" class="text-sm">
-                                <span class="font-medium">{{ total.name }}:</span> {{ total.quantity }} unité(s)
+                            <div v-for="total in getProductTotals(filteredBatchOrders)" :key="total.name" class="text-sm">
+                                <span class="font-medium">{{ total.name }}:</span> {{ total.total_quantity }} unité(s)
+                                <div class="ml-4 text-xs">
+                                    <div class="text-green-600">Livrées: {{ total.by_status.DELIVERED }} unité(s)</div>
+                                    <div class="text-yellow-600">En attente: {{ total.by_status.WAITING }} unité(s)</div>
+                                    <div class="text-red-600">Annulées: {{ total.by_status.CANCELLED }} unité(s)</div>
+                                </div>
                             </div>
                         </div>
+                        
                     </div>
                 </div>
 
                 <div class="mt-6">
                     <div class="space-y-4">
-                        <div v-for="order in currentBatch?.orders" :key="order.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div v-for="order in filteredBatchOrders" :key="order.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                             <div class="flex-grow">
                                 <p class="font-medium">{{ order.customer?.name || 'Client inconnu' }}</p>
                                 <div class="space-y-1">
                                     <p v-for="item in order.items" :key="item.id" class="text-sm text-gray-600">
-                                        {{ item.product?.name || 'Produit inconnu' }} - {{ item.quantity }} unité(s) - {{ item.price }} FCFA
+                                        {{ item.product?.name || 'Produit inconnu' }} - {{ item.quantity }} unité(s) - {{ item.price }} FCFA - {{ item.total_price }} FCFA
                                     </p>
                                 </div>
+                                <!-- Show total price of the order -->
+                                <p class="text-sm font-medium">Total: {{ order.total_price }} FCFA</p>
+
+                            
                                 <p class="text-xs" :class="{
                                     'text-green-600': order.status === 'DELIVERED',
                                     'text-yellow-600': order.status === 'WAITING',
@@ -567,6 +626,7 @@ const removeItem = (index) => {
                                 }">
                                     {{ order.status === 'DELIVERED' ? 'Livrée' : 
                                        order.status === 'WAITING' ? 'En attente' : 'Annulée' }}
+                                      <span v-if="order.status === 'DELIVERED'"> - {{  order.is_paid ? 'Payée' : 'Non payée' }}</span>
                                 </p>
                             </div>
                             <button 
