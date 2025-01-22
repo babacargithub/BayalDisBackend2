@@ -289,6 +289,89 @@ const removeItem = (index) => {
         orderForm.items.splice(index, 1);
     }
 };
+
+const showAddItemModal = ref(false);
+const currentOrder = ref(null);
+const itemForm = useForm({
+    product_id: '',
+    quantity: 1,
+    price: null
+});
+
+const openAddItemModal = (order) => {
+    currentOrder.value = order;
+    itemForm.reset();
+    itemForm.product_id = '';
+    itemForm.quantity = 1;
+    itemForm.price = null;
+    showAddItemModal.value = true;
+};
+
+const addItemToOrder = () => {
+    const orderId = currentOrder.value.id;  // Store ID before resetting
+    itemForm.post(route('orders.items.store', orderId), {
+        preserveScroll: true,
+        onSuccess: (response) => {
+            // Get the updated order from the response
+            const updatedOrder = response?.props?.flash?.order;
+            
+            if (updatedOrder) {
+                // Find and update the order in the current batch
+                const batchIndex = localBatches.value.findIndex(b => 
+                    b.orders.some(o => o.id === updatedOrder.id)
+                );
+                
+                if (batchIndex !== -1) {
+                    const orderIndex = localBatches.value[batchIndex].orders
+                        .findIndex(o => o.id === updatedOrder.id);
+                    
+                    if (orderIndex !== -1) {
+                        // Update the order in the batch
+                        localBatches.value[batchIndex].orders[orderIndex] = updatedOrder;
+                        // Force Vue to detect the change
+                        localBatches.value = [...localBatches.value];
+                        
+                        // If this order is in the current batch being viewed, update it there too
+                        if (currentBatch.value?.id === localBatches.value[batchIndex].id) {
+                            currentBatch.value = { ...localBatches.value[batchIndex] };
+                        }
+                    }
+                }
+            }
+            
+            // Reset the form and close the modal
+            showAddItemModal.value = false;
+            itemForm.reset();
+            currentOrder.value = null;
+        },
+        onError: (errors) => {
+            console.error('Error adding item:', errors);
+        },
+    });
+};
+
+const removeOrderItem = (order, item) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cet article ?')) {
+        return;
+    }
+
+    router.delete(route('orders.items.destroy', { order: order.id, item: item.id }), {
+        preserveScroll: true,
+        onSuccess: () => {
+            // Update the local batches with the updated data from the response
+            const updatedBatch = localBatches.value.find(b => b.orders.some(o => o.id === order.id));
+            if (updatedBatch) {
+                const updatedOrder = page.props.flash.order;
+                const orderIndex = updatedBatch.orders.findIndex(o => o.id === updatedOrder.id);
+                if (orderIndex !== -1) {
+                    updatedBatch.orders[orderIndex] = updatedOrder;
+                    // Force reactivity update
+                    localBatches.value = [...localBatches.value];
+                }
+            }
+        },
+    });
+};
 </script>
 
 <template>
@@ -552,10 +635,8 @@ const removeItem = (index) => {
                         class="ml-4"
                         v-if="currentBatch?.orders?.length"
                     >
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Exporter en PDF
+                        <v-icon>mdi-file-pdf</v-icon>
+                         PDF
                     </PrimaryButton>
                 </div>
 
@@ -590,53 +671,158 @@ const removeItem = (index) => {
 
                     <!-- Product Statistics -->
                     <div class="p-4 bg-gray-100 rounded-lg">
-                        <h3 class="font-medium text-gray-700 mb-2">Total par produit:</h3>
-                        <div class="space-y-1">
-                            <div v-for="total in getProductTotals(filteredBatchOrders)" :key="total.name" class="text-sm">
-                                <span class="font-medium">{{ total.name }}:</span> {{ total.total_quantity }} unité(s)
-                                <div class="ml-4 text-xs">
-                                    <div class="text-green-600">Livrées: {{ total.by_status.DELIVERED }} unité(s)</div>
-                                    <div class="text-yellow-600">En attente: {{ total.by_status.WAITING }} unité(s)</div>
-                                    <div class="text-red-600">Annulées: {{ total.by_status.CANCELLED }} unité(s)</div>
-                                </div>
-                            </div>
+                        <h3 class="font-medium text-gray-700 mb-4">Total par produit:</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 bg-white rounded-lg">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Produit
+                                        </th>
+                                        <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-green-600 uppercase tracking-wider">
+                                            Livrées
+                                        </th>
+                                        <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-yellow-600 uppercase tracking-wider">
+                                            En attente
+                                        </th>
+                                        <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-red-600 uppercase tracking-wider">
+                                            Annulées
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="total in getProductTotals(filteredBatchOrders)" :key="total.name" class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                                            {{ total.name }}
+                                            <div class="text-xs text-gray-500">Total: {{ total.total_quantity }} unité(s)</div>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-center">
+                                            <span class="text-green-600 font-medium">{{ total.by_status.DELIVERED }}</span>
+                                            <span class="text-xs text-gray-500"> unité(s)</span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-center">
+                                            <span class="text-yellow-600 font-medium">{{ total.by_status.WAITING }}</span>
+                                            <span class="text-xs text-gray-500"> unité(s)</span>
+                                        </td>
+                                        <td class="px-4 py-3 whitespace-nowrap text-sm text-center">
+                                            <span class="text-red-600 font-medium">{{ total.by_status.CANCELLED }}</span>
+                                            <span class="text-xs text-gray-500"> unité(s)</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
-                        
                     </div>
                 </div>
 
                 <div class="mt-6">
                     <div class="space-y-4">
-                        <div v-for="order in filteredBatchOrders" :key="order.id" class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div class="flex-grow">
-                                <p class="font-medium">{{ order.customer?.name || 'Client inconnu' }}</p>
-                                <div class="space-y-1">
-                                    <p v-for="item in order.items" :key="item.id" class="text-sm text-gray-600">
-                                        {{ item.product?.name || 'Produit inconnu' }} - {{ item.quantity }} unité(s) - {{ item.price }} FCFA - {{ item.total_price }} FCFA
+                        <div v-for="order in filteredBatchOrders" :key="order.id" class="flex flex-col p-3 bg-gray-50 rounded-lg mb-4">
+                            <div class="flex justify-between items-center mb-3">
+                                <div>
+                                    <h3 class="font-medium text-gray-900">{{ order.customer?.name || 'Client inconnu' }}</h3>
+                                    <h6 class="font-small text-gray-500">{{ order.customer?.address || 'Adresse non définie' }}</h6>
+                                    <!--  add a button icon here to show order comment -->
+                                   <!-- use vuetify to display order comment in a tooltip -->
+                                    <v-tooltip v-if="order.comment">
+                                        <template v-slot:activator="{ on, attrs }">
+                                            <v-icon v-bind="attrs" v-on="on" color="blue" small>mdi-comment</v-icon>
+                                        </template>
+                                        <span>{{ order.comment }}</span>
+                                    </v-tooltip>
+                                    <p class="text-xs" :class="{
+                                        'text-green-600': order.status === 'DELIVERED',
+                                        'text-yellow-600': order.status === 'WAITING',
+                                        'text-red-600': order.status === 'CANCELLED'
+                                    }">
+                                        {{ order.status === 'DELIVERED' ? 'Livrée' : 
+                                           order.status === 'WAITING' ? 'En attente' : 'Annulée' }}
+                                        <span v-if="order.status === 'DELIVERED'"> - {{  order.is_paid ? 'Payée' : 'Non payée' }}</span>
                                     </p>
                                 </div>
-                                <!-- Show total price of the order -->
-                                <p class="text-sm font-medium">Total: {{ order.total_price }} FCFA</p>
-
-                            
-                                <p class="text-xs" :class="{
-                                    'text-green-600': order.status === 'DELIVERED',
-                                    'text-yellow-600': order.status === 'WAITING',
-                                    'text-red-600': order.status === 'CANCELLED'
-                                }">
-                                    {{ order.status === 'DELIVERED' ? 'Livrée' : 
-                                       order.status === 'WAITING' ? 'En attente' : 'Annulée' }}
-                                      <span v-if="order.status === 'DELIVERED'"> - {{  order.is_paid ? 'Payée' : 'Non payée' }}</span>
-                                </p>
+                                <div class="flex items-center space-x-2">
+                                    <button 
+                                        @click="openAddItemModal(order)"
+                                        class="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50"
+                                        title="Ajouter un article"
+                                    >
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                        </svg>
+                                    </button>
+                                    <button 
+                                        @click="removeOrder(currentBatch, order)" 
+                                        class="text-red-600 hover:text-red-900 p-2 rounded-full hover:bg-red-50"
+                                        title="Supprimer la commande"
+                                    >
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
-                            <button 
-                                @click="removeOrder(currentBatch, order)" 
-                                class="text-red-600 hover:text-red-900 p-2 rounded-full hover:bg-red-50"
-                            >
-                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
+
+                            <!-- Items Table -->
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200 bg-white rounded-lg">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Produit
+                                            </th>
+                                            <th scope="col" class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Quantité
+                                            </th>
+                                            <th scope="col" class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Prix unitaire
+                                            </th>
+                                            <th scope="col" class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Total
+                                            </th>
+                                            <th scope="col" class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                                Actions
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <tr v-for="item in order.items" :key="item.id" class="hover:bg-gray-50">
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                                                {{ item.product?.name || 'Produit inconnu' }}
+                                            </td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
+                                                {{ item.quantity }} unité(s)
+                                            </td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900 text-right">
+                                                {{ item.price }} FCFA
+                                            </td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900 text-right">
+                                                {{ item.total_price }} FCFA
+                                            </td>
+                                            <td class="px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
+                                                <button 
+                                                    @click="removeOrderItem(order, item)"
+                                                    class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50"
+                                                    title="Supprimer l'article"
+                                                >
+                                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                    </svg>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <!-- Total Row -->
+                                        <tr class="bg-gray-50 font-medium">
+                                            <td colspan="3" class="px-3 py-2 text-sm text-gray-900 text-right">
+                                                Total de la commande:
+                                            </td>
+                                            <td class="px-3 py-2 text-sm text-gray-900 text-right">
+                                                {{ order.total_price }} FCFA
+                                            </td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
@@ -739,6 +925,57 @@ const removeItem = (index) => {
                         </SecondaryButton>
                         <PrimaryButton :disabled="orderForm.processing">
                             Créer la commande
+                        </PrimaryButton>
+                    </div>
+                </form>
+            </div>
+        </Modal>
+
+        <!-- Add Item Modal -->
+        <Modal :show="showAddItemModal" @close="showAddItemModal = false">
+            <div class="p-6">
+                <h2 class="text-lg font-medium text-gray-900">
+                    Ajouter un article à la commande
+                </h2>
+
+                <form @submit.prevent="addItemToOrder" class="mt-6">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <InputLabel for="product" value="Produit" />
+                            <select
+                                id="product"
+                                v-model="itemForm.product_id"
+                                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                required
+                            >
+                                <option value="">Sélectionner un produit</option>
+                                <option v-for="product in products" :key="product.id" :value="product.id">
+                                    {{ product.name }}
+                                </option>
+                            </select>
+                            <InputError :message="itemForm.errors.product_id" class="mt-2" />
+                        </div>
+
+                        <div>
+                            <InputLabel for="quantity" value="Quantité" />
+                            <TextInput
+                                id="quantity"
+                                type="number"
+                                v-model="itemForm.quantity"
+                                class="mt-1 block w-full"
+                                required
+                                min="1"
+                            />
+                            <InputError :message="itemForm.errors.quantity" class="mt-2" />
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end">
+                        <SecondaryButton @click="showAddItemModal = false" class="mr-3">
+                            Annuler
+                        </SecondaryButton>
+                        <PrimaryButton :disabled="itemForm.processing || !itemForm.product_id || itemForm.quantity < 1">
+                            Ajouter l'article
                         </PrimaryButton>
                     </div>
                 </form>

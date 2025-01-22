@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Commercial;
 use App\Models\Livreur;
+use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -115,5 +116,46 @@ class OrderController extends Controller
             Log::error('Error deleting order: ' . $e->getMessage(), ['order_id' => $order->id]);
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la suppression de la commande']);
         }
+    }
+
+    public function addItem(Request $request, Order $order)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $product = Product::findOrFail($validated['product_id']);
+
+        $item = $order->items()->create([
+            'product_id' => $validated['product_id'],
+            'quantity' => $validated['quantity'],
+            'price' => $product->price,
+        ]);
+
+        $order->load(['items.product', 'customer']);
+
+        return redirect()->back()
+            ->with([
+                'success' => 'Article ajouté avec succès',
+                'order' => $order
+            ]);
+    }
+
+    public function removeItem(Order $order, OrderItem $item)
+    {
+        if ($item->order_id !== $order->id) {
+            return redirect()->back()
+                ->with('error', 'Cet article n\'appartient pas à cette commande');
+        }
+
+        $item->delete();
+        $order->load(['items.product', 'customer']);
+
+        return redirect()->back()
+            ->with([
+                'success' => 'Article supprimé avec succès',
+                'order' => $order
+            ]);
     }
 }

@@ -54,6 +54,8 @@ Route::middleware('auth')->group(function () {
     Route::post('lignes/{ligne}/assign-customer', [LigneController::class, 'assignCustomer'])->name('lignes.assign-customer');
     Route::post('/lignes/{ligne}/assign-customers', [LigneController::class, 'assignCustomers'])->name('lignes.assign-customers');
     Route::resource('orders', OrderController::class);
+    Route::post('/orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.store');
+    Route::delete('/orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.destroy');
 
     Route::get('/delivery-batches', [DeliveryBatchController::class, 'index'])->name('delivery-batches.index');
     Route::post('/delivery-batches', [DeliveryBatchController::class, 'store'])->name('delivery-batches.store');

@@ -34,7 +34,7 @@ return new class extends Migration
             if (DB::getDriverName() !== 'sqlite') {
                 $table->dropForeign(['product_id']);
             }
-//            $table->dropColumn(['product_id', 'quantity']);
+            $table->dropColumn(['product_id', 'quantity']);
         });
     }
 
