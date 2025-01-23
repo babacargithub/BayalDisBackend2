@@ -14,50 +14,69 @@ class VenteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Vente::with(['product', 'customer', 'commercial']);
+        // Base query with optimized eager loading and join to ensure products exist
+        $query = Vente::query()
+            ->select(
+                'ventes.id',
+                'ventes.product_id',
+                'ventes.customer_id',
+                'ventes.commercial_id',
+                'ventes.quantity',
+                'ventes.price',
+                'ventes.paid',
+                'ventes.created_at',
+                'ventes.should_be_paid_at'
+            )
+            ->join('products', 'ventes.product_id', '=', 'products.id')
+            ->with([
+                'product:id,name',
+                'customer:id,name',
+                'commercial:id,name',
+            ])
+            ->where('ventes.type', 'SINGLE'); // Only show single ventes, not invoice items
 
         // Filter by payment status
         if ($request->has('paid')) {
-            $paid = $request->boolean('paid');
-            $query->where('paid', $paid);
+            $query->where('ventes.paid', $request->boolean('paid'));
         }
 
         // Filter by date range
         if ($request->filled('date_debut')) {
-            $query->whereDate('created_at', '>=', $request->date_debut);
+            $query->whereDate('ventes.created_at', '>=', $request->date_debut);
         }
         if ($request->filled('date_fin')) {
-            $query->whereDate('created_at', '<=', $request->date_fin);
+            $query->whereDate('ventes.created_at', '<=', $request->date_fin);
         }
 
         // Filter by commercial
         if ($request->filled('commercial_id')) {
-            $query->where('commercial_id', $request->commercial_id);
+            $query->where('ventes.commercial_id', $request->commercial_id);
         }
 
-        $ventes = $query->latest()->get();
-
-        // Calculate statistics
+        // Calculate statistics using database queries
         $statistics = [
-            'total_ventes' => $ventes->count(),
-            'total_amount' => $ventes->sum(function ($vente) {
-                return $vente->price * $vente->quantity;
-            }),
-            'paid_count' => $ventes->where('paid', true)->count(),
-            'paid_amount' => $ventes->where('paid', true)->sum(function ($vente) {
-                return $vente->price * $vente->quantity;
-            }),
-            'unpaid_count' => $ventes->where('paid', false)->count(),
-            'unpaid_amount' => $ventes->where('paid', false)->sum(function ($vente) {
-                return $vente->price * $vente->quantity;
-            }),
+            'total_ventes' => $query->count(),
+            'total_amount' => $query->sum(DB::raw('ventes.price * ventes.quantity')),
+            'paid_count' => (clone $query)->where('ventes.paid', true)->count(),
+            'paid_amount' => (clone $query)->where('ventes.paid', true)->sum(DB::raw('ventes.price * ventes.quantity')),
+            'unpaid_count' => (clone $query)->where('ventes.paid', false)->count(),
+            'unpaid_amount' => (clone $query)->where('ventes.paid', false)->sum(DB::raw('ventes.price * ventes.quantity')),
         ];
+
+        // Get paginated results with proper eager loading
+        $ventes = $query->latest('ventes.created_at')
+            ->paginate(25)
+            ->through(function ($vente) {
+                // Ensure computed properties are properly set
+                $vente->subtotal = $vente->price * $vente->quantity;
+                return $vente;
+            });
 
         return Inertia::render('Ventes/Index', [
             'ventes' => $ventes,
-            'produits' => Product::all(),
-            'clients' => Customer::all(),
-            'commerciaux' => Commercial::all(),
+            'produits' => Product::select('id', 'name', 'price')->orderBy('name')->get(),
+            'clients' => Customer::select('id', 'name')->orderBy('name')->get(),
+            'commerciaux' => Commercial::select('id', 'name')->orderBy('name')->get(),
             'filters' => $request->only(['date_debut', 'date_fin', 'paid', 'commercial_id']),
             'statistics' => $statistics
         ]);
@@ -80,6 +99,9 @@ class VenteController extends Controller
             $validated['should_be_paid_at'] = null;
         }
 
+        // Add type for single vente
+        $validated['type'] = 'SINGLE';
+
         Vente::create($validated);
 
         return redirect()->back()->with('success', 'Vente enregistrée avec succès');
@@ -100,6 +122,9 @@ class VenteController extends Controller
     public function destroy(Vente $vente)
     {
         try {
+            if ($vente->type !== 'SINGLE') {
+                return redirect()->back()->with('error', 'Cannot delete invoice items directly');
+            }
             $vente->delete();
             return redirect()->back()->with('success', 'Vente supprimée avec succès');
         } catch (\Exception $e) {

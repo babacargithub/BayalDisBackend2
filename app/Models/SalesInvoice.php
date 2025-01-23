@@ -29,18 +29,32 @@ class SalesInvoice extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(SalesInvoiceItem::class);
+        return $this->hasMany(Vente::class)->where('type', 'INVOICE_ITEM');
     }
 
     public function getTotalAttribute(): int
     {
-        return (int) $this->items->sum(function ($item) {
-            return $item->price * $item->quantity;
-        });
+        return (int) $this->items->sum('subtotal');
     }
 
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    // Boot method to handle cascading updates
+    protected static function boot()
+    {
+        parent::boot();
+
+        // When paid status changes, update all related ventes
+        static::updated(function ($invoice) {
+            if ($invoice->isDirty('paid')) {
+                $invoice->items()->update(['paid' => $invoice->paid]);
+            }
+            if ($invoice->isDirty('should_be_paid_at')) {
+                $invoice->items()->update(['should_be_paid_at' => $invoice->should_be_paid_at]);
+            }
+        });
     }
 } 

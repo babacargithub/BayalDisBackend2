@@ -5,7 +5,7 @@ import { ref, computed, watch } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
-    ventes: Array,
+    ventes: Object,
     produits: Array,
     clients: Array,
     commerciaux: Array,
@@ -28,6 +28,7 @@ const dialog = ref(false);
 const filterDialog = ref(false);
 const deleteDialog = ref(false);
 const venteToDelete = ref(null);
+const currentPage = ref(1);
 
 const filterForm = useForm({
     date_debut: props.filters?.date_debut || '',
@@ -37,11 +38,11 @@ const filterForm = useForm({
 });
 
 const productStats = computed(() => {
-    if (!props.ventes || !props.ventes.length) return [];
+    if (!props.ventes?.data || !props.ventes.data.length) return [];
     
     const stats = {};
-    props.ventes.forEach(vente => {
-        if (!vente.product) return;
+    props.ventes.data.forEach(vente => {
+        if (!vente?.product?.id) return;
         
         if (!stats[vente.product.id]) {
             stats[vente.product.id] = {
@@ -149,6 +150,17 @@ const deleteVente = () => {
         },
     });
 };
+
+const changePage = (page) => {
+    filterForm.get(route('ventes.index', { page }), {
+        preserveState: true,
+        preserveScroll: true,
+    });
+};
+
+watch([() => filterForm.date_debut, () => filterForm.date_fin, () => filterForm.commercial_id], () => {
+    currentPage.value = 1;
+});
 </script>
 
 <template>
@@ -305,7 +317,7 @@ const deleteVente = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="vente in ventes" :key="vente.id">
+                            <tr v-for="vente in ventes.data" :key="vente.id">
                                 <td>{{ formatDate(vente.created_at) }}</td>
                                 <td>{{ vente.product?.name }}</td>
                                 <td>{{ vente.customer?.name }}</td>
@@ -320,10 +332,8 @@ const deleteVente = () => {
                                     </v-chip>
                                 </td>
                                 <td>{{ formatDate(vente.should_be_paid_at) }}</td>
-                              <td>{{ vente.commercial?.name }}</td>
-
-                              <td>
-                                
+                                <td>{{ vente.commercial?.name }}</td>
+                                <td>
                                     <v-btn 
                                         icon="mdi-delete" 
                                         variant="text" 
@@ -334,6 +344,15 @@ const deleteVente = () => {
                             </tr>
                         </tbody>
                     </v-table>
+                    <!-- Add pagination -->
+                    <div class="d-flex justify-center mt-4" v-if="ventes.links && ventes.links.length > 3">
+                        <v-pagination
+                            v-model="currentPage"
+                            :length="Math.ceil(ventes.total / ventes.per_page)"
+                            :total-visible="7"
+                            @update:model-value="changePage"
+                        ></v-pagination>
+                    </div>
                 </v-card>
             </div>
         </div>
