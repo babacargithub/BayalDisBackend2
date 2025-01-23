@@ -42,6 +42,7 @@ class CustomerController extends Controller
             'gps_coordinates' => 'nullable|string|max:255',
             'commercial_id' => 'nullable|exists:commercials,id',
             'description' => 'nullable|string',
+            'address' => 'nullable|string|max:255',
         ]);
 
         Customer::create($validated);
@@ -65,6 +66,8 @@ class CustomerController extends Controller
             'owner_number' => 'nullable|string|max:255',
             'gps_coordinates' => 'nullable|string|max:255',
             'description' => 'nullable|string',
+            'address' => 'nullable|string|max:255',
+            'commercial_id' => 'nullable|exists:commercials,id',
         ]);
 
         $customer->update($validated);
@@ -85,5 +88,20 @@ class CustomerController extends Controller
         } catch (\Exception $e) {
             return back()->with('error', 'Erreur lors de la suppression du client');
         }
+    }
+
+    public function history(Customer $client)
+    {
+        $orders = $client->orders()
+            ->with(['items.product'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+        $ventes = $client->ventes()->with(['product'])->get();
+
+        return Inertia::render('Clients/CustomerHistory', [
+            'customer' => $client,
+            'orders' => $orders,
+            'ventes' => $ventes
+        ]);
     }
 } 

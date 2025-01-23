@@ -67,6 +67,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/delivery-batches/available-orders', [DeliveryBatchController::class, 'getAvailableOrders'])->name('delivery-batches.available-orders');
     Route::get('/delivery-batches/{deliveryBatch}/export-pdf', [DeliveryBatchController::class, 'exportPdf'])
         ->name('delivery-batches.export-pdf');
+
+    Route::get('/clients/{client}/history', [CustomerController::class, 'history'])->name('clients.history');
 });
 
 require __DIR__.'/auth.php';

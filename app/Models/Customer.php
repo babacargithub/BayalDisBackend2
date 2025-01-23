@@ -70,4 +70,9 @@ class Customer extends Model
     {
         return $query->whereHas('ventes');
     }
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+
+    }
 } 

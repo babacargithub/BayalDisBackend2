@@ -1,8 +1,9 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
+import CustomerHistoryDialog from '@/Pages/Clients/CustomerHistoryDialog.vue';
 
 const props = defineProps({
     clients: Array,
@@ -18,6 +19,7 @@ const form = useForm({
     owner_number: '',
     gps_coordinates: '',
     commercial_id: '',
+    address: '',
 });
 
 const dialog = ref(false);
@@ -58,6 +60,7 @@ const editForm = useForm({
     gps_coordinates: '',
     commercial_id: '',
     description: '',
+    address: '',
 });
 
 const openEditDialog = (client) => {
@@ -68,6 +71,7 @@ const openEditDialog = (client) => {
     editForm.gps_coordinates = client.gps_coordinates;
     editForm.commercial_id = client.commercial_id;
     editForm.description = client.description || '';
+    editForm.address = client.address || '';
     editDialog.value = true;
 };
 
@@ -132,6 +136,26 @@ watch(() => props.flash, (newFlash) => {
         snackbar.value = true;
     }
 }, { deep: true, immediate: true });
+
+const showHistory = ref(false);
+const selectedClient = ref(null);
+
+const openHistory = async (client) => {
+    selectedClient.value = client;
+    showHistory.value = true;
+};
+
+const searchQuery = ref('');
+
+const filteredClients = computed(() => {
+    if (!searchQuery.value) return props.clients;
+    
+    const query = searchQuery.value.toLowerCase();
+    return props.clients.filter(client => 
+        client.name.toLowerCase().includes(query) || 
+        (client.phone_number && client.phone_number.toLowerCase().includes(query))
+    );
+});
 </script>
 
 <template>
@@ -141,7 +165,8 @@ watch(() => props.flash, (newFlash) => {
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Clients</h2>
-                <div class="flex gap-2">
+                <div class="flex gap-2 items-center">
+                  
                     <v-btn-group>
                         <v-btn 
                             :color="filterForm.prospect_status === '' ? 'primary' : undefined"
@@ -172,6 +197,15 @@ watch(() => props.flash, (newFlash) => {
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <v-card>
+                    <v-text-field
+                        v-model="searchQuery"
+                        prepend-inner-icon="mdi-magnify"
+                        label="Rechercher par nom ou téléphone"
+                        single-line
+                        hide-details
+                        density="compact"
+                        class="mr-4"
+                    />
                     <v-table>
                         <thead>
                             <tr>
@@ -184,7 +218,7 @@ watch(() => props.flash, (newFlash) => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="client in clients" :key="client.id">
+                            <tr v-for="client in filteredClients" :key="client.id">
                                 <td>
                                     <div class="d-flex align-center">
                                         <div>
@@ -218,6 +252,14 @@ watch(() => props.flash, (newFlash) => {
                                     />
                                 </td>
                                 <td class="d-flex">
+                                    <v-btn 
+                                        icon="mdi-history"
+                                        variant="text"
+                                        color="info"
+                                        class="mr-2"
+                                        @click="openHistory(client)"
+                                        title="Historique des ventes"
+                                    />
                                     <v-btn 
                                         icon="mdi-map-marker"
                                         variant="text"
@@ -274,6 +316,12 @@ watch(() => props.flash, (newFlash) => {
                             v-model="form.gps_coordinates"
                             label="Coordonnées GPS"
                             :error-messages="form.errors.gps_coordinates"
+                        />
+                        <v-text-field
+                            v-model="form.address"
+                            label="Adresse"
+                            :error-messages="form.errors.address"
+                            class="mb-4"
                         />
                         <v-select
                             v-model="form.commercial_id"
@@ -337,6 +385,12 @@ watch(() => props.flash, (newFlash) => {
                             auto-grow
                             placeholder="Ajoutez une description pour ce client..."
                         />
+                        <v-text-field
+                            v-model="editForm.address"
+                            label="Adresse"
+                            :error-messages="editForm.errors.address"
+                            class="mb-4"
+                        />
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="editDialog = false">Annuler</v-btn>
@@ -393,5 +447,12 @@ watch(() => props.flash, (newFlash) => {
                 </v-btn>
             </template>
         </v-snackbar>
+
+        <CustomerHistoryDialog
+            v-model="showHistory"
+            :customer="selectedClient"
+            :orders="selectedClient?.orders || []"
+            :ventes="selectedClient?.ventes || []"
+        />
     </AuthenticatedLayout>
 </template> 
