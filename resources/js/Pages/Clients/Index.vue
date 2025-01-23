@@ -156,6 +156,11 @@ const filteredClients = computed(() => {
         (client.phone_number && client.phone_number.toLowerCase().includes(query))
     );
 });
+
+const getTotalQuantitySold = (client) => {
+    if (!client.ventes || client.ventes.length === 0) return 0;
+    return client.ventes.reduce((total, vente) => total + vente.quantity, 0);
+};
 </script>
 
 <template>
@@ -213,6 +218,7 @@ const filteredClients = computed(() => {
                                 <th>Téléphone</th>
                                 <th>Numéro Propriétaire</th>
                                 <th>Commercial</th>
+                                <th>Quantité Vendue</th>
                                 <th>Type</th>
                                 <th>Actions</th>
                             </tr>
@@ -243,6 +249,7 @@ const filteredClients = computed(() => {
                                 <td>{{ client.phone_number }}</td>
                                 <td>{{ client.owner_number }}</td>
                                 <td>{{ client.commercial?.name }}</td>
+                                <td>{{ getTotalQuantitySold(client) }}</td>
                                 <td>
                                     <v-icon
                                         v-if="client.is_prospect"

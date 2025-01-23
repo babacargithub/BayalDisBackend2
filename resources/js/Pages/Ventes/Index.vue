@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -30,8 +30,29 @@ const venteToDelete = ref(null);
 const filterForm = useForm({
     date_debut: props.filters?.date_debut || '',
     date_fin: props.filters?.date_fin || '',
-    paid: props.filters?.paid || '',
+    paid: props.filters?.paid === true ? true : props.filters?.paid === false ? false : '',
     commercial_id: props.filters?.commercial_id || '',
+});
+
+const productStats = computed(() => {
+    if (!props.ventes || !props.ventes.length) return [];
+    
+    const stats = {};
+    props.ventes.forEach(vente => {
+        if (!vente.product) return;
+        
+        if (!stats[vente.product.id]) {
+            stats[vente.product.id] = {
+                product: vente.product,
+                totalQuantity: 0,
+                totalAmount: 0
+            };
+        }
+        stats[vente.product.id].totalQuantity += vente.quantity;
+        stats[vente.product.id].totalAmount += vente.price * vente.quantity;
+    });
+    
+    return Object.values(stats);
 });
 
 const submit = () => {
@@ -53,6 +74,17 @@ const applyFilters = () => {
     });
 };
 
+const applyPaidFilter = () => {
+    filterForm.get(route('ventes.index'), {
+        preserveState: true,
+        preserveScroll: true,
+    });
+};
+
+watch(() => filterForm.paid, (newValue) => {
+    applyPaidFilter();
+});
+
 const formatPrice = (price) => {
     return new Intl.NumberFormat('fr-FR', {
         style: 'currency',
@@ -61,6 +93,7 @@ const formatPrice = (price) => {
 };
 
 const formatDate = (date) => {
+    if (!date) return '';
     return new Date(date).toLocaleDateString('fr-FR');
 };
 
@@ -106,8 +139,28 @@ const deleteVente = () => {
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Ventes</h2>
                 <div class="flex gap-2">
+                    <v-btn-group class="mr-2">
+                        <v-btn 
+                            :color="filterForm.paid === '' ? 'primary' : undefined"
+                            @click="filterForm.paid = ''"
+                        >
+                            Tous
+                        </v-btn>
+                        <v-btn 
+                            :color="filterForm.paid === true ? 'primary' : undefined"
+                            @click="filterForm.paid = true"
+                        >
+                            Payées
+                        </v-btn>
+                        <v-btn 
+                            :color="filterForm.paid === false ? 'primary' : undefined"
+                            @click="filterForm.paid = false"
+                        >
+                            Impayées
+                        </v-btn>
+                    </v-btn-group>
                     <v-btn color="secondary" @click="filterDialog = true">
-                        Filtrer
+                        Plus de filtres
                     </v-btn>
                     <v-btn color="primary" @click="dialog = true">
                         Nouvelle vente
@@ -190,6 +243,30 @@ const deleteVente = () => {
                         </v-card>
                     </v-col>
                 </v-row>
+
+                <!-- Product Statistics -->
+                <v-card class="mb-6">
+                    <v-card-title class="d-flex align-center">
+                        <v-icon start color="primary">mdi-chart-box</v-icon>
+                        Statistiques par Produit
+                    </v-card-title>
+                    <v-table>
+                        <thead>
+                            <tr>
+                                <th>Produit</th>
+                                <th>Quantité Totale</th>
+                                <th>Montant Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="stat in productStats" :key="stat.product.id">
+                                <td>{{ stat.product.name }}</td>
+                                <td>{{ formatNumber(stat.totalQuantity) }}</td>
+                                <td>{{ formatCurrency(stat.totalAmount) }}</td>
+                            </tr>
+                        </tbody>
+                    </v-table>
+                </v-card>
 
                 <!-- Main Table -->
                 <v-card>

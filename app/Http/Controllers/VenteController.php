@@ -14,30 +14,43 @@ class VenteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Vente::with(['product', 'customer', 'commercial'])
-            ->when($request->date_debut, function ($q) use ($request) {
-                return $q->whereDate('created_at', '>=', $request->date_debut);
-            })
-            ->when($request->date_fin, function ($q) use ($request) {
-                return $q->whereDate('created_at', '<=', $request->date_fin);
-            })
-            ->when(isset($request->paid), function ($q) use ($request) {
-                return $q->where('paid', $request->paid);
-            })
-            ->when($request->commercial_id, function ($q) use ($request) {
-                return $q->where('commercial_id', $request->commercial_id);
-            });
+        $query = Vente::with(['product', 'customer', 'commercial']);
+
+        // Filter by payment status
+        if ($request->has('paid')) {
+            $paid = $request->boolean('paid');
+            $query->where('paid', $paid);
+        }
+
+        // Filter by date range
+        if ($request->filled('date_debut')) {
+            $query->whereDate('created_at', '>=', $request->date_debut);
+        }
+        if ($request->filled('date_fin')) {
+            $query->whereDate('created_at', '<=', $request->date_fin);
+        }
+
+        // Filter by commercial
+        if ($request->filled('commercial_id')) {
+            $query->where('commercial_id', $request->commercial_id);
+        }
 
         $ventes = $query->latest()->get();
 
         // Calculate statistics
         $statistics = [
             'total_ventes' => $ventes->count(),
-            'total_amount' => $ventes->sum(fn($v) => $v->price * $v->quantity),
-            'unpaid_amount' => $ventes->where('paid', false)->sum(fn($v) => $v->price * $v->quantity),
-            'paid_amount' => $ventes->where('paid', true)->sum(fn($v) => $v->price * $v->quantity),
-            'unpaid_count' => $ventes->where('paid', false)->count(),
+            'total_amount' => $ventes->sum(function ($vente) {
+                return $vente->price * $vente->quantity;
+            }),
             'paid_count' => $ventes->where('paid', true)->count(),
+            'paid_amount' => $ventes->where('paid', true)->sum(function ($vente) {
+                return $vente->price * $vente->quantity;
+            }),
+            'unpaid_count' => $ventes->where('paid', false)->count(),
+            'unpaid_amount' => $ventes->where('paid', false)->sum(function ($vente) {
+                return $vente->price * $vente->quantity;
+            }),
         ];
 
         return Inertia::render('Ventes/Index', [
@@ -46,7 +59,7 @@ class VenteController extends Controller
             'clients' => Customer::all(),
             'commerciaux' => Commercial::all(),
             'filters' => $request->only(['date_debut', 'date_fin', 'paid', 'commercial_id']),
-            'statistics' => $statistics,
+            'statistics' => $statistics
         ]);
     }
 

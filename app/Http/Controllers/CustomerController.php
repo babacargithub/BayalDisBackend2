@@ -67,7 +67,6 @@ class CustomerController extends Controller
             'gps_coordinates' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'address' => 'nullable|string|max:255',
-            'commercial_id' => 'nullable|exists:commercials,id',
         ]);
 
         $customer->update($validated);
