@@ -71,8 +71,14 @@ class VenteController extends Controller
             'commercial_id' => 'required|exists:commercials,id',
             'quantity' => 'required|integer|min:1',
             'price' => 'required|numeric|min:0',
-            'should_be_paid_at' => 'required|date',
+            'paid' => 'required|boolean',
+            'should_be_paid_at' => 'required_if:paid,false|nullable|date',
         ]);
+
+        // If paid is true, set should_be_paid_at to null
+        if ($validated['paid']) {
+            $validated['should_be_paid_at'] = null;
+        }
 
         Vente::create($validated);
 

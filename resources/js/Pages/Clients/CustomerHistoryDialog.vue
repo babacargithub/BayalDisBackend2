@@ -51,33 +51,56 @@ const ventesStats = computed(() => {
             };
         }
         
+        const amount = vente.price * vente.quantity;
         stats[productId].total_quantity += vente.quantity;
-        stats[productId].total_amount += vente.total_price;
+        stats[productId].total_amount += amount;
         
         if (vente.is_paid) {
             stats[productId].total_quantity_paid += vente.quantity;
-            stats[productId].total_amount_paid += vente.total_price;
+            stats[productId].total_amount_paid += amount;
         } else {
             stats[productId].total_quantity_unpaid += vente.quantity;
-            stats[productId].total_amount_unpaid += vente.total_price;
+            stats[productId].total_amount_unpaid += amount;
         }
     });
     
-    return Object.values(stats);
+    // Format currency values
+    return Object.values(stats).map(stat => ({
+        ...stat,
+        total_amount: formatCurrency(stat.total_amount),
+        total_amount_paid: formatCurrency(stat.total_amount_paid),
+        total_amount_unpaid: formatCurrency(stat.total_amount_unpaid)
+    }));
 });
 
 // Calculate ventes totals
 const ventesTotals = computed(() => {
-    return props.ventes.reduce((acc, vente) => {
-        const venteTotal = vente.total_price || 0;
-        acc.total += venteTotal;
+    if (!props.ventes || !props.ventes.length) return {
+        total: 0,
+        total_paid: 0,
+        total_unpaid: 0
+    };
+
+    const totals = props.ventes.reduce((acc, vente) => {
+        const amount = vente.price * vente.quantity;
+        acc.total += amount;
         if (vente.is_paid) {
-            acc.total_paid += venteTotal;
+            acc.total_paid += amount;
         } else {
-            acc.total_unpaid += venteTotal;
+            acc.total_unpaid += amount;
         }
         return acc;
-    }, { total: 0, total_paid: 0, total_unpaid: 0 });
+    }, {
+        total: 0,
+        total_paid: 0,
+        total_unpaid: 0
+    });
+
+    return {
+        total: formatCurrency(totals.total),
+        total_paid: formatCurrency(totals.total_paid),
+        total_unpaid: formatCurrency(totals.total_unpaid)
+    };
 });
 
 // Calculate orders statistics
@@ -94,6 +117,26 @@ const orderStats = computed(() => {
     
     return stats;
 });
+
+// Add the formatCurrency function
+const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('fr-FR', { 
+        style: 'currency', 
+        currency: 'XOF',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount || 0);
+};
+
+// Add the formatDate function after formatCurrency
+const formatDate = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+};
 </script>
 
 <template>
@@ -159,15 +202,15 @@ const orderStats = computed(() => {
                                 <div class="grid grid-cols-3 gap-4">
                                     <div class="text-center">
                                         <div class="text-h6">Total des ventes</div>
-                                        <div class="text-h4">{{ ventesTotals.total }} FCFA</div>
+                                        <div class="text-h4">{{ ventesTotals.total }}</div>
                                     </div>
                                     <div class="text-center">
                                         <div class="text-h6 text-success">Total payé</div>
-                                        <div class="text-h4 text-success">{{ ventesTotals.total_paid }} FCFA</div>
+                                        <div class="text-h4 text-success">{{ ventesTotals.total_paid }}</div>
                                     </div>
                                     <div class="text-center">
                                         <div class="text-h6 text-error">Total non payé</div>
-                                        <div class="text-h4 text-error">{{ ventesTotals.total_unpaid }} FCFA</div>
+                                        <div class="text-h4 text-error">{{ ventesTotals.total_unpaid }}</div>
                                     </div>
                                 </div>
                             </v-card-text>
@@ -195,9 +238,9 @@ const orderStats = computed(() => {
                                             <td class="text-right">{{ stat.total_quantity }}</td>
                                             <td class="text-right text-success">{{ stat.total_quantity_paid }}</td>
                                             <td class="text-right text-error">{{ stat.total_quantity_unpaid }}</td>
-                                            <td class="text-right">{{ stat.total_amount }} FCFA</td>
-                                            <td class="text-right text-success">{{ stat.total_amount_paid }} FCFA</td>
-                                            <td class="text-right text-error">{{ stat.total_amount_unpaid }} FCFA</td>
+                                            <td class="text-right">{{ stat.total_amount }}</td>
+                                            <td class="text-right text-success">{{ stat.total_amount_paid }}</td>
+                                            <td class="text-right text-error">{{ stat.total_amount_unpaid }}</td>
                                         </tr>
                                     </tbody>
                                 </v-table>
@@ -221,11 +264,11 @@ const orderStats = computed(() => {
                                     </thead>
                                     <tbody>
                                         <tr v-for="vente in filteredVentes" :key="vente.id">
-                                            <td>{{ new Date(vente.created_at).toLocaleDateString() }}</td>
+                                            <td>{{ formatDate(vente.created_at) }}</td>
                                             <td>{{ vente.product.name }}</td>
                                             <td class="text-right">{{ vente.quantity }}</td>
-                                            <td class="text-right">{{ vente.price }} FCFA</td>
-                                            <td class="text-right">{{ vente.total_price }} FCFA</td>
+                                            <td class="text-right">{{ formatCurrency(vente.price) }}</td>
+                                            <td class="text-right">{{ formatCurrency(vente.price * vente.quantity) }}</td>
                                             <td>
                                                 <v-chip
                                                     :color="vente.is_paid ? 'success' : 'error'"
@@ -306,7 +349,7 @@ const orderStats = computed(() => {
                                             <template #title>
                                                 <div class="flex items-center justify-between w-full">
                                                     <div>
-                                                        {{ new Date(order.created_at).toLocaleDateString() }}
+                                                        {{ formatDate(order.created_at) }}
                                                         <v-chip
                                                             :color="order.status === 'DELIVERED' ? 'success' : 
                                                                    order.status === 'WAITING' ? 'warning' : 'error'"

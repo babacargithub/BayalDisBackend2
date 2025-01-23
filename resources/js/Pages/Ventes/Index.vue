@@ -19,7 +19,9 @@ const form = useForm({
     commercial_id: '',
     quantity: '',
     price: '',
+    payment_status: 'paid',
     should_be_paid_at: '',
+    paid: true,
 });
 
 const dialog = ref(false);
@@ -83,6 +85,24 @@ const applyPaidFilter = () => {
 
 watch(() => filterForm.paid, (newValue) => {
     applyPaidFilter();
+});
+
+watch(() => form.payment_status, (newValue) => {
+    form.paid = newValue === 'paid';
+    if (newValue === 'paid') {
+        form.should_be_paid_at = '';
+    }
+});
+
+watch(() => form.product_id, (newValue) => {
+    if (newValue) {
+        const selectedProduct = props.produits.find(p => p.id === newValue);
+        if (selectedProduct) {
+            form.price = selectedProduct.price;
+        }
+    } else {
+        form.price = '';
+    }
 });
 
 const formatPrice = (price) => {
@@ -359,12 +379,32 @@ const deleteVente = () => {
                             label="Prix unitaire"
                             type="number"
                             :error-messages="form.errors.price"
+                            readonly
                         />
+                        <v-radio-group
+                            v-model="form.payment_status"
+                            label="Statut de paiement"
+                            :error-messages="form.errors.paid"
+                            class="mt-4"
+                        >
+                            <v-radio
+                                label="Payé"
+                                value="paid"
+                                color="success"
+                            />
+                            <v-radio
+                                label="Non payé"
+                                value="unpaid"
+                                color="error"
+                            />
+                        </v-radio-group>
                         <v-text-field
+                            v-if="form.payment_status === 'unpaid'"
                             v-model="form.should_be_paid_at"
                             label="Date d'échéance"
                             type="date"
                             :error-messages="form.errors.should_be_paid_at"
+                            class="mt-4"
                         />
                         <v-card-actions>
                             <v-spacer />
