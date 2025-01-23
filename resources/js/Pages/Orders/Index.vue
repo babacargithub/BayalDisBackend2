@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import axios from 'axios';
 
 const props = defineProps({
     orders: {
@@ -34,6 +35,11 @@ const dialog = ref(false);
 const editedItem = ref(null);
 const deleteDialog = ref(false);
 const itemToDelete = ref(null);
+const paymentDialog = ref(false);
+const selectedOrder = ref(null);
+const isSubmitting = ref(false);
+const paymentsDialog = ref(false);
+const selectedOrderPayments = ref(null);
 
 const form = useForm({
     customer_id: '',
@@ -48,6 +54,12 @@ const form = useForm({
 
 const statusForm = useForm({
     status: '',
+});
+
+const paymentForm = useForm({
+    amount: '',
+    payment_method: '',
+    comment: ''
 });
 
 const formatDate = (date) => {
@@ -143,6 +155,54 @@ const updateStatus = (order, newStatus) => {
         },
     });
 };
+
+const openPaymentDialog = (order) => {
+    selectedOrder.value = order;
+    paymentDialog.value = true;
+};
+
+const submitPayment = () => {
+    if (!selectedOrder.value) return;
+
+    paymentForm.post(route('orders.payments.store', selectedOrder.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            paymentDialog.value = false;
+            paymentForm.reset();
+            selectedOrder.value = null;
+        },
+        onError: (errors) => {
+            console.error('Payment submission failed:', errors);
+        }
+    });
+};
+
+const openPaymentsDialog = (order) => {
+    selectedOrderPayments.value = order;
+    paymentsDialog.value = true;
+};
+
+const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('fr-FR', { 
+        style: 'currency', 
+        currency: 'XOF',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount || 0);
+};
+
+const getPaymentMethodColor = (method) => {
+    switch (method) {
+        case 'CASH':
+            return 'success';
+        case 'WAVE':
+            return 'info';
+        case 'OM':
+            return 'warning';
+        default:
+            return 'grey';
+    }
+};
 </script>
 
 <template>
@@ -235,6 +295,20 @@ const updateStatus = (order, newStatus) => {
                                     variant="text" 
                                     color="primary"
                                     @click="openDialog(order)"
+                                />
+                                <v-btn 
+                                    icon="mdi-cash-plus" 
+                                    variant="text" 
+                                    color="success"
+                                    @click="openPaymentDialog(order)"
+                                    title="Ajouter un paiement"
+                                />
+                                <v-btn 
+                                    icon="mdi-cash-multiple" 
+                                    variant="text" 
+                                    color="info"
+                                    @click="openPaymentsDialog(order)"
+                                    title="Voir les paiements"
                                 />
                                 <v-btn 
                                     icon="mdi-delete" 
@@ -351,6 +425,162 @@ const updateStatus = (order, newStatus) => {
                             :loading="form.processing"
                         >
                             Confirmer
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+
+            <!-- Payment Dialog -->
+            <v-dialog v-model="paymentDialog" max-width="500px">
+                <v-card>
+                    <v-card-title>Ajouter un paiement</v-card-title>
+                    <v-card-text>
+                        <div v-if="selectedOrder" class="mb-4">
+                            <div class="font-weight-bold mb-2">Détails de la commande:</div>
+                            <div>Client: {{ selectedOrder.customer?.name }}</div>
+                            <div>Total: {{ formatCurrency(selectedOrder.total_amount) }}</div>
+                            <div>Déjà payé: {{ formatCurrency(selectedOrder.paid_amount) }}</div>
+                            <div>Reste à payer: {{ formatCurrency(selectedOrder.remaining_amount) }}</div>
+                        </div>
+                        <v-divider class="mb-4"></v-divider>
+                        <v-form @submit.prevent="submitPayment">
+                            <v-text-field
+                                v-model.number="paymentForm.amount"
+                                label="Montant"
+                                type="number"
+                                min="0"
+                                :error-messages="paymentForm.errors.amount"
+                                required
+                            />
+                            <v-select
+                                v-model="paymentForm.payment_method"
+                                :items="['CASH', 'WAVE', 'OM']"
+                                label="Mode de paiement"
+                                :error-messages="paymentForm.errors.payment_method"
+                                required
+                            />
+                            <v-textarea
+                                v-model="paymentForm.comment"
+                                label="Commentaire"
+                                :error-messages="paymentForm.errors.comment"
+                            />
+                            <v-alert
+                                v-if="paymentForm.errors.error"
+                                type="error"
+                                class="mb-4"
+                            >
+                                {{ paymentForm.errors.error }}
+                            </v-alert>
+                            <v-card-actions>
+                                <v-spacer />
+                                <v-btn color="error" @click="paymentDialog = false">Annuler</v-btn>
+                                <v-btn 
+                                    color="success" 
+                                    type="submit" 
+                                    :loading="paymentForm.processing"
+                                    :disabled="paymentForm.processing"
+                                    @click="submitPayment"
+                                >
+                                    Enregistrer
+                                </v-btn>
+                            </v-card-actions>
+                        </v-form>
+                    </v-card-text>
+                </v-card>
+            </v-dialog>
+
+            <!-- Payments List Dialog -->
+            <v-dialog v-model="paymentsDialog" max-width="800px">
+                <v-card>
+                    <v-toolbar color="primary" class="text-white">
+                        <v-toolbar-title>Historique des paiements</v-toolbar-title>
+                        <v-spacer></v-spacer>
+                        <v-btn icon="mdi-close" variant="text" @click="paymentsDialog = false" />
+                    </v-toolbar>
+                    
+                    <v-card-text class="pt-4">
+                        <div v-if="selectedOrderPayments" class="mb-4">
+                            <v-row>
+                                <v-col cols="12" sm="6" md="3">
+                                    <div class="text-subtitle-2">Client</div>
+                                    <div class="text-h6">{{ selectedOrderPayments.customer?.name }}</div>
+                                </v-col>
+                                <v-col cols="12" sm="6" md="3">
+                                    <div class="text-subtitle-2">Total</div>
+                                    <div class="text-h6">{{ formatCurrency(selectedOrderPayments.total_amount) }}</div>
+                                </v-col>
+                                <v-col cols="12" sm="6" md="3">
+                                    <div class="text-subtitle-2">Déjà payé</div>
+                                    <div class="text-h6">{{ formatCurrency(selectedOrderPayments.paid_amount) }}</div>
+                                </v-col>
+                                <v-col cols="12" sm="6" md="3">
+                                    <div class="text-subtitle-2">Reste à payer</div>
+                                    <div class="text-h6">{{ formatCurrency(selectedOrderPayments.remaining_amount) }}</div>
+                                </v-col>
+                            </v-row>
+                            <v-row class="mt-2">
+                                <v-col cols="12">
+                                    <v-chip
+                                        :color="selectedOrderPayments.is_fully_paid ? 'success' : 'warning'"
+                                        class="mt-1"
+                                    >
+                                        {{ selectedOrderPayments.is_fully_paid ? 'Payé' : 'Paiement partiel' }}
+                                    </v-chip>
+                                </v-col>
+                            </v-row>
+                        </div>
+
+                        <v-divider class="mb-4"></v-divider>
+
+                        <div v-if="selectedOrderPayments?.payments?.length">
+                            <v-table>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Montant</th>
+                                        <th>Mode de paiement</th>
+                                        <th>Commentaire</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="payment in selectedOrderPayments.payments" :key="payment.id">
+                                        <td>{{ formatDate(payment.created_at) }}</td>
+                                        <td>{{ formatCurrency(payment.amount) }}</td>
+                                        <td>
+                                            <v-chip
+                                                :color="getPaymentMethodColor(payment.payment_method)"
+                                                size="small"
+                                            >
+                                                {{ payment.payment_method }}
+                                            </v-chip>
+                                        </td>
+                                        <td>{{ payment.comment || '-' }}</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot v-if="selectedOrderPayments.payments.length > 0">
+                                    <tr>
+                                        <td class="text-right font-weight-bold">Total</td>
+                                        <td class="font-weight-bold">{{ formatCurrency(selectedOrderPayments.paid_amount) }}</td>
+                                        <td colspan="2"></td>
+                                    </tr>
+                                </tfoot>
+                            </v-table>
+                        </div>
+                        <div v-else class="text-center py-4">
+                            <v-icon icon="mdi-cash-remove" size="48" color="grey" class="mb-2" />
+                            <div class="text-grey">Aucun paiement enregistré</div>
+                        </div>
+                    </v-card-text>
+
+                    <v-card-actions>
+                        <v-spacer />
+                        <v-btn
+                            color="primary"
+                            @click="openPaymentDialog(selectedOrderPayments)"
+                            :disabled="selectedOrderPayments?.is_fully_paid"
+                        >
+                            <v-icon start>mdi-cash-plus</v-icon>
+                            Ajouter un paiement
                         </v-btn>
                     </v-card-actions>
                 </v-card>

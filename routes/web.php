@@ -10,6 +10,7 @@ use App\Http\Controllers\ZoneController;
 use App\Http\Controllers\LigneController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\DeliveryBatchController;
+use App\Http\Controllers\PaymentController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -69,6 +70,9 @@ Route::middleware('auth')->group(function () {
         ->name('delivery-batches.export-pdf');
 
     Route::get('/clients/{client}/history', [CustomerController::class, 'history'])->name('clients.history');
+    Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
+    Route::get('/orders/{order}/payments', [PaymentController::class, 'index'])->name('orders.payments.index');
+
 });
 
 require __DIR__.'/auth.php';

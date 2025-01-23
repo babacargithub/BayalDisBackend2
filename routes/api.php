@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SalespersonController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\CommercialController;
+use App\Http\Controllers\Api\PaymentController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -45,4 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('ventes/{vente}/pay', [SalespersonController::class, 'payVente']);
         Route::get('/activity_report', [SalespersonController::class, 'getActivityReport']);
     });
+
+    // Add this route with the other API routes
+    Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
 });
