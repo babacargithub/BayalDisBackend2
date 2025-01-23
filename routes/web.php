@@ -11,6 +11,7 @@ use App\Http\Controllers\LigneController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\SalesInvoiceController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -73,6 +74,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index'])->name('orders.payments.index');
 
+    Route::resource('sales-invoices', SalesInvoiceController::class);
+    Route::post('/sales-invoices/{salesInvoice}/items', [SalesInvoiceController::class, 'addItem'])->name('sales-invoices.items.store');
+    Route::delete('/sales-invoices/{salesInvoice}/items/{item}', [SalesInvoiceController::class, 'removeItem'])->name('sales-invoices.items.destroy');
+    Route::post('/sales-invoices/{salesInvoice}/payments', [SalesInvoiceController::class, 'addPayment'])->name('sales-invoices.payments.store');
+    Route::delete('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'removePayment'])->name('sales-invoices.payments.destroy');
 });
 
 require __DIR__.'/auth.php';

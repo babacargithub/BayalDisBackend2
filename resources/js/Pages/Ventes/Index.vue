@@ -379,7 +379,6 @@ const deleteVente = () => {
                             label="Prix unitaire"
                             type="number"
                             :error-messages="form.errors.price"
-                            readonly
                         />
                         <v-radio-group
                             v-model="form.payment_status"

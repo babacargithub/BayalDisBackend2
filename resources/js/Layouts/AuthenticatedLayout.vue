@@ -6,10 +6,20 @@ import { Link } from '@inertiajs/vue3';
 const showSidebar = ref(false);
 const clientsDropdownOpen = ref(false);
 const ordersDropdownOpen = ref(false);
+const ventesDropdownOpen = ref(false);
 
 const menuItems = [
     { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
-    { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cash-register' },
+    { 
+        name: 'Ventes',
+        icon: 'mdi-cash-register',
+        isDropdown: true,
+        ref: ventesDropdownOpen,
+        items: [
+            { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cash-register' },
+            { name: 'Factures', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
+        ]
+    },
     { 
         name: 'Clients & Zones',
         icon: 'mdi-account-group',

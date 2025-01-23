@@ -9,17 +9,24 @@ class Payment extends Model
 {
     protected $fillable = [
         'order_id',
+        'sales_invoice_id',
         'amount',
-        'payment_method',
-        'comment'
+        'payment_date',
+        'comment',
     ];
 
     protected $casts = [
-        'amount' => 'integer'
+        'amount' => 'integer',
+        'payment_date' => 'datetime',
     ];
 
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function salesInvoice(): BelongsTo
+    {
+        return $this->belongsTo(SalesInvoice::class);
     }
 } 
