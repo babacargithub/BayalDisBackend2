@@ -119,7 +119,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { useForm } from '@inertiajs/vue3'
+import { useForm, router } from '@inertiajs/vue3'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -170,20 +170,32 @@ const formatPrice = (price) => {
 }
 
 const addItem = () => {
+  // Sync form data with newItem before submission
+  form.product_id = newItem.value.product_id;
+  form.quantity = newItem.value.quantity;
+  form.price = newItem.value.price;
+
   form.post(route('sales-invoices.items.store', props.invoice.id), {
+    preserveScroll: true,
     onSuccess: () => {
-      showAddItemForm.value = false
-      emit('updated')
-      form.reset()
+      showAddItemForm.value = false;
+      form.reset();
+      newItem.value = {
+        product_id: '',
+        quantity: 1,
+        price: 0
+      };
+      emit('updated');
     }
-  })
+  });
 }
 
 const deleteItem = (item) => {
   if (confirm('Are you sure you want to delete this item?')) {
     router.delete(route('sales-invoices.items.destroy', [props.invoice.id, item.id]), {
+      preserveScroll: true,
       onSuccess: () => {
-        emit('updated')
+        emit('updated');
       }
     })
   }

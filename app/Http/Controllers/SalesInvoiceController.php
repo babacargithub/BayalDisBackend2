@@ -158,6 +158,8 @@ class SalesInvoiceController extends Controller
 
         try {
             DB::beginTransaction();
+            
+            // Create the new item
             Vente::create([
                 'sales_invoice_id' => $salesInvoice->id,
                 'product_id' => $request->product_id,
@@ -167,12 +169,24 @@ class SalesInvoiceController extends Controller
                 'paid' => $salesInvoice->paid,
                 'should_be_paid_at' => $salesInvoice->should_be_paid_at,
             ]);
+
+            // Reload the invoice with its relationships
+            $salesInvoice->load([
+                'items.product',
+                'customer',
+                'payments'
+            ]);
+            
             DB::commit();
-            return redirect()->back()->with('success', 'Item added successfully.');
+            
+            return redirect()->back()->with([
+                'success' => 'Item added successfully',
+                'invoice' => $salesInvoice
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             report($e);
-            return redirect()->back()->with('error', 'Failed to add item. Please try again.');
+            return redirect()->back()->with('error', 'Failed to add item');
         }
     }
 
@@ -189,12 +203,24 @@ class SalesInvoiceController extends Controller
         try {
             DB::beginTransaction();
             $vente->delete();
+            
+            // Reload the invoice with its relationships
+            $salesInvoice->load([
+                'items.product',
+                'customer',
+                'payments'
+            ]);
+            
             DB::commit();
-            return redirect()->back()->with('success', 'Item removed successfully.');
+            
+            return redirect()->back()->with([
+                'success' => 'Item removed successfully',
+                'invoice' => $salesInvoice
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             report($e);
-            return redirect()->back()->with('error', 'Failed to remove item. Please try again.');
+            return redirect()->back()->with('error', 'Failed to remove item');
         }
     }
 
