@@ -210,16 +210,18 @@ class SalesInvoiceController extends Controller
             return response()->json(['message' => 'Invoice is already paid'], 422);
         }
 
-        $totalPaid = $salesInvoice->payments()->sum('amount');
-        $remaining = $salesInvoice->total - $totalPaid;
-
-        if ($request->amount > $remaining) {
-            return response()->json(['message' => 'Payment amount exceeds remaining balance'], 422);
-        }
-
         try {
             DB::beginTransaction();
-            
+
+            // Get current total paid amount
+            $totalPaid = $salesInvoice->payments()->sum('amount');
+            $remaining = $salesInvoice->total - $totalPaid;
+
+            if ($request->amount > $remaining) {
+                return response()->json(['message' => 'Payment amount exceeds remaining balance'], 422);
+            }
+
+            // Create the payment
             $payment = $salesInvoice->payments()->create([
                 'amount' => $request->amount,
                 'payment_date' => $request->payment_date,
@@ -229,7 +231,12 @@ class SalesInvoiceController extends Controller
             // Check if invoice is fully paid
             $newTotalPaid = $totalPaid + $request->amount;
             if ($newTotalPaid >= $salesInvoice->total) {
+                // Update invoice and related ventes
                 $salesInvoice->update(['paid' => true]);
+                $salesInvoice->items()->update([
+                    'paid' => true,
+                    'paid_at' => now(),
+                ]);
             }
 
             DB::commit();

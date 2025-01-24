@@ -167,12 +167,17 @@ const formatDate = (date) => {
 const addPayment = () => {
   form.post(route('sales-invoices.payments.store', props.invoice.id), {
     onSuccess: () => {
-      showAddPaymentForm.value = false
-      emit('updated')
-      form.reset()
+      showAddPaymentForm.value = false;
+      form.reset();
+      emit('updated');
+    },
+    onError: (errors) => {
+      if (errors.message) {
+        alert(errors.message);
+      }
     }
-  })
-}
+  });
+};
 
 const deletePayment = (payment) => {
   if (confirm('Êtes-vous sûr de vouloir supprimer ce paiement?')) {

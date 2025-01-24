@@ -243,13 +243,12 @@ class SalespersonController extends Controller
 
     public function payVente(Request $request, Vente $vente)
     {
-        try {
+
             $validated = $request->validate([
                 'payment_method' => 'required|in:' . implode(',', [
                     Vente::PAYMENT_METHOD_CASH,
                     Vente::PAYMENT_METHOD_WAVE,
                     Vente::PAYMENT_METHOD_OM,
-                    Vente::PAYMENT_METHOD_FREE,
                 ]),
             ]);
 
@@ -259,10 +258,7 @@ class SalespersonController extends Controller
             $vente->save();
 
             return response()->json($vente->load(['customer', 'product']));
-        } catch (\Exception $e) {
-            \Log::error('Error paying vente: ' . $e->getMessage());
-            return response()->json(['message' => 'Error paying vente'], 500);
-        }
+
     }
 
     public function getVentes(Request $request)
@@ -299,7 +295,7 @@ class SalespersonController extends Controller
                     'total' => $vente->price * $vente->quantity,
                     'paid' => (bool)$vente->paid,
                     'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
-                    'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
+                    'should_be_paid_at' => $vente->should_be_paid_at,
                     'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
                 ];
             }),

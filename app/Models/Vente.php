@@ -10,9 +10,9 @@ class Vente extends Model
 {
     use HasFactory;
 
-    const PAYMENT_METHOD_CASH = 'CASH';
-    const PAYMENT_METHOD_WAVE = 'WAVE';
-    const PAYMENT_METHOD_OM = 'OM';
+    const PAYMENT_METHOD_CASH = 'Cash';
+    const PAYMENT_METHOD_WAVE = 'Wave';
+    const PAYMENT_METHOD_OM = 'Om';
 
     protected $fillable = [
         'customer_id',
@@ -34,6 +34,8 @@ class Vente extends Model
         'quantity' => 'integer',
         'price' => 'integer',
         'should_be_paid_at' => 'datetime',
+        "created_at" => 'datetime',
+        "updated_at" => 'datetime',
         'paid_at' => 'datetime',
         'order_id' => 'integer',
     ];
