@@ -388,4 +388,50 @@ class SalesInvoiceController extends Controller
             return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour du paiement. Veuillez réessayer.']);
         }
     }
+
+    public function updateItem(Request $request, SalesInvoice $salesInvoice, Vente $item)
+    {
+        if ($salesInvoice->paid) {
+            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée']);
+        }
+
+        if ($item->sales_invoice_id !== $salesInvoice->id || $item->type !== 'INVOICE_ITEM') {
+            return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture']);
+        }
+
+        try {
+            $validated = $request->validate([
+                'product_id' => 'required|exists:products,id',
+                'quantity' => 'required|integer|min:1',
+                'price' => 'required|integer|min:0',
+            ]);
+
+            DB::beginTransaction();
+            
+            // Update the item
+            $item->update([
+                'product_id' => $request->product_id,
+                'quantity' => $request->quantity,
+                'price' => $request->price,
+            ]);
+
+            // Reload the invoice with its relationships
+            $salesInvoice->load([
+                'items.product',
+                'customer',
+                'payments'
+            ]);
+            
+            DB::commit();
+            
+            return redirect()->back()->with([
+                'success' => 'Article mis à jour avec succès',
+                'invoice' => $salesInvoice
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            report($e);
+            return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour de l\'article. Veuillez réessayer.']);
+        }
+    }
 } 

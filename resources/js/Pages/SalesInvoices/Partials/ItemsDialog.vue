@@ -81,20 +81,97 @@
           </thead>
           <tbody>
             <tr v-for="item in invoice.items" :key="item.id">
-              <td>{{ item.product.name }}</td>
-              <td>{{ item.quantity }}</td>
-              <td>{{ formatPrice(item.price) }}</td>
+              <td>
+                <template v-if="editingItem?.id === item.id">
+                  <v-select
+                    v-model="editForm.product_id"
+                    :items="products"
+                    item-title="name"
+                    item-value="id"
+                    density="compact"
+                    hide-details
+                    :error-messages="editForm.errors.product_id"
+                  />
+                </template>
+                <template v-else>
+                  {{ item.product.name }}
+                </template>
+              </td>
+              <td>
+                <template v-if="editingItem?.id === item.id">
+                  <v-text-field
+                    v-model.number="editForm.quantity"
+                    type="number"
+                    min="1"
+                    density="compact"
+                    hide-details
+                    :error-messages="editForm.errors.quantity"
+                  />
+                </template>
+                <template v-else>
+                  {{ item.quantity }}
+                </template>
+              </td>
+              <td>
+                <template v-if="editingItem?.id === item.id">
+                  <v-text-field
+                    v-model.number="editForm.price"
+                    type="number"
+                    min="0"
+                    density="compact"
+                    hide-details
+                    :error-messages="editForm.errors.price"
+                  />
+                </template>
+                <template v-else>
+                  {{ formatPrice(item.price) }}
+                </template>
+              </td>
               <td>{{ formatPrice(item.subtotal) }}</td>
-              <td v-if="!invoice.paid">
-                <v-btn
-                  icon
-                  color="error"
-                  size="small"
-                  @click="deleteItem(item)"
-                  :title="'Supprimer'"
-                >
-                  <v-icon>mdi-delete</v-icon>
-                </v-btn>
+              <td>
+                <div class="d-flex gap-2">
+                  <template v-if="editingItem?.id === item.id">
+                    <v-btn
+                      icon
+                      size="small"
+                      color="success"
+                      @click="updateItem"
+                      :loading="editForm.processing"
+                      :title="'Sauvegarder'"
+                    >
+                      <v-icon>mdi-check</v-icon>
+                    </v-btn>
+                    <v-btn
+                      icon
+                      size="small"
+                      color="error"
+                      @click="cancelEditing"
+                      :title="'Annuler'"
+                    >
+                      <v-icon>mdi-close</v-icon>
+                    </v-btn>
+                  </template>
+                  <template v-else>
+                    <v-btn
+                      icon
+                      size="small"
+                      color="primary"
+                      @click="startEditing(item)"
+                      :title="'Modifier'"
+                    >
+                      <v-icon>mdi-pencil</v-icon>
+                    </v-btn>
+                    <v-btn
+                      icon
+                      size="small"
+                      color="error"
+                      @click="deleteItem(item)"
+                      :title="'Supprimer'"
+                    >
+                      <v-icon>mdi-delete</v-icon>
+                    </v-btn>
+                  </template>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -161,6 +238,13 @@ const form = useForm({
   price: 0
 })
 
+const editingItem = ref(null)
+const editForm = useForm({
+  product_id: null,
+  quantity: null,
+  price: null
+})
+
 const formatPrice = (price) => {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
@@ -214,5 +298,31 @@ const updatePrice = (productId) => {
       newItem.value.price = product.price
     }
   }
+}
+
+const startEditing = (item) => {
+  editingItem.value = item
+  editForm.product_id = item.product_id
+  editForm.quantity = item.quantity
+  editForm.price = item.price
+}
+
+const cancelEditing = () => {
+  editingItem.value = null
+  editForm.reset()
+}
+
+const updateItem = () => {
+  editForm.put(route('sales-invoices.items.update', [props.invoice.id, editingItem.value.id]), {
+    preserveScroll: true,
+    onSuccess: (response) => {
+      editingItem.value = null
+      editForm.reset()
+      if (response?.props?.invoice) {
+        Object.assign(props.invoice, response.props.invoice)
+      }
+      emit('updated')
+    }
+  })
 }
 </script> 
