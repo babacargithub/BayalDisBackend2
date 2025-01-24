@@ -17,10 +17,11 @@ class Order extends Model
     protected $fillable = [
         'customer_id',
         'commercial_id',
-        'status',
-        'comment',
-        'should_be_delivered_at',
         'delivery_batch_id',
+        'sales_invoice_id',
+        'status',
+        'should_be_delivered_at',
+        'comment',
     ];
 
     protected $with = ['items.product', 'customer', 'payments'];
@@ -109,6 +110,11 @@ class Order extends Model
     public function getIsFullyPaidAttribute()
     {
         return $this->paid_amount >= $this->total_amount;
+    }
+
+    public function salesInvoice()
+    {
+        return $this->belongsTo(SalesInvoice::class);
     }
 
 }

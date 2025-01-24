@@ -8,9 +8,11 @@ use App\Models\Product;
 use App\Models\Commercial;
 use App\Models\Livreur;
 use App\Models\OrderItem;
+use App\Models\SalesInvoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -157,5 +159,47 @@ class OrderController extends Controller
                 'success' => 'Article supprimé avec succès',
                 'order' => $order
             ]);
+    }
+
+    public function createInvoice(Order $order)
+    {
+        // Check if order already has an invoice
+        if ($order->sales_invoice_id) {
+            return redirect()->back()->withErrors(['error' => 'Une facture existe déjà pour cette commande.']);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Create the invoice
+            $invoice = SalesInvoice::create([
+                'customer_id' => $order->customer_id,
+                'comment' => "Facture générée à partir de la commande #{$order->id}",
+                'paid' => false,
+                'should_be_paid_at' => now()->addDays(30), // Default 30 days payment term
+            ]);
+
+            // Create invoice items from order items
+            foreach ($order->items as $item) {
+                $invoice->items()->create([
+                    'product_id' => $item->product_id,
+                    'quantity' => $item->quantity,
+                    'price' => $item->price,
+                    'type' => 'INVOICE_ITEM',
+                    'paid' => false,
+                    'should_be_paid_at' => $invoice->should_be_paid_at,
+                ]);
+            }
+
+            // Link the order to the invoice
+            $order->update(['sales_invoice_id' => $invoice->id]);
+
+            DB::commit();
+            return redirect()->back()->with('success', 'Facture créée avec succès.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            report($e);
+            return redirect()->back()->withErrors(['error' => 'Échec de la création de la facture. Veuillez réessayer.']);
+        }
     }
 }

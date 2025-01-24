@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
@@ -39,6 +39,9 @@ const selectedOrder = ref(null);
 const isSubmitting = ref(false);
 const paymentsDialog = ref(false);
 const selectedOrderPayments = ref(null);
+const showSnackbar = ref(false);
+const snackbarText = ref('');
+const snackbarColor = ref('success');
 
 const form = useForm({
     customer_id: '',
@@ -202,6 +205,22 @@ const getPaymentMethodColor = (method) => {
             return 'grey';
     }
 };
+
+const createInvoice = (order) => {
+    router.post(route('orders.create-invoice', order.id), {}, {
+        onSuccess: () => {
+            snackbarColor.value = 'success';
+            snackbarText.value = 'Facture créée avec succès';
+            showSnackbar.value = true;
+            router.reload({ preserveScroll: true });
+        },
+        onError: (errors) => {
+            snackbarColor.value = 'error';
+            snackbarText.value = errors.error || 'Échec de la création de la facture';
+            showSnackbar.value = true;
+        }
+    });
+};
 </script>
 
 <template>
@@ -289,32 +308,42 @@ const getPaymentMethodColor = (method) => {
                                 </div>
                             </td>
                             <td>
-                                <v-btn 
-                                    icon="mdi-pencil" 
-                                    variant="text" 
-                                    color="primary"
-                                    @click="openDialog(order)"
-                                />
-                                <v-btn 
-                                    icon="mdi-cash-plus" 
-                                    variant="text" 
-                                    color="success"
-                                    @click="openPaymentDialog(order)"
-                                    title="Ajouter un paiement"
-                                />
-                                <v-btn 
-                                    icon="mdi-cash-multiple" 
-                                    variant="text" 
-                                    color="info"
-                                    @click="openPaymentsDialog(order)"
-                                    title="Voir les paiements"
-                                />
-                                <v-btn 
-                                    icon="mdi-delete" 
-                                    variant="text" 
-                                    color="error"
-                                    @click="openDeleteDialog(order)"
-                                />
+                                <div class="flex gap-2">
+                                    <v-btn 
+                                        icon="mdi-pencil" 
+                                        variant="text" 
+                                        color="primary"
+                                        @click="openDialog(order)"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-cash-plus" 
+                                        variant="text" 
+                                        color="success"
+                                        @click="openPaymentDialog(order)"
+                                        title="Ajouter un paiement"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-cash-multiple" 
+                                        variant="text" 
+                                        color="info"
+                                        @click="openPaymentsDialog(order)"
+                                        title="Voir les paiements"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-file-document-plus" 
+                                        variant="text" 
+                                        color="primary"
+                                        @click="createInvoice(order)"
+                                        :disabled="order.sales_invoice_id !== null"
+                                        :title="order.sales_invoice_id ? 'Facture déjà créée' : 'Créer une facture'"
+                                    />
+                                    <v-btn 
+                                        icon="mdi-delete" 
+                                        variant="text" 
+                                        color="error"
+                                        @click="openDeleteDialog(order)"
+                                    />
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -584,6 +613,23 @@ const getPaymentMethodColor = (method) => {
                     </v-card-actions>
                 </v-card>
             </v-dialog>
+
+            <!-- Success/Error Notification Dialog -->
+            <v-snackbar
+                v-model="showSnackbar"
+                :color="snackbarColor"
+                :timeout="3000"
+            >
+                {{ snackbarText }}
+                <template v-slot:actions>
+                    <v-btn
+                        variant="text"
+                        @click="showSnackbar = false"
+                    >
+                        Fermer
+                    </v-btn>
+                </template>
+            </v-snackbar>
         </v-container>
     </AuthenticatedLayout>
 </template> 
