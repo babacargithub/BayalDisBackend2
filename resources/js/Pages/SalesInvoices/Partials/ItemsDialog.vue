@@ -165,7 +165,7 @@
                       icon
                       size="small"
                       color="error"
-                      @click="deleteItem(item)"
+                      @click="openDeleteDialog(item)"
                       :title="'Supprimer'"
                     >
                       <v-icon>mdi-delete</v-icon>
@@ -189,6 +189,47 @@
       <v-card-actions>
         <v-spacer />
         <v-btn color="primary" @click="dialog = false">Fermer</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- Delete Confirmation Dialog -->
+  <v-dialog v-model="showDeleteDialog" max-width="400px">
+    <v-card>
+      <v-card-title class="text-h6">
+        Confirmer la suppression
+      </v-card-title>
+      <v-card-text>
+        <v-alert
+          v-if="deleteForm.errors.error"
+          type="error"
+          class="mb-4"
+          variant="tonal"
+          closable
+        >
+          {{ deleteForm.errors.error }}
+        </v-alert>
+        <div v-else>
+          Êtes-vous sûr de vouloir supprimer cet article ?
+        </div>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn
+          color="grey-darken-1"
+          variant="text"
+          @click="showDeleteDialog = false"
+        >
+          Annuler
+        </v-btn>
+        <v-btn
+          color="error"
+          variant="text"
+          @click="confirmDelete"
+          :loading="deleteForm.processing"
+        >
+          Supprimer
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -245,6 +286,10 @@ const editForm = useForm({
   price: null
 })
 
+const showDeleteDialog = ref(false)
+const itemToDelete = ref(null)
+const deleteForm = useForm({})
+
 const formatPrice = (price) => {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
@@ -274,15 +319,24 @@ const addItem = () => {
   });
 }
 
-const deleteItem = (item) => {
-  if (confirm('Are you sure you want to delete this item?')) {
-    router.delete(route('sales-invoices.items.destroy', [props.invoice.id, item.id]), {
-      preserveScroll: true,
-      onSuccess: () => {
-        emit('updated');
-      }
-    })
-  }
+const openDeleteDialog = (item) => {
+  deleteForm.clearErrors()
+  itemToDelete.value = item
+  showDeleteDialog.value = true
+}
+
+const confirmDelete = () => {
+  deleteForm.delete(route('sales-invoices.items.destroy', [props.invoice.id, itemToDelete.value.id]), {
+    preserveScroll: true,
+    onSuccess: () => {
+      showDeleteDialog.value = false
+      itemToDelete.value = null
+      emit('updated')
+    },
+    onError: () => {
+      // Keep the dialog open if there are errors
+    }
+  })
 }
 
 const filterProduct = (item, queryText) => {
@@ -325,4 +379,12 @@ const updateItem = () => {
     }
   })
 }
+
+// Add watch for showDeleteDialog
+watch(showDeleteDialog, (val) => {
+  if (!val) {
+    deleteForm.clearErrors()
+    itemToDelete.value = null
+  }
+})
 </script> 

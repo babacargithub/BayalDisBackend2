@@ -200,19 +200,19 @@ class SalesInvoiceController extends Controller
         }
     }
 
-    public function removeItem(SalesInvoice $salesInvoice, Vente $vente)
+    public function removeItem(SalesInvoice $salesInvoice, Vente $item)
     {
         if ($salesInvoice->paid) {
-            return response()->json(['message' => 'Cannot modify a paid invoice'], 422);
+            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée']);
         }
 
-        if ($vente->sales_invoice_id !== $salesInvoice->id || $vente->type !== 'INVOICE_ITEM') {
-            return response()->json(['message' => 'Item does not belong to this invoice'], 422);
+        if ($item->sales_invoice_id !== $salesInvoice->id || $item->type !== 'INVOICE_ITEM') {
+            return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture']);
         }
 
         try {
             DB::beginTransaction();
-            $vente->delete();
+            $item->delete();
             
             // Reload the invoice with its relationships
             $salesInvoice->load([
@@ -224,13 +224,13 @@ class SalesInvoiceController extends Controller
             DB::commit();
             
             return redirect()->back()->with([
-                'success' => 'Item removed successfully',
+                'success' => 'Article supprimé avec succès',
                 'invoice' => $salesInvoice
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
             report($e);
-            return redirect()->back()->with('error', 'Failed to remove item');
+            return redirect()->back()->withErrors(['error' => 'Échec de la suppression de l\'article. Veuillez réessayer.']);
         }
     }
 
