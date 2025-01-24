@@ -47,6 +47,9 @@ class DashboardController extends Controller
             $total_amount_unpaid = Vente::whereDate('created_at', $today)
                 ->where('paid', false)
                 ->sum(DB::raw('price * quantity'));
+
+            $total_profit = Vente::whereDate('created_at', $today)
+                ->sum('profit');
             
             return [
                 'total_customers' => Customer::whereDate('created_at', $today)->count(),
@@ -58,6 +61,7 @@ class DashboardController extends Controller
                 'total_amount_paid' => $total_amount_paid,
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+                'total_profit' => $total_profit,
             ];
         } catch (\Exception $e) {
             Log::error('Error getting daily stats: ' . $e->getMessage());
@@ -77,6 +81,9 @@ class DashboardController extends Controller
             $total_amount_unpaid = Vente::where('created_at', '>=', $startOfWeek)
                 ->where('paid', false)
                 ->sum(DB::raw('price * quantity'));
+
+            $total_profit = Vente::where('created_at', '>=', $startOfWeek)
+                ->sum('profit');
             
             return [
                 'total_customers' => Customer::where('created_at', '>=', $startOfWeek)->count(),
@@ -88,6 +95,7 @@ class DashboardController extends Controller
                 'total_amount_paid' => $total_amount_paid,
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+                'total_profit' => $total_profit,
             ];
         } catch (\Exception $e) {
             Log::error('Error getting weekly stats: ' . $e->getMessage());
@@ -107,6 +115,9 @@ class DashboardController extends Controller
             $total_amount_unpaid = Vente::where('created_at', '>=', $startOfMonth)
                 ->where('paid', false)
                 ->sum(DB::raw('price * quantity'));
+
+            $total_profit = Vente::where('created_at', '>=', $startOfMonth)
+                ->sum('profit');
             
             return [
                 'total_customers' => Customer::where('created_at', '>=', $startOfMonth)->count(),
@@ -118,6 +129,7 @@ class DashboardController extends Controller
                 'total_amount_paid' => $total_amount_paid,
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+                'total_profit' => $total_profit,
             ];
         } catch (\Exception $e) {
             Log::error('Error getting monthly stats: ' . $e->getMessage());
@@ -133,6 +145,8 @@ class DashboardController extends Controller
             
             $total_amount_unpaid = Vente::where('paid', false)
                 ->sum(DB::raw('price * quantity'));
+
+            $total_profit = Vente::sum('profit');
             
             return [
                 'total_customers' => Customer::count(),
@@ -144,6 +158,7 @@ class DashboardController extends Controller
                 'total_amount_paid' => $total_amount_paid,
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+                'total_profit' => $total_profit,
                 'total_commerciaux' => Commercial::count(),
             ];
         } catch (\Exception $e) {

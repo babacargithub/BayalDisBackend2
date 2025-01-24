@@ -20,6 +20,7 @@ class Vente extends Model
         'commercial_id',
         'quantity',
         'price',
+        'profit',
         'paid',
         'payment_method',
         'should_be_paid_at',
@@ -33,6 +34,7 @@ class Vente extends Model
         'paid' => 'boolean',
         'quantity' => 'integer',
         'price' => 'integer',
+        'profit' => 'integer',
         'should_be_paid_at' => 'datetime',
         "created_at" => 'datetime',
         "updated_at" => 'datetime',
@@ -77,6 +79,11 @@ class Vente extends Model
         static::saving(function ($vente) {
             if ($vente->type === 'SINGLE' && !$vente->customer_id) {
                 throw new \Exception('Customer ID is required for single ventes');
+            }
+
+            // Calculate profit when saving
+            if ($vente->product) {
+                $vente->profit = ($vente->price - $vente->product->cost_price) * $vente->quantity;
             }
         });
     }

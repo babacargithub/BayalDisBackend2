@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -11,6 +11,7 @@ const props = defineProps({
 const form = useForm({
     name: '',
     price: '',
+    cost_price: '',
 });
 
 const dialog = ref(false);
@@ -19,11 +20,17 @@ const deleteDialog = ref(false);
 const itemToDelete = ref(null);
 const deleteForm = ref(null);
 
+const margin = computed(() => {
+    if (!form.price || !form.cost_price) return 0;
+    return ((form.price - form.cost_price) / form.cost_price * 100).toFixed(2);
+});
+
 const openDialog = (item = null) => {
     editedItem.value = item;
     if (item) {
         form.name = item.name;
         form.price = item.price;
+        form.cost_price = item.cost_price;
     } else {
         form.reset();
     }
@@ -77,6 +84,11 @@ const formatPrice = (price) => {
         currency: 'XOF'
     }).format(price);
 };
+
+const calculateMargin = (price, costPrice) => {
+    if (!price || !costPrice) return '0%';
+    return ((price - costPrice) / costPrice * 100).toFixed(2) + '%';
+};
 </script>
 
 <template>
@@ -99,7 +111,9 @@ const formatPrice = (price) => {
                         <thead>
                             <tr>
                                 <th>Nom</th>
-                                <th>Prix</th>
+                                <th>Prix de Vente</th>
+                                <th>Prix de Revient</th>
+                                <th>Marge</th>
                                 <th>Ventes totales</th>
                                 <th>Actions</th>
                             </tr>
@@ -108,6 +122,8 @@ const formatPrice = (price) => {
                             <tr v-for="produit in produits" :key="produit.id">
                                 <td>{{ produit.name }}</td>
                                 <td>{{ formatPrice(produit.price) }}</td>
+                                <td>{{ formatPrice(produit.cost_price) }}</td>
+                                <td>{{ calculateMargin(produit.price, produit.cost_price) }}</td>
                                 <td>{{ produit.ventes_count }}</td>
                                 <td>
                                     <v-btn 
@@ -141,11 +157,20 @@ const formatPrice = (price) => {
                             :error-messages="form.errors.name"
                         />
                         <v-text-field
+                            v-model="form.cost_price"
+                            label="Prix de Revient"
+                            type="number"
+                            :error-messages="form.errors.cost_price"
+                        />
+                        <v-text-field
                             v-model="form.price"
-                            label="Prix"
+                            label="Prix de Vente"
                             type="number"
                             :error-messages="form.errors.price"
                         />
+                        <div v-if="form.price && form.cost_price" class="text-subtitle-1 mb-4">
+                            Marge: {{ margin }}%
+                        </div>
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="dialog = false">Annuler</v-btn>
@@ -172,7 +197,9 @@ const formatPrice = (price) => {
                     <div v-if="itemToDelete" class="mt-4">
                         <strong>Détails du produit :</strong>
                         <div>Nom : {{ itemToDelete.name }}</div>
-                        <div>Prix : {{ formatPrice(itemToDelete.price) }}</div>
+                        <div>Prix de Vente : {{ formatPrice(itemToDelete.price) }}</div>
+                        <div>Prix de Revient : {{ formatPrice(itemToDelete.cost_price) }}</div>
+                        <div>Marge : {{ calculateMargin(itemToDelete.price, itemToDelete.cost_price) }}</div>
                         <div v-if="itemToDelete.ventes_count > 0" class="mt-2 text-error">
                             Attention : Ce produit a {{ itemToDelete.ventes_count }} vente(s) associée(s).
                         </div>

@@ -17,7 +17,8 @@ const props = defineProps({
             total_ventes_unpaid: 0,
             total_amount_gross: 0,
             total_amount_paid: 0,
-            total_amount_unpaid: 0
+            total_amount_unpaid: 0,
+            total_profit: 0
         })
     },
     weeklyStats: {
@@ -31,7 +32,8 @@ const props = defineProps({
             total_ventes_unpaid: 0,
             total_amount_gross: 0,
             total_amount_paid: 0,
-            total_amount_unpaid: 0
+            total_amount_unpaid: 0,
+            total_profit: 0
         })
     },
     monthlyStats: {
@@ -45,7 +47,8 @@ const props = defineProps({
             total_ventes_unpaid: 0,
             total_amount_gross: 0,
             total_amount_paid: 0,
-            total_amount_unpaid: 0
+            total_amount_unpaid: 0,
+            total_profit: 0
         })
     },
     overallStats: {
@@ -60,6 +63,7 @@ const props = defineProps({
             total_amount_gross: 0,
             total_amount_paid: 0,
             total_amount_unpaid: 0,
+            total_profit: 0,
             total_commerciaux: 0
         })
     }
@@ -68,10 +72,8 @@ const props = defineProps({
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('fr-FR', {
         style: 'currency',
-        currency: 'XOF',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }).format(amount || 0);
+        currency: 'XOF'
+    }).format(amount);
 };
 
 // Add computed properties for weekly and monthly sections
@@ -176,12 +178,11 @@ const monthlyVentesSection = `
                         <v-card class="mx-auto" elevation="2">
                             <v-card-text>
                                 <div class="text-overline mb-1">
-                                    MONTANT BRUT
+                                    TOTAL BÉNÉFICES
                                 </div>
-                                <div class="text-h5 mb-2 primary--text font-weight-bold">
-                                    {{ formatCurrency(overallStats.total_amount_gross || 0) }}
+                                <div class="text-h4 mb-2 success--text">
+                                    {{ formatCurrency(overallStats.total_profit) }}
                                 </div>
-                                <v-icon color="primary">mdi-cash-multiple</v-icon>
                             </v-card-text>
                         </v-card>
                     </v-col>
@@ -190,31 +191,14 @@ const monthlyVentesSection = `
                         <v-card class="mx-auto" elevation="2">
                             <v-card-text>
                                 <div class="text-overline mb-1">
-                                    MONTANT PAYÉ
+                                    TOTAL COMMERCIAUX
                                 </div>
-                                <div class="text-h5 mb-2 success--text font-weight-bold">
-                                    {{ formatCurrency(overallStats.total_amount_paid || 0) }}
+                                <div class="text-h4 mb-2">
+                                    {{ overallStats.total_commerciaux }}
                                 </div>
-                                <v-icon color="success">mdi-trending-up</v-icon>
                             </v-card-text>
                         </v-card>
                     </v-col>
-
-                    <v-col cols="12" sm="6" md="2">
-                        <v-card class="mx-auto" elevation="2">
-                            <v-card-text>
-                                <div class="text-overline mb-1">
-                                    MONTANT IMPAYÉ
-                                </div>
-                                <div class="text-h5 mb-2 error--text font-weight-bold">
-                                    {{ formatCurrency(overallStats.total_amount_unpaid || 0) }}
-                                </div>
-                                <v-icon color="error">mdi-cash-remove</v-icon>
-                            </v-card-text>
-                        </v-card>
-                    </v-col>
-
-                
                 </v-row>
 
                 <!-- Period Stats -->
@@ -280,6 +264,10 @@ const monthlyVentesSection = `
                                                         <div class="text-h6 font-weight-bold error--text">{{ formatCurrency(dailyStats.total_amount_unpaid) }}</div>
                                                         <div class="text-caption">Impayé</div>
                                                     </div>
+                                                    <div class="text-center">
+                                                        <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(dailyStats.total_profit) }}</div>
+                                                        <div class="text-caption">Bénéfice</div>
+                                                    </div>
                                                 </div>
                                             </v-card-text>
                                         </v-card>
@@ -340,6 +328,10 @@ const monthlyVentesSection = `
                                                     <div class="text-center">
                                                         <div class="text-h6 font-weight-bold error--text">{{ formatCurrency(weeklyStats.total_amount_unpaid) }}</div>
                                                         <div class="text-caption">Impayé</div>
+                                                    </div>
+                                                    <div class="text-center">
+                                                        <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(weeklyStats.total_profit) }}</div>
+                                                        <div class="text-caption">Bénéfice</div>
                                                     </div>
                                                 </div>
                                             </v-card-text>
@@ -402,7 +394,11 @@ const monthlyVentesSection = `
                                                         <div class="text-h6 font-weight-bold error--text">{{ formatCurrency(monthlyStats.total_amount_unpaid) }}</div>
                                                         <div class="text-caption">Impayé</div>
                                                     </div>
-                </div>
+                                                    <div class="text-center">
+                                                        <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(monthlyStats.total_profit) }}</div>
+                                                        <div class="text-caption">Bénéfice</div>
+                                                    </div>
+                                                </div>
                                             </v-card-text>
                                         </v-card>
                                     </v-col>

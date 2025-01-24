@@ -1,12 +1,11 @@
 <?php
 
-use Illuminate\Http\Request;
+use App\Http\Controllers\PaymentController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SalespersonController;
 use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\CommercialController;
-use App\Http\Controllers\Api\PaymentController;
+
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);

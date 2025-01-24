@@ -50,4 +50,4 @@ foreach ($tables as $table) {
     echo "\nCompleted table: {$table}\n";
 }
 
-echo "\nData transfer completed!\n"; 
+echo "\nData transfer completed!\n";
