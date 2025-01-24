@@ -434,4 +434,21 @@ class SalesInvoiceController extends Controller
             return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour de l\'article. Veuillez réessayer.']);
         }
     }
+
+    public function exportPdf(SalesInvoice $salesInvoice)
+    {
+        $salesInvoice->load([
+            'customer',
+            'items.product',
+        ]);
+
+        // Calculate total if not already done
+        $salesInvoice->total = $salesInvoice->items->sum('subtotal');
+
+        $pdf = \PDF::loadView('pdf.invoice', [
+            'invoice' => $salesInvoice
+        ]);
+
+        return $pdf->download('facture-' . $salesInvoice->id . '.pdf');
+    }
 } 

@@ -95,6 +95,16 @@
                     <v-btn
                       icon
                       size="small"
+                      color="primary"
+                      :href="route('sales-invoices.pdf', invoice.id)"
+                      target="_blank"
+                      :title="'Télécharger PDF'"
+                    >
+                      <v-icon>mdi-file-pdf-box</v-icon>
+                    </v-btn>
+                    <v-btn
+                      icon
+                      size="small"
                       color="error"
                       @click="openDeleteDialog(invoice)"
                       :title="'Supprimer'"
