@@ -11,14 +11,12 @@ class Payment extends Model
         'order_id',
         'sales_invoice_id',
         'amount',
-        'payment_date',
+        'payment_method',
         'comment',
     ];
 
     protected $casts = [
-        'amount' => 'integer',
-        'payment_date' => 'datetime',
-    ];
+        'amount' => 'integer'];
 
     public function order(): BelongsTo
     {

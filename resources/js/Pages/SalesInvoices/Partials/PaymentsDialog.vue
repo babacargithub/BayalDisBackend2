@@ -33,6 +33,28 @@
         <v-expand-transition>
           <div v-if="showAddPaymentForm">
             <v-form @submit.prevent="addPayment" class="mb-6">
+              <v-alert
+                v-if="errors.length > 0"
+                type="error"
+                class="mb-4"
+                variant="tonal"
+                closable
+              >
+                <ul class="ml-4">
+                  <li v-for="(error, index) in errors" :key="index">{{ error }}</li>
+                </ul>
+              </v-alert>
+
+              <v-alert
+                v-if="page.props.flash?.success"
+                type="success"
+                class="mb-4"
+                variant="tonal"
+                closable
+              >
+                {{ page.props.flash.success }}
+              </v-alert>
+
               <v-row>
                 <v-col cols="12" md="6">
                   <v-text-field
@@ -46,13 +68,17 @@
                   />
                 </v-col>
                 <v-col cols="12" md="6">
-                  <v-text-field
-                    v-model="form.payment_date"
-                    type="date"
-                    label="Date de Paiement"
-                    :error-messages="form.errors.payment_date"
+                  <v-radio-group
+                    v-model="form.payment_method"
+                    label="Méthode de paiement"
+                    :error-messages="form.errors.payment_method"
                     required
-                  />
+                    class="mt-0"
+                  >
+                    <v-radio value="Cash" label="Cash" />
+                    <v-radio value="Wave" label="Wave" />
+                    <v-radio value="Om" label="Om" />
+                  </v-radio-group>
                 </v-col>
                 <v-col cols="12">
                   <v-text-field
@@ -81,25 +107,101 @@
             <tr>
               <th>Date</th>
               <th>Montant</th>
+              <th>Payé par</th>
               <th>Commentaire</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="payment in invoice.payments" :key="payment.id">
-              <td>{{ formatDate(payment.payment_date) }}</td>
-              <td>{{ formatPrice(payment.amount) }}</td>
-              <td>{{ payment.comment }}</td>
+              <td>{{ formatDate(payment.created_at) }}</td>
               <td>
-                <v-btn
-                  icon
-                  color="error"
-                  size="small"
-                  @click="deletePayment(payment)"
-                  :title="'Supprimer'"
-                >
-                  <v-icon>mdi-delete</v-icon>
-                </v-btn>
+                <template v-if="editingPayment?.id === payment.id">
+                  <v-text-field
+                    v-model.number="editForm.amount"
+                    type="number"
+                    min="0"
+                    :max="invoice.total"
+                    density="compact"
+                    hide-details
+                    :error-messages="editForm.errors.amount"
+                  />
+                </template>
+                <template v-else>
+                  {{ formatPrice(payment.amount) }}
+                </template>
+              </td>
+              <td>
+                <template v-if="editingPayment?.id === payment.id">
+                  <v-select
+                    v-model="editForm.payment_method"
+                    :items="['Cash', 'Wave', 'Om']"
+                    density="compact"
+                    hide-details
+                    :error-messages="editForm.errors.payment_method"
+                  />
+                </template>
+                <template v-else>
+                  {{ payment.payment_method }}
+                </template>
+              </td>
+              <td>
+                <template v-if="editingPayment?.id === payment.id">
+                  <v-text-field
+                    v-model="editForm.comment"
+                    density="compact"
+                    hide-details
+                    :error-messages="editForm.errors.comment"
+                  />
+                </template>
+                <template v-else>
+                  {{ payment.comment }}
+                </template>
+              </td>
+              <td>
+                <div class="d-flex gap-2">
+                  <template v-if="editingPayment?.id === payment.id">
+                    <v-btn
+                      icon
+                      size="small"
+                      color="success"
+                      @click="updatePayment"
+                      :loading="editForm.processing"
+                      :title="'Sauvegarder'"
+                    >
+                      <v-icon>mdi-check</v-icon>
+                    </v-btn>
+                    <v-btn
+                      icon
+                      size="small"
+                      color="error"
+                      @click="cancelEditing"
+                      :title="'Annuler'"
+                    >
+                      <v-icon>mdi-close</v-icon>
+                    </v-btn>
+                  </template>
+                  <template v-else>
+                    <v-btn
+                      icon
+                      size="small"
+                      color="primary"
+                      @click="startEditing(payment)"
+                      :title="'Modifier'"
+                    >
+                      <v-icon>mdi-pencil</v-icon>
+                    </v-btn>
+                    <v-btn
+                      icon
+                      size="small"
+                      color="error"
+                      @click="deletePayment(payment)"
+                      :title="'Supprimer'"
+                    >
+                      <v-icon>mdi-delete</v-icon>
+                    </v-btn>
+                  </template>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -116,7 +218,7 @@
 
 <script setup>
 import { ref, watch, computed } from 'vue'
-import { useForm } from '@inertiajs/vue3'
+import { useForm, router, usePage } from '@inertiajs/vue3'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -130,6 +232,8 @@ const emit = defineEmits(['update:modelValue', 'updated'])
 
 const dialog = ref(props.modelValue)
 const showAddPaymentForm = ref(false)
+
+const page = usePage()
 
 watch(() => props.modelValue, (val) => {
   dialog.value = val
@@ -147,16 +251,29 @@ const totalPaid = computed(() => {
 })
 
 const form = useForm({
-  amount: 0,
-  payment_date: new Date().toISOString().split('T')[0],
-  comment: ''
+  amount: null,
+  payment_method: null,
+  comment: null
+})
+
+const editingPayment = ref(null)
+const editForm = useForm({
+  amount: null,
+  payment_method: null,
+  comment: null
+})
+
+const errors = computed(() => {
+  const formErrors = Object.values(form.errors)
+  const flashError = page.props.flash?.error
+  return [...formErrors, flashError].filter(Boolean)
 })
 
 const formatPrice = (price) => {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency: 'XOF',
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 0
   }).format(price)
 }
 
@@ -166,22 +283,45 @@ const formatDate = (date) => {
 
 const addPayment = () => {
   form.post(route('sales-invoices.payments.store', props.invoice.id), {
+    preserveScroll: true,
     onSuccess: () => {
-      showAddPaymentForm.value = false;
-      form.reset();
-      emit('updated');
-    },
-    onError: (errors) => {
-      if (errors.message) {
-        alert(errors.message);
-      }
+      form.reset()
+      showAddPaymentForm.value = false
+      emit('updated')
     }
-  });
-};
+  })
+}
+
+const startEditing = (payment) => {
+  editingPayment.value = payment
+  editForm.amount = payment.amount
+  editForm.payment_method = payment.payment_method
+  editForm.comment = payment.comment
+}
+
+const cancelEditing = () => {
+  editingPayment.value = null
+  editForm.reset()
+}
+
+const updatePayment = () => {
+  editForm.put(route('sales-invoices.payments.update', [props.invoice.id, editingPayment.value.id]), {
+    preserveScroll: true,
+    onSuccess: (response) => {
+      editingPayment.value = null
+      editForm.reset()
+      if (response?.props?.invoice) {
+        Object.assign(props.invoice, response.props.invoice)
+      }
+      emit('updated')
+    }
+  })
+}
 
 const deletePayment = (payment) => {
-  if (confirm('Êtes-vous sûr de vouloir supprimer ce paiement?')) {
+  if (confirm('Êtes-vous sûr de vouloir supprimer ce paiement ?')) {
     router.delete(route('sales-invoices.payments.destroy', [props.invoice.id, payment.id]), {
+      preserveScroll: true,
       onSuccess: () => {
         emit('updated')
       }

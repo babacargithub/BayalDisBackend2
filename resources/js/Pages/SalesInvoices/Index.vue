@@ -47,6 +47,8 @@
                 <th>Facture N°</th>
                 <th>Client</th>
                 <th>Total</th>
+                <th>Payé</th>
+                <th>Reste à payer</th>
                 <th>Échéance</th>
                 <th>Statut</th>
                 <th>Actions</th>
@@ -57,6 +59,12 @@
                 <td>{{ invoice.id }}</td>
                 <td>{{ invoice.customer.name }}</td>
                 <td>{{ formatPrice(invoice.total) }}</td>
+                <td>{{ formatPrice(invoice.total - getRemainingAmount(invoice)) }}</td>
+                <td>
+                  <span :class="getRemainingAmount(invoice) > 0 ? 'text-error' : ''">
+                    {{ formatPrice(getRemainingAmount(invoice)) }}
+                  </span>
+                </td>
                 <td>
                   {{ invoice.should_be_paid_at ? formatDate(invoice.should_be_paid_at) : 'N/A' }}
                 </td>
@@ -88,7 +96,7 @@
                       icon
                       size="small"
                       color="error"
-                      @click="deleteInvoice(invoice)"
+                      @click="openDeleteDialog(invoice)"
                       :title="'Supprimer'"
                     >
                       <v-icon>mdi-delete</v-icon>
@@ -126,12 +134,51 @@
       :invoice="selectedInvoice"
       @updated="refreshData"
     />
+
+    <!-- Delete Confirmation Dialog -->
+    <v-dialog v-model="showDeleteDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="text-h5">Confirmation de suppression</v-card-title>
+        <v-card-text>
+          Êtes-vous sûr de vouloir supprimer cette facture ? Cette action est irréversible.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="text" @click="showDeleteDialog = false">Annuler</v-btn>
+          <v-btn 
+            color="error" 
+            variant="text" 
+            @click="confirmDelete"
+          >
+            Supprimer
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Error Dialog -->
+    <v-dialog v-model="showErrorDialog" max-width="500px">
+      <v-card>
+        <v-card-title class="text-h5 text-error">
+          Erreur
+        </v-card-title>
+        <v-card-text class="pt-4">
+          {{ errorMessage }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="text" @click="showErrorDialog = false">
+            Fermer
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </AuthenticatedLayout>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
-import { Head } from '@inertiajs/vue3'
+import { Head, router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import CreateInvoiceDialog from './Partials/CreateInvoiceDialog.vue'
 import ItemsDialog from './Partials/ItemsDialog.vue'
@@ -148,6 +195,10 @@ const showCreateDialog = ref(false)
 const showItemsDialog = ref(false)
 const showPaymentsDialog = ref(false)
 const selectedInvoice = ref(null)
+const showDeleteDialog = ref(false)
+const invoiceToDelete = ref(null)
+const showErrorDialog = ref(false)
+const errorMessage = ref('')
 
 const filteredInvoices = computed(() => {
   if (filter.value === 'all') return props.invoices.data
@@ -168,6 +219,11 @@ const formatDate = (date) => {
   return new Date(date).toLocaleDateString('fr-FR')
 }
 
+const getRemainingAmount = (invoice) => {
+  const totalPaid = invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0
+  return invoice.total - totalPaid
+}
+
 const openItemsDialog = (invoice) => {
   selectedInvoice.value = invoice
   showItemsDialog.value = true
@@ -178,14 +234,27 @@ const openPaymentsDialog = (invoice) => {
   showPaymentsDialog.value = true
 }
 
-const deleteInvoice = async (invoice) => {
-  if (confirm('Êtes-vous sûr de vouloir supprimer cette facture ?')) {
-    await router.delete(route('sales-invoices.destroy', invoice.id))
-    refreshData()
+const openDeleteDialog = (invoice) => {
+  if (invoice.payments && invoice.payments.length > 0) {
+    errorMessage.value = 'Impossible de supprimer une facture avec des paiements'
+    showErrorDialog.value = true
+    return
   }
+  invoiceToDelete.value = invoice
+  showDeleteDialog.value = true
+}
+
+const confirmDelete = () => {
+  router.delete(route('sales-invoices.destroy', invoiceToDelete.value.id), {
+    onSuccess: () => {
+      showDeleteDialog.value = false
+      invoiceToDelete.value = null
+      refreshData()
+    }
+  })
 }
 
 const refreshData = () => {
-  router.reload()
+  router.reload({ preserveScroll: true })
 }
 </script> 

@@ -26,7 +26,7 @@ class SalesInvoiceController extends Controller
                 },
                 'items.product:id,name',
                 'payments' => function ($query) {
-                    $query->select('id', 'sales_invoice_id', 'amount');
+                    $query->select('id', 'sales_invoice_id', 'amount', 'created_at', 'comment','payment_method');
                 }
             ]);
 
@@ -131,10 +131,20 @@ class SalesInvoiceController extends Controller
 
     public function destroy(SalesInvoice $salesInvoice)
     {
+        // Check if invoice has payments
+        if ($salesInvoice->payments()->exists()) {
+            return redirect()->back()->with('error', 'Cannot delete invoice with payments.');
+        }
+
         try {
             DB::beginTransaction();
+            
+            // Delete related items first
             $salesInvoice->items()->delete();
+            
+            // Then delete the invoice
             $salesInvoice->delete();
+            
             DB::commit();
             return redirect()->route('sales-invoices.index')->with('success', 'Invoice deleted successfully.');
         } catch (\Exception $e) {
@@ -226,31 +236,34 @@ class SalesInvoiceController extends Controller
 
     public function addPayment(Request $request, SalesInvoice $salesInvoice)
     {
-        $request->validate([
-            'amount' => 'required|integer|min:1',
-            'payment_date' => 'required|date',
-            'comment' => 'nullable|string',
-        ]);
-
-        if ($salesInvoice->paid) {
-            return response()->json(['message' => 'Invoice is already paid'], 422);
-        }
-
         try {
+            $validated = $request->validate([
+                'amount' => 'required|integer|min:1',
+                'payment_method' => 'required|string|in:Cash,Wave,Om',
+                'comment' => 'nullable|string',
+            ]);
+
+            if ($salesInvoice->paid) {
+                return redirect()->back()->withErrors(['error' => 'La facture est déjà payée.']);
+            }
+
             DB::beginTransaction();
 
+            // Load items to ensure total is calculated correctly
+            $salesInvoice->load('items');
+            
             // Get current total paid amount
             $totalPaid = $salesInvoice->payments()->sum('amount');
             $remaining = $salesInvoice->total - $totalPaid;
 
             if ($request->amount > $remaining) {
-                return response()->json(['message' => 'Payment amount exceeds remaining balance'], 422);
+                return redirect()->back()->withErrors(['amount' => 'Le montant du paiement dépasse le solde restant.']);
             }
 
             // Create the payment
             $payment = $salesInvoice->payments()->create([
                 'amount' => $request->amount,
-                'payment_date' => $request->payment_date,
+                'payment_method' => $request->payment_method,
                 'comment' => $request->comment,
             ]);
 
@@ -265,12 +278,22 @@ class SalesInvoiceController extends Controller
                 ]);
             }
 
+            // Reload the invoice with its relationships
+            $salesInvoice->load([
+                'items.product',
+                'customer',
+                'payments'
+            ]);
+
             DB::commit();
-            return redirect()->back()->with('success', 'Payment added successfully.');
+            return redirect()->back()->with([
+                'success' => 'Paiement ajouté avec succès',
+                'invoice' => $salesInvoice
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             report($e);
-            return redirect()->back()->with('error', 'Failed to add payment. Please try again.');
+            return redirect()->back()->withErrors(['error' => 'Échec de l\'ajout du paiement. Veuillez réessayer.']);
         }
     }
 
@@ -297,6 +320,72 @@ class SalesInvoiceController extends Controller
             DB::rollBack();
             report($e);
             return redirect()->back()->with('error', 'Failed to remove payment. Please try again.');
+        }
+    }
+
+    public function updatePayment(Request $request, SalesInvoice $salesInvoice, Payment $payment)
+    {
+        if ($payment->sales_invoice_id !== $salesInvoice->id) {
+            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture']);
+        }
+
+        try {
+            $validated = $request->validate([
+                'amount' => 'required|integer|min:1',
+                'payment_method' => 'required|string|in:Cash,Wave,Om',
+                'comment' => 'nullable|string',
+            ]);
+
+            DB::beginTransaction();
+
+            // Load items to ensure total is calculated correctly
+            $salesInvoice->load('items');
+            
+            // Calculate new total paid amount excluding current payment
+            $totalPaidExcludingCurrent = $salesInvoice->payments()
+                ->where('id', '!=', $payment->id)
+                ->sum('amount');
+            
+            // Check if new amount would exceed invoice total
+            if ($request->amount + $totalPaidExcludingCurrent > $salesInvoice->total) {
+                return redirect()->back()->withErrors(['amount' => 'Le nouveau montant dépasserait le total de la facture']);
+            }
+
+            // Update the payment
+            $payment->update([
+                'amount' => $request->amount,
+                'payment_method' => $request->payment_method,
+                'comment' => $request->comment,
+            ]);
+
+            // Recalculate total paid and update invoice status
+            $newTotalPaid = $totalPaidExcludingCurrent + $request->amount;
+            $salesInvoice->update([
+                'paid' => $newTotalPaid >= $salesInvoice->total
+            ]);
+
+            // Update related ventes paid status
+            $salesInvoice->items()->update([
+                'paid' => $newTotalPaid >= $salesInvoice->total,
+                'paid_at' => $newTotalPaid >= $salesInvoice->total ? now() : null,
+            ]);
+
+            // Reload the invoice with its relationships
+            $salesInvoice->load([
+                'items.product',
+                'customer',
+                'payments'
+            ]);
+
+            DB::commit();
+            return redirect()->back()->with([
+                'success' => 'Paiement mis à jour avec succès',
+                'invoice' => $salesInvoice
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            report($e);
+            return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour du paiement. Veuillez réessayer.']);
         }
     }
 } 
