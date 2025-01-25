@@ -48,7 +48,7 @@ class SalespersonController extends Controller
                 ->count();
         }
 
-        $customers = $query->get();
+        $customers = Customer::latest()->get();
 
         return response()->json([
             'customers' => $customers,
@@ -530,6 +530,50 @@ class SalespersonController extends Controller
                 'data' => $validated,
             ]);
             throw $e;
+        }
+    }
+
+    public function updateOrderItems(Request $request, Order $order)
+    {
+        // Validate request
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.price' => 'required|integer|min:0',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            // Delete existing items
+            $order->items()->delete();
+
+            // Create new items
+            foreach ($validated['items'] as $item) {
+                // if exists update the data if not create a new one
+
+                $order->items()->updateOrCreate([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                ],["product_id"]);
+            }
+
+            DB::commit();
+
+            // Return the updated order with items
+            return response()->json([
+                'message' => 'Order items updated successfully',
+                'data' => $order->load(['items.product', 'customer']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error updating order items: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Error updating order items',
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 }

@@ -25,6 +25,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/orders', [SalespersonController::class, 'createOrder']);
         Route::post('/orders/{order}/cancel', [SalespersonController::class, 'cancelOrder']);
         Route::post('/orders/{order}/deliver', [SalespersonController::class, 'deliverOrder']);
+        Route::post('/orders/{order}/update-items', [SalespersonController::class, 'updateOrderItems']);
         
         // Customers
         Route::get('/customers', [SalespersonController::class, 'getCustomers']);
