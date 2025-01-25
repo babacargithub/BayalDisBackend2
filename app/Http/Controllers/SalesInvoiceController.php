@@ -449,6 +449,6 @@ class SalesInvoiceController extends Controller
             'invoice' => $salesInvoice
         ]);
 
-        return $pdf->download('facture-' . $salesInvoice->id . '.pdf');
+        return $pdf->download('facture de '.$salesInvoice->customer->name.'-' . $salesInvoice->id . '.pdf');
     }
 } 
