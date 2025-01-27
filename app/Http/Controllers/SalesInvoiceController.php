@@ -32,7 +32,7 @@ class SalesInvoiceController extends Controller
 
         // Get paginated results with optimized loading
         $invoices = $query->latest()
-            ->paginate(10)
+            ->paginate(1000)
             ->through(function ($invoice) {
                 // Add computed total to avoid N+1 queries
                 $invoice->total = $invoice->items->sum('subtotal');
