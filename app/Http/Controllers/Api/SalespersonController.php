@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Vente;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -252,13 +253,52 @@ class SalespersonController extends Controller
                 ]),
             ]);
 
-            $vente->paid = true;
-            $vente->paid_at = now();
-            $vente->payment_method = $validated['payment_method'];
-            $vente->save();
+        $vente->paid = true;
+        $vente->paid_at = now();
+        $vente->payment_method = $validated['payment_method'];
+        $vente->save();
 
-            return response()->json($vente->load(['customer', 'product']));
+        return response()->json($vente->load(['customer', 'product']));
+    }
 
+    public function paySalesInvoice(Request $request, \App\Models\SalesInvoice $invoice)
+    {
+        $validated = $request->validate([
+            'amount' => 'required|integer|min:1',
+            'payment_method' => 'required',
+            'comment' => 'nullable|string',
+        ], [
+            'amount.required' => 'Le montant est obligatoire',
+            'amount.integer' => 'Le montant doit être un nombre entier',
+            'amount.min' => 'Le montant doit être supérieur à 0',
+            'payment_method.required' => 'La méthode de paiement est obligatoire',
+        ]);
+        DB::transaction(function () use ($invoice, $validated) {
+
+            // Create the payment
+            $payment = $invoice->payments()->create([
+                'amount' => $validated['amount'],
+                'payment_method' => $validated['payment_method'],
+                'comment' => $validated['comment'],
+            ]);
+
+            // Check if invoice is fully paid
+            $totalPaid = $invoice->payments()->sum('amount') + $validated['amount'];
+            if ($totalPaid >= $invoice->total) {
+                $invoice->update(['paid' => true]);
+                $invoice->items()->update([
+                    'paid' => true,
+                    'paid_at' => now(),
+                ]);
+            }
+        });
+
+
+      
+            return response()->json([
+                'message' => 'Paiement effectué avec succès',
+            ]);
+      
     }
 
     public function getVentes(Request $request)
@@ -280,16 +320,16 @@ class SalespersonController extends Controller
         return $this->venteResource($query);
     }
 
-    public function venteResource($query): \Illuminate\Http\JsonResponse
+    public function venteResource($query): JsonResponse
     {
         $ventes = $query->get();
         return response()->json([
             'ventes' => $ventes->map(function (Vente $vente) {
                 return [
                     'id' => $vente->id,
-                    'product' => $vente->product->name,
-                    'customer' => $vente->customer->name,
-                    'customer_phone_number' => $vente->customer->phone_number,
+                    'product' => $vente->product?->name,
+                    'customer' => $vente->customer?->name,
+                    'customer_phone_number' => $vente->customer?->phone_number,
                     'quantity' => $vente->quantity,
                     'price' => $vente->price,
                     'total' => $vente->price * $vente->quantity,
@@ -307,8 +347,8 @@ class SalespersonController extends Controller
 
     public function getCustomersAndProducts(Request $request    )
     {
-        $customers = $request->user()->commercial->customers()->latest()->get();
-        $products = \App\Models\Product::all();
+        $customers = Customer::latest()->get();
+        $products = Product::all();
 
         return response()->json([
             'customers' => $customers,
@@ -319,7 +359,7 @@ class SalespersonController extends Controller
     /**
      * Get activity report for the authenticated salesperson
      */
-    public function getActivityReport(Request $request)
+    public function getActivityReport(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'date' => 'required|date',
@@ -456,15 +496,20 @@ class SalespersonController extends Controller
 
     public function cancelOrder(Order $order)
     {
-//        if ($order->commercial_id !== auth()->user()->commercial->id) {
-//            return response()->json(['message' => 'Unauthorized'], 403);
-//        }
-
         if ($order->status !== 'WAITING') {
             return response()->json(['message' => 'Seules les commandes en attente peuvent etre annulées'], 422);
         }
 
-        $order->update(['status' => 'CANCELLED']);
+        $validated = request()->validate([
+            'comment' => 'required',
+        ], [
+            'comment.required' => 'La raison de l\'annulation est obligatoire',
+        ]);
+
+        $order->update([
+            'status' => 'CANCELLED',
+            'comment' => $validated['comment']
+        ]);
 
         return response()->json([
             'message' => 'Order cancelled successfully',
@@ -474,63 +519,65 @@ class SalespersonController extends Controller
 
     public function deliverOrder(Request $request, Order $order)
     {
-//        if ($order->commercial_id !== auth()->user()->commercial->id) {
-//            return response()->json(['message' => 'Unauthorized'], 403);
-//        }
-
         if ($order->status !== Order::STATUS_WAITING) {
             return response()->json(['message' => "Seules les commandes en attente peuvent etre livrées !"], 422);
         }
 
         $validated = $request->validate([
-            'quantity' => 'required|integer|min:1',
             'paid' => 'required|boolean',
             'payment_method' => 'required_if:paid,true|nullable|string|in:CASH,WAVE,OM,FREE',
             'should_be_paid_at' => 'required_if:paid,false|nullable|date',
         ]);
 
-        DB::beginTransaction();
-        try {
-            // Update order status
-            $order->update([
-                'status' => Order::STATUS_DELIVERED,
-                'quantity' => $validated['quantity'],
-            ]);
+            // Create sales invoice
+            DB::transaction(function () use ($order, $validated, $request) {
+                $salesInvoice = \App\Models\SalesInvoice::create([
+                    'customer_id' => $order->customer_id,
+                    'paid' => $validated['paid'],
+                    'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
+                    'comment' => "Facture de livraison",
+                ]);
 
-            // Get product price
-            $product = Product::findOrFail($order->product_id);
+                // Create invoice items from order items
+                $ordersToCreate =[];
+                foreach ($order->items as $item) {
+                    $ordersToCreate[] = [
+                        'product_id' => $item->product_id,
+                        'quantity' => $item->quantity,
+                        'price' => $item->price,
+                        'commercial_id' => $request->user()->commercial->id,
+                        'type' => 'INVOICE_ITEM',
+                        'paid' => $validated['paid'],
+                        'payment_method' => $validated['payment_method'] ?? null,
+                        'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
+                        'paid_at' => $validated['paid'] ? now() : null,
+                    ];
+                }
+                $salesInvoice->items()->createMany($ordersToCreate);
 
-            // Create vente from order
-            $vente = Vente::create([
-                'customer_id' => $order->customer_id,
-                'product_id' => $order->product_id,
-                'commercial_id' => $request->user()->commercial->id,
-                'quantity' => $validated['quantity'],
-                'price' => $product->price, // Use product's price directly
-                'paid' => $validated['paid'],
-                'payment_method' => $validated['payment_method'] ?? null,
-                'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
-                'paid_at' => $validated['paid'] ? now() : null,
-                'order_id' => $order->id,
-            ]);
+                // Update order status and link to invoice
+                $order->update([
+                    'status' => Order::STATUS_DELIVERED,
+                    'sales_invoice_id' => $salesInvoice->id,
+                ]);
 
-            DB::commit();
+                // If paid, create a payment record
+                if ($validated['paid']) {
+                    $salesInvoice->payments()->create([
+                        'amount' => $salesInvoice->total,
+                        'payment_method' => $validated['payment_method'],
+                        'comment' => 'Paiement à la livraison',
+                    ]);
+                }
+            });
 
             return response()->json([
-                'message' => 'Order delivered successfully and sale created',
+                'message' => 'Order delivered successfully and invoice created',
                 'data' => [
                     'order' => $order->load(['customer', 'product']),
-                    'vente' => $vente->load(['customer', 'product']),
                 ],
             ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error delivering order: ' . $e->getMessage(), [
-                'order_id' => $order->id,
-                'data' => $validated,
-            ]);
-            throw $e;
-        }
+
     }
 
     public function updateOrderItems(Request $request, Order $order)
@@ -575,5 +622,45 @@ class SalespersonController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function getCustomerInvoices(Customer $customer)
+    {
+      
+        $invoices = \App\Models\SalesInvoice::with(['items.product', 'payments'])
+            ->where('customer_id', $customer->id)
+            ->latest()
+            ->get()
+            ->map(function ($invoice) {
+                return [
+                    'id' => $invoice->id,
+                    'customer_id' => $invoice->customer_id,
+                    'total' => $invoice->total,
+                    'total_paid' => $invoice->payments->sum('amount'),
+                    "total_remaining" => $invoice->total - $invoice->payments->sum('amount'),
+                    'paid' => $invoice->paid,
+                    'should_be_paid_at' => $invoice->should_be_paid_at,
+                    'created_at' => $invoice->created_at,
+                    'items' => $invoice->items->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'product' => $item->product->name,
+                            'quantity' => $item->quantity,
+                            'price' => $item->price,
+                        ];
+                    }),
+                    'payments' => $invoice->payments->map(function ($payment) {
+                        return [
+                            'id' => $payment->id,
+                            'amount' => $payment->amount,
+                            'payment_method' => $payment->payment_method,
+                            'comment' => $payment->comment,
+                            'created_at' => $payment->created_at,
+                        ];
+                    }),
+                ];
+            });
+
+        return response()->json(['data' => $invoices]);
     }
 }

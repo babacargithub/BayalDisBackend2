@@ -41,6 +41,10 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // Customer ventes history
         Route::get('customers/{customer}/ventes', [SalespersonController::class, 'getCustomerVentes']);
+        Route::get('customers/{customer}/invoices', [SalespersonController::class, 'getCustomerInvoices']);
+        
+        // Invoice payment
+        Route::post('invoices/{invoice}/pay', [SalespersonController::class, 'paySalesInvoice']);
         
         // Vente payment
         Route::post('ventes/{vente}/pay', [SalespersonController::class, 'payVente']);

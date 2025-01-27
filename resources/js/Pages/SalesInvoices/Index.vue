@@ -15,6 +15,26 @@
 
     <div class="py-12">
       <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+        <!-- Search and Summary -->
+        <div class="mb-6">
+          <div class="flex justify-between items-center mb-4">
+            <v-text-field
+              v-model="searchQuery"
+              label="Rechercher par nom de client"
+              prepend-icon="mdi-magnify"
+              hide-details
+              class="max-w-md"
+              density="compact"
+            />
+            <div class="text-right">
+              <div class="text-h6">Total restant à payer</div>
+              <div class="text-h5" :class="totalRemainingAmount > 0 ? 'text-error' : ''">
+                {{ formatPrice(totalRemainingAmount) }}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Filter Buttons -->
         <div class="mb-4 flex gap-4">
           <v-btn-group>
@@ -44,8 +64,8 @@
           <v-table>
             <thead>
               <tr>
-                <th>Facture N°</th>
                 <th>Client</th>
+                <th>Articles</th>
                 <th>Total</th>
                 <th>Payé</th>
                 <th>Reste à payer</th>
@@ -56,8 +76,8 @@
             </thead>
             <tbody>
               <tr v-for="invoice in filteredInvoices" :key="invoice.id">
-                <td>{{ invoice.id }}</td>
                 <td>{{ invoice.customer.name }}</td>
+                <td>{{ invoice.items?.length || 0 }} article(s)</td>
                 <td>{{ formatPrice(invoice.total) }}</td>
                 <td>{{ formatPrice(invoice.total - getRemainingAmount(invoice)) }}</td>
                 <td>
@@ -75,42 +95,42 @@
                   />
                 </td>
                 <td>
-                  <div class="flex gap-2">
+                  <div class="flex gap-1">
                     <v-btn
-                      icon
+                      icon="mdi-eye"
                       size="small"
+                      variant="text"
+                      density="compact"
                       @click="openItemsDialog(invoice)"
                       :title="'Voir les articles'"
-                    >
-                      <v-icon>mdi-eye</v-icon>
-                    </v-btn>
+                    />
                     <v-btn
-                      icon
+                      icon="mdi-cash"
                       size="small"
+                      variant="text"
+                      density="compact"
                       @click="openPaymentsDialog(invoice)"
                       :title="'Voir les paiements'"
-                    >
-                      <v-icon>mdi-cash</v-icon>
-                    </v-btn>
+                    />
                     <v-btn
-                      icon
+                      icon="mdi-file-pdf-box"
                       size="small"
+                      variant="text"
+                      density="compact"
                       color="primary"
                       :href="route('sales-invoices.pdf', invoice.id)"
                       target="_blank"
                       :title="'Télécharger PDF'"
-                    >
-                      <v-icon>mdi-file-pdf-box</v-icon>
-                    </v-btn>
+                    />
                     <v-btn
-                      icon
+                      icon="mdi-delete"
                       size="small"
+                      variant="text"
+                      density="compact"
                       color="error"
                       @click="openDeleteDialog(invoice)"
                       :title="'Supprimer'"
-                    >
-                      <v-icon>mdi-delete</v-icon>
-                    </v-btn>
+                    />
                   </div>
                 </td>
               </tr>
@@ -201,6 +221,7 @@ const props = defineProps({
 })
 
 const filter = ref('all')
+const searchQuery = ref('')
 const showCreateDialog = ref(false)
 const showItemsDialog = ref(false)
 const showPaymentsDialog = ref(false)
@@ -211,10 +232,30 @@ const showErrorDialog = ref(false)
 const errorMessage = ref('')
 
 const filteredInvoices = computed(() => {
-  if (filter.value === 'all') return props.invoices.data
-  return props.invoices.data.filter(invoice => 
-    filter.value === 'paid' ? invoice.paid : !invoice.paid
-  )
+  let filtered = props.invoices.data
+
+  // Apply payment status filter
+  if (filter.value !== 'all') {
+    filtered = filtered.filter(invoice => 
+      filter.value === 'paid' ? invoice.paid : !invoice.paid
+    )
+  }
+
+  // Apply search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    filtered = filtered.filter(invoice => 
+      invoice.customer.name.toLowerCase().includes(query)
+    )
+  }
+
+  return filtered
+})
+
+const totalRemainingAmount = computed(() => {
+  return filteredInvoices.value.reduce((total, invoice) => {
+    return total + getRemainingAmount(invoice)
+  }, 0)
 })
 
 const formatPrice = (price) => {

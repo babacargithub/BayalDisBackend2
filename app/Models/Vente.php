@@ -35,7 +35,7 @@ class Vente extends Model
         'quantity' => 'integer',
         'price' => 'integer',
         'profit' => 'integer',
-        'should_be_paid_at' => 'datetime',
+        "should_be_paid_at" => 'datetime',
         "created_at" => 'datetime',
         "updated_at" => 'datetime',
         'paid_at' => 'datetime',
@@ -144,8 +144,17 @@ class Vente extends Model
     public function getShouldBePaidAtAttribute($value)
     {
         if ($this->sales_invoice_id) {
-            return $this->salesInvoice->should_be_paid_at;
+            $value = $this->salesInvoice->should_be_paid_at;
         }
-        return $value;
+        // cast to datetime
+        return $value!= null ? $this->asDateTime($value) : null;
+    }
+    public function getCustomerAttribute(): ?Customer
+    {
+        if ($this->isInvoiceItem()) {
+            return $this->salesInvoice?->customer;
+        }
+        return Customer::whereId($this->customer_id)->first();
+
     }
 } 
