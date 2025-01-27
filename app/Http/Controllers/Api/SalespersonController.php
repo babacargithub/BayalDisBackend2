@@ -184,7 +184,7 @@ class SalespersonController extends Controller
         $commercial = $request->user()->commercial;
 
         // Verify that the customer belongs to this salesperson
-        $customer = $commercial->customers()->findOrFail($validated['customer_id']);
+        $customer = Customer::findOrFail($validated['customer_id']);
         
         $vente = $commercial->ventes()->create([
             'product_id' => $validated['product_id'],
