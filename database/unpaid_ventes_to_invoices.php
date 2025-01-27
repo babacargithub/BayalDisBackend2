@@ -30,20 +30,11 @@ DB::transaction(function () use ($unpaidVentes) {
 
         // Create invoice items from ventes
         foreach ($ventes as $vente) {
-            $invoice->items()->create([
-                'product_id' => $vente->product_id,
-                'quantity' => $vente->quantity,
-                'price' => $vente->price,
-                'commercial_id' => $vente->commercial_id,
-                'type' => 'INVOICE_ITEM',
-                'paid' => false,
-                'should_be_paid_at' => $vente->should_be_paid_at,
-            ]);
 
             // Update the vente to mark it as converted
-            $vente->update([
-                'sales_invoice_id' => $invoice->id,
-            ]);
+            $vente->type = 'INVOICE_ITEM';
+            $vente->sales_invoice_id = $invoice->id;
+            $vente->save();
         }
 
         echo "Created invoice #{$invoice->id} for customer #{$customerId} with " . count($ventes) . " items\n";
