@@ -27,6 +27,7 @@ const menuItems = [
         ref: clientsDropdownOpen,
         items: [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
+            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' },
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
         ]
     },

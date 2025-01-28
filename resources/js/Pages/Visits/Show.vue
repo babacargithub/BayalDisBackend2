@@ -1,0 +1,187 @@
+<template>
+    <AuthenticatedLayout>
+        <template #header>
+            <div class="flex justify-between items-center">
+                <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                    {{ batch.name }}
+                </h2>
+                <div class="flex space-x-4">
+                    <Link
+                        :href="route('visits.edit', batch.id)"
+                        class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50"
+                    >
+                        <v-icon icon="mdi-pencil" size="small" class="mr-2" />
+                        Modifier
+                    </Link>
+                    <Link
+                        :href="route('visits.index')"
+                        class="inline-flex items-center px-4 py-2 bg-gray-100 border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-200"
+                    >
+                        Retour à la liste
+                    </Link>
+                </div>
+            </div>
+        </template>
+
+        <div class="py-12">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <!-- Batch Info -->
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
+                    <div class="p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-500">Date des visites</h3>
+                                <p class="mt-1 text-lg text-gray-900">
+                                    {{ formatDate(batch.visit_date) }}
+                                </p>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-500">Nombre de visites</h3>
+                                <p class="mt-1 text-lg text-gray-900">
+                                    {{ batch.visits.length }} visites planifiées
+                                </p>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-medium text-gray-500">Progression</h3>
+                                <p class="mt-1 text-lg text-gray-900">
+                                    {{ completedVisitsCount }} / {{ batch.visits.length }} visites complétées
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visits List -->
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Liste des visites</h3>
+                        <div class="space-y-4">
+                            <div
+                                v-for="visit in batch.visits"
+                                :key="visit.id"
+                                class="border rounded-lg overflow-hidden"
+                            >
+                                <div class="p-4">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <h4 class="text-lg font-medium text-gray-900">
+                                                {{ visit.customer.name }}
+                                            </h4>
+                                            <p class="text-sm text-gray-500">
+                                                {{ visit.customer.phone_number }}
+                                            </p>
+                                            <p class="text-sm text-gray-500">
+                                                {{ visit.customer.address }}
+                                            </p>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <span
+                                                class="px-2 py-1 text-xs font-medium rounded-full"
+                                                :class="{
+                                                    'bg-yellow-100 text-yellow-800': visit.status === 'planned',
+                                                    'bg-green-100 text-green-800': visit.status === 'completed',
+                                                    'bg-red-100 text-red-800': visit.status === 'cancelled'
+                                                }"
+                                            >
+                                                {{ visitStatusText(visit.status) }}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <h5 class="text-sm font-medium text-gray-500">Heure prévue</h5>
+                                            <p class="mt-1">
+                                                {{ formatTime(visit.visit_planned_at) }}
+                                            </p>
+                                        </div>
+                                        <div v-if="visit.visited_at">
+                                            <h5 class="text-sm font-medium text-gray-500">Heure de visite</h5>
+                                            <p class="mt-1">
+                                                {{ formatDateTime(visit.visited_at) }}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div v-if="visit.notes" class="mt-4">
+                                        <h5 class="text-sm font-medium text-gray-500">Notes</h5>
+                                        <p class="mt-1 text-gray-700">{{ visit.notes }}</p>
+                                    </div>
+
+                                    <div v-if="visit.status === 'completed'" class="mt-4">
+                                        <h5 class="text-sm font-medium text-gray-500">Résultat</h5>
+                                        <p class="mt-1">
+                                            {{ visit.resulted_in_sale ? 'Vente réalisée' : 'Pas de vente' }}
+                                        </p>
+                                    </div>
+
+                                    <div v-if="visit.gps_coordinates" class="mt-4">
+                                        <h5 class="text-sm font-medium text-gray-500">Coordonnées GPS</h5>
+                                        <p class="mt-1 text-gray-700">{{ visit.gps_coordinates }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </AuthenticatedLayout>
+</template>
+
+<script setup>
+import { Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+
+const props = defineProps({
+    batch: {
+        type: Object,
+        required: true
+    }
+});
+
+const completedVisitsCount = computed(() => {
+    return props.batch.visits.filter(visit => visit.status === 'completed').length;
+});
+
+const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('fr-FR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+};
+
+const formatTime = (time) => {
+    if (!time) return '-';
+    return new Date('2000-01-01 ' + time).toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+};
+
+const formatDateTime = (datetime) => {
+    if (!datetime) return '-';
+    return new Date(datetime).toLocaleString('fr-FR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+};
+
+const visitStatusText = (status) => {
+    switch (status) {
+        case 'planned':
+            return 'Planifiée';
+        case 'completed':
+            return 'Terminée';
+        case 'cancelled':
+            return 'Annulée';
+        default:
+            return status;
+    }
+};
+</script> 

@@ -11,7 +11,11 @@ class CustomerController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Customer::with(['commercial', 'ventes']);
+        $query = Customer::query()
+            ->with(['commercial:id,name', 'ventes' => function($query) {
+                $query->select('id', 'customer_id', 'paid');
+            }])
+            ->select('id', 'name', 'phone_number', 'owner_number', 'commercial_id', 'description', 'address', 'created_at');
 
         // Filter by commercial_id if provided
         if ($request->filled('commercial_id')) {
@@ -27,8 +31,24 @@ class CustomerController extends Controller
         }
 
         return Inertia::render('Clients/Index', [
-            'clients' => $query->latest()->get(),
-            'commerciaux' => Commercial::all(),
+            'clients' => $query->latest()
+                ->paginate(25)
+                ->through(fn ($customer) => [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone_number' => $customer->phone_number,
+                    'owner_number' => $customer->owner_number,
+                    'description' => $customer->description,
+                    'address' => $customer->address,
+                    'created_at' => $customer->created_at,
+                    'commercial' => $customer->commercial ? [
+                        'id' => $customer->commercial->id,
+                        'name' => $customer->commercial->name,
+                    ] : null,
+                    'has_unpaid_ventes' => $customer->ventes->contains('paid', false),
+                    'ventes_count' => $customer->ventes->count(),
+                ]),
+            'commerciaux' => Commercial::select('id', 'name')->get(),
             'filters' => $request->only(['prospect_status', 'commercial_id'])
         ]);
     }

@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SalespersonController;
 use App\Http\Controllers\Api\ProductController;
 
-
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
 

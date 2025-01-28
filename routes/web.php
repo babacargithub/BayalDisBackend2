@@ -12,6 +12,8 @@ use App\Http\Controllers\OrderController;
 use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\SalesInvoiceController;
+use App\Http\Controllers\VisitBatchController;
+use App\Http\Controllers\CustomerVisitController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -84,6 +86,24 @@ Route::middleware('auth')->group(function () {
     Route::post('/sales-invoices/{salesInvoice}/payments', [SalesInvoiceController::class, 'addPayment'])->name('sales-invoices.payments.store');
     Route::put('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'updatePayment'])->name('sales-invoices.payments.update');
     Route::delete('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'removePayment'])->name('sales-invoices.payments.destroy');
+
+    // Visit Management Routes
+    Route::prefix('visits')->name('visits.')->group(function () {
+        // Visit Batches
+        Route::get('/', [VisitBatchController::class, 'index'])->name('index');
+        Route::get('/create', [VisitBatchController::class, 'create'])->name('create');
+        Route::post('/', [VisitBatchController::class, 'store'])->name('store');
+        Route::get('/{visitBatch}', [VisitBatchController::class, 'show'])->name('show');
+        Route::get('/{visitBatch}/edit', [VisitBatchController::class, 'edit'])->name('edit');
+        Route::put('/{visitBatch}', [VisitBatchController::class, 'update'])->name('update');
+        Route::delete('/{visitBatch}', [VisitBatchController::class, 'destroy'])->name('destroy');
+
+        // Customer Visits
+        Route::post('/customer-visits', [CustomerVisitController::class, 'store'])->name('customer-visits.store');
+        Route::get('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'show'])->name('customer-visits.show');
+        Route::post('/customer-visits/{customerVisit}/complete', [CustomerVisitController::class, 'complete'])->name('customer-visits.complete');
+        Route::post('/customer-visits/{customerVisit}/cancel', [CustomerVisitController::class, 'cancel'])->name('customer-visits.cancel');
+    });
 });
 
 require __DIR__.'/auth.php';

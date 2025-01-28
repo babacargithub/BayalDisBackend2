@@ -4,13 +4,23 @@ import { Head } from '@inertiajs/vue3';
 import { ref, watch, computed } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import CustomerHistoryDialog from '@/Pages/Clients/CustomerHistoryDialog.vue';
+import { useRouter } from 'vue-router';
 
 const props = defineProps({
-    clients: Array,
-    commerciaux: Array,
+    clients: {
+        type: Object,
+        required: true
+    },
+    commerciaux: {
+        type: Array,
+        required: true
+    },
     errors: Object,
     flash: Object,
-    filters: Object
+    filters: {
+        type: Object,
+        default: () => ({})
+    }
 });
 
 const form = useForm({
@@ -33,7 +43,8 @@ const snackbarText = ref('');
 const snackbarColor = ref('');
 
 const filterForm = useForm({
-    prospect_status: props.filters?.prospect_status || ''
+    prospect_status: props.filters?.prospect_status || '',
+    commercial_id: props.filters?.commercial_id || ''
 });
 
 const applyFilter = (status) => {
@@ -147,15 +158,29 @@ const openHistory = async (client) => {
 
 const searchQuery = ref('');
 
+const router = useRouter();
+
 const filteredClients = computed(() => {
-    if (!searchQuery.value) return props.clients;
+    if (!searchQuery.value) return props.clients.data;
     
     const query = searchQuery.value.toLowerCase();
-    return props.clients.filter(client => 
+    return props.clients.data.filter(client => 
         client.name.toLowerCase().includes(query) || 
         (client.phone_number && client.phone_number.toLowerCase().includes(query))
     );
 });
+
+const handlePageChange = (page) => {
+    router.get(
+        route('clients.index', {
+            page,
+            commercial_id: filterForm.commercial_id,
+            prospect_status: filterForm.prospect_status,
+        }),
+        {},
+        { preserveState: true, preserveScroll: true }
+    );
+};
 </script>
 
 <template>
@@ -287,6 +312,17 @@ const filteredClients = computed(() => {
                             </tr>
                         </tbody>
                     </v-table>
+                    
+                    <!-- Pagination -->
+                    <div class="py-3 px-4 d-flex justify-end">
+                        <v-pagination
+                            v-if="clients.last_page > 1"
+                            v-model="clients.current_page"
+                            :length="clients.last_page"
+                            :total-visible="7"
+                            @update:model-value="handlePageChange"
+                        />
+                    </div>
                 </v-card>
             </div>
         </div>
