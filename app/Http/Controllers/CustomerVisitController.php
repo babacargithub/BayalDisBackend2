@@ -75,4 +75,13 @@ class CustomerVisitController extends Controller
         return redirect()->route('visits.show', $customerVisit->visitBatch)
             ->with('success', 'Visite annulée avec succès');
     }
+
+    public function destroy(CustomerVisit $customerVisit)
+    {
+       
+
+        $customerVisit->delete();
+
+        return back()->with('success', 'Visite supprimée avec succès');
+    }
 } 

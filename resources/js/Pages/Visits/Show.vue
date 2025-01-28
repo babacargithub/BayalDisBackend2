@@ -5,7 +5,7 @@
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
                     {{ batch.name }}
                 </h2>
-                <div class="flex space-x-4">
+                <div class="flex gap-2">
                     <Link
                         :href="route('visits.edit', batch.id)"
                         class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50"
@@ -15,7 +15,7 @@
                     </Link>
                     <Link
                         :href="route('visits.index')"
-                        class="inline-flex items-center px-4 py-2 bg-gray-100 border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-200"
+                        class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700"
                     >
                         Retour à la liste
                     </Link>
@@ -119,6 +119,32 @@
                                         <h5 class="text-sm font-medium text-gray-500">Coordonnées GPS</h5>
                                         <p class="mt-1 text-gray-700">{{ visit.gps_coordinates }}</p>
                                     </div>
+
+                                    <div class="mt-4 flex gap-2">
+                                        <button
+                                            v-if="visit.status === 'planned'"
+                                            @click="completeVisit(visit)"
+                                            class="inline-flex items-center px-3 py-1 bg-green-100 border border-transparent rounded-md text-sm font-medium text-green-700 hover:bg-green-200"
+                                        >
+                                            <v-icon
+                                                icon="mdi-check"
+                                                size="small"
+                                                class="mr-1"
+                                            />
+                                            Terminer
+                                        </button>
+                                        <button
+                                            @click="confirmDeleteVisit(visit)"
+                                            class="inline-flex items-center px-3 py-1 bg-red-100 border border-transparent rounded-md text-sm font-medium text-red-700 hover:bg-red-200"
+                                        >
+                                            <v-icon
+                                                icon="mdi-delete"
+                                                size="small"
+                                                class="mr-1"
+                                            />
+                                            Supprimer
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -126,13 +152,50 @@
                 </div>
             </div>
         </div>
+
+        <!-- Delete Confirmation Dialog -->
+        <v-dialog v-model="deleteDialog" max-width="500px">
+            <v-card>
+                <v-card-title class="text-h5 pb-4">
+                    Confirmer la suppression
+                </v-card-title>
+                <v-card-text>
+                    Êtes-vous sûr de vouloir supprimer cette visite ? Cette action est irréversible.
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn
+                        color="error"
+                        variant="text"
+                        @click="deleteDialog = false"
+                    >
+                        Annuler
+                    </v-btn>
+                    <v-btn
+                        color="primary"
+                        @click="deleteVisit"
+                    >
+                        Confirmer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Complete Visit Dialog -->
+        <CompleteVisitDialog
+            v-if="visitToComplete"
+            :show="!!visitToComplete"
+            :visit="visitToComplete"
+            @close="visitToComplete = null"
+        />
     </AuthenticatedLayout>
 </template>
 
 <script setup>
-import { Link } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import CompleteVisitDialog from './Partials/CompleteVisitDialog.vue';
 
 const props = defineProps({
     batch: {
@@ -183,5 +246,27 @@ const visitStatusText = (status) => {
         default:
             return status;
     }
+};
+
+const deleteDialog = ref(false);
+const visitToDelete = ref(null);
+const visitToComplete = ref(null);
+
+const confirmDeleteVisit = (visit) => {
+    visitToDelete.value = visit;
+    deleteDialog.value = true;
+};
+
+const deleteVisit = () => {
+    router.delete(route('visits.customer-visits.destroy', visitToDelete.value.id), {
+        onSuccess: () => {
+            deleteDialog.value = false;
+            visitToDelete.value = null;
+        }
+    });
+};
+
+const completeVisit = (visit) => {
+    visitToComplete.value = visit;
 };
 </script> 
