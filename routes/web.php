@@ -97,6 +97,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{visitBatch}/edit', [VisitBatchController::class, 'edit'])->name('edit');
         Route::put('/{visitBatch}', [VisitBatchController::class, 'update'])->name('update');
         Route::delete('/{visitBatch}', [VisitBatchController::class, 'destroy'])->name('destroy');
+        Route::post('/{visitBatch}/add-customers', [VisitBatchController::class, 'addCustomers'])->name('add-customers');
 
         // Customer Visits
         Route::post('/customer-visits', [CustomerVisitController::class, 'store'])->name('customer-visits.store');

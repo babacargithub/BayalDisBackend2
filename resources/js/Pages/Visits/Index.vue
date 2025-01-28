@@ -60,6 +60,17 @@
                                             </p>
                                         </div>
                                         <div class="flex space-x-2">
+                                            <button
+                                                @click="openCustomerDialog(batch)"
+                                                class="inline-flex items-center px-3 py-1 bg-green-100 border border-transparent rounded-md text-sm font-medium text-green-700 hover:bg-green-200"
+                                            >
+                                                <v-icon
+                                                    icon="mdi-account-plus"
+                                                    size="small"
+                                                    class="mr-1"
+                                                />
+                                                Ajouter clients
+                                            </button>
                                             <Link
                                                 :href="route('visits.edit', batch.id)"
                                                 class="inline-flex items-center px-3 py-1 bg-gray-100 border border-transparent rounded-md text-sm font-medium text-gray-700 hover:bg-gray-200"
@@ -93,19 +104,130 @@
                 </div>
             </div>
         </div>
+
+        <!-- Customer Selection Dialog -->
+        <v-dialog v-model="customerDialog" max-width="700px">
+            <v-card>
+                <v-card-title class="text-h5 pb-4">
+                    Ajouter des clients à la visite
+                </v-card-title>
+                <v-card-text>
+                    <v-text-field
+                        v-model="customerSearch"
+                        label="Rechercher par nom, téléphone ou adresse"
+                        prepend-inner-icon="mdi-magnify"
+                        variant="outlined"
+                        density="comfortable"
+                        hide-details
+                        class="mb-4"
+                    />
+
+                    <v-table>
+                        <thead>
+                            <tr>
+                                <th style="width: 50px">
+                                    <v-checkbox
+                                        v-model="selectedCustomers"
+                                        :value="filteredCustomers.map(c => c.id)"
+                                        :indeterminate="
+                                            selectedCustomers.length > 0 &&
+                                            selectedCustomers.length < filteredCustomers.length
+                                        "
+                                        @click="toggleAllCustomers"
+                                    />
+                                </th>
+                                <th>Nom</th>
+                                <th>Téléphone</th>
+                                <th>Adresse</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="customer in filteredCustomers" :key="customer.id">
+                                <td>
+                                    <v-checkbox
+                                        v-model="selectedCustomers"
+                                        :value="customer.id"
+                                        hide-details
+                                    />
+                                </td>
+                                <td>{{ customer.name }}</td>
+                                <td>{{ customer.phone_number }}</td>
+                                <td>{{ customer.address }}</td>
+                            </tr>
+                        </tbody>
+                    </v-table>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn
+                        color="error"
+                        variant="text"
+                        @click="customerDialog = false"
+                    >
+                        Annuler
+                    </v-btn>
+                    <v-btn
+                        color="primary"
+                        :disabled="!selectedCustomers.length"
+                        @click="addCustomersToVisits"
+                    >
+                        Ajouter {{ selectedCustomers.length }} client(s)
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
-defineProps({
+const props = defineProps({
     batches: {
+        type: Array,
+        required: true
+    },
+    customers: {
         type: Array,
         required: true
     }
 });
+
+const customerDialog = ref(false);
+const selectedBatch = ref(null);
+const customerSearch = ref('');
+const selectedCustomers = ref([]);
+
+const openCustomerDialog = (batch) => {
+    selectedBatch.value = batch;
+    selectedCustomers.value = [];
+    customerDialog.value = true;
+};
+
+const filteredCustomers = computed(() => {
+    if (!customerSearch.value) return props.customers;
+    
+    const search = customerSearch.value.toLowerCase();
+    return props.customers.filter(customer => 
+        customer.name.toLowerCase().includes(search) ||
+        (customer.phone_number && customer.phone_number.toLowerCase().includes(search)) ||
+        (customer.address && customer.address.toLowerCase().includes(search))
+    );
+});
+
+const addCustomersToVisits = () => {
+    router.post(route('visits.add-customers', selectedBatch.value.id), {
+        customer_ids: selectedCustomers.value
+    }, {
+        onSuccess: () => {
+            customerDialog.value = false;
+            selectedBatch.value = null;
+            selectedCustomers.value = [];
+        }
+    });
+};
 
 const formatDate = (date) => {
     return new Date(date).toLocaleDateString('fr-FR', {
@@ -113,5 +235,13 @@ const formatDate = (date) => {
         month: 'long',
         day: 'numeric'
     });
+};
+
+const toggleAllCustomers = () => {
+    if (selectedCustomers.value.length === filteredCustomers.value.length) {
+        selectedCustomers.value = [];
+    } else {
+        selectedCustomers.value = filteredCustomers.value.map(c => c.id);
+    }
 };
 </script> 

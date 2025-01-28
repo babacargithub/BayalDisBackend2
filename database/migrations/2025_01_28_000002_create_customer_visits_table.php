@@ -10,9 +10,9 @@ return new class extends Migration
     {
         Schema::create('customer_visits', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('customer_id')->constrained()->onDelete('cascade');
-            $table->foreignId('visit_batch_id')->constrained()->onDelete('cascade');
-            $table->dateTime('visit_planned_at');
+            $table->foreignId('customer_id')->nullable(false)->constrained()->onDelete('cascade');
+            $table->foreignId('visit_batch_id')->nullable()->constrained()->onDelete('cascade');
+            $table->dateTime('visit_planned_at')->nullable();
             $table->dateTime('visited_at')->nullable();
             $table->string('status')->default('planned'); // planned, completed, cancelled
             $table->text('notes')->nullable();

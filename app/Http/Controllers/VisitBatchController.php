@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CustomerVisit;
 use App\Models\VisitBatch;
 use App\Models\Customer;
 use App\Models\Commercial;
@@ -31,8 +32,12 @@ class VisitBatchController extends Controller
                 ];
             });
 
+        $customers = Customer::select('id', 'name', 'phone_number', 'address')
+            ->get();
+
         return Inertia::render('Visits/Index', [
             'batches' => $batches,
+            'customers' => $customers,
         ]);
     }
 
@@ -127,8 +132,7 @@ class VisitBatchController extends Controller
     {
         $visitBatch->load('visits.customer');
         
-        $customers = Customer::where('commercial_id', auth()->user()->commercial->id)
-            ->select('id', 'name', 'phone_number', 'address')
+        $customers = Customer::select('id', 'name', 'phone_number', 'address')
             ->get();
 
         return Inertia::render('Visits/Edit', [
@@ -187,5 +191,30 @@ class VisitBatchController extends Controller
 
         return redirect()->route('visits.index')
             ->with('success', 'Lot de visites supprimé avec succès');
+    }
+
+    public function addCustomers(Request $request, VisitBatch $visitBatch)
+    {
+        $request->validate([
+            'customer_ids' => ['required', 'array'],
+            'customer_ids.*' => ['required', 'exists:customers,id'],
+        ]);
+
+
+        // Get existing customer IDs in this batch to avoid duplicates
+        $existingCustomerIds = $visitBatch->visits()->pluck('customer_id')->toArray();
+        
+        // Filter out customers that are already in the batch
+        $newCustomerIds = array_diff($request->customer_ids, $existingCustomerIds);
+
+        // Create new visits for each customer
+        foreach ($newCustomerIds as $customerId) {
+            $visitBatch->visits()->create([
+                'customer_id' => $customerId,
+                'status' => CustomerVisit::STATUS_PLANNED,
+            ]);
+        }
+
+        return back()->with('success', count($newCustomerIds) . ' client(s) ajouté(s) avec succès');
     }
 } 
