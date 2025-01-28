@@ -2,9 +2,8 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { ref, watch, computed } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { useForm, router } from '@inertiajs/vue3';
 import CustomerHistoryDialog from '@/Pages/Clients/CustomerHistoryDialog.vue';
-import { useRouter } from 'vue-router';
 
 const props = defineProps({
     clients: {
@@ -157,8 +156,6 @@ const openHistory = async (client) => {
 };
 
 const searchQuery = ref('');
-
-const router = useRouter();
 
 const filteredClients = computed(() => {
     if (!searchQuery.value) return props.clients.data;
