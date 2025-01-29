@@ -27,7 +27,7 @@ class Customer extends Model
         'updated_at' => 'datetime',
     ];
 
-    protected $appends = ['is_prospect'];
+    protected $appends = ['is_prospect', 'last_visit'];
 
     public function commercial(): BelongsTo
     {
@@ -70,9 +70,39 @@ class Customer extends Model
     {
         return $query->whereHas('ventes');
     }
+
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class);
+    }
 
+    public function getLastVisitAttribute()
+    {
+        // Check for last completed or cancelled visit
+        $lastVisit = $this->visits()
+            ->whereIn('status', ['completed', 'cancelled'])
+            ->latest('visited_at')
+            ->first();
+
+        if ($lastVisit && $lastVisit->visited_at) {
+            return $lastVisit->visited_at;
+        }
+
+        // If no visit, check for last sale
+        $lastSale = $this->ventes()
+            ->latest('created_at')
+            ->first();
+
+        if ($lastSale) {
+            return $lastSale->created_at;
+        }
+
+        // If no visit and no sale, return customer creation date
+        return $this->created_at;
+    }
+
+    public function visits()
+    {
+        return $this->hasMany(CustomerVisit::class);
     }
 } 

@@ -14,7 +14,10 @@ class VisitBatchController extends Controller
 {
     public function index(): Response
     {
-        $batches = VisitBatch::with(['visits.customer', 'commercial'])
+        $batches = VisitBatch::with(['visits' => function ($query) {
+            $query->select('id', 'visit_batch_id', 'customer_id', 'status');
+        }])
+            ->with(['commercial:id,name'])
             ->latest()
             ->get()
             ->map(function ($batch) {
@@ -26,14 +29,41 @@ class VisitBatchController extends Controller
                         'id' => $batch->commercial->id,
                         'name' => $batch->commercial->name
                     ],
+                    'visits' => $batch->visits->map(function ($visit) {
+                        return [
+                            'id' => $visit->id,
+                            'customer_id' => $visit->customer_id,
+                            'status' => $visit->status
+                        ];
+                    })->values()->all(),
                     'visits_count' => $batch->visits->count(),
                     'completed_visits_count' => $batch->visits->where('status', 'completed')->count(),
                     'created_at' => $batch->created_at,
                 ];
             });
 
-        $customers = Customer::select('id', 'name', 'phone_number', 'address')
-            ->get();
+        $customers = Customer::select('id', 'name', 'phone_number', 'address', 'created_at')
+            ->with(['visits' => function($query) {
+                $query->select('id', 'customer_id', 'visited_at', 'status')
+                    ->whereIn('status', ['completed', 'cancelled'])
+                    ->latest('visited_at');
+            }])
+            ->with(['ventes' => function($query) {
+                $query->select('id', 'customer_id', 'created_at')
+                    ->latest('created_at')
+                    ->take(1);
+            }])
+            ->orderBy('name')
+            ->get()
+            ->map(function ($customer) {
+                return [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone_number' => $customer->phone_number,
+                    'address' => $customer->address,
+                    'last_visit' => $customer->last_visit,
+                ];
+            });
 
         return Inertia::render('Visits/Index', [
             'batches' => $batches,
