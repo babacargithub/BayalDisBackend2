@@ -19,6 +19,7 @@ const menuItems = [
             { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cash-register' },
             { name: 'Factures', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
             { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
+            { name: 'Dépenses', route: 'depenses.index', icon: 'mdi-cash-minus' },
         ]
     },
     { 

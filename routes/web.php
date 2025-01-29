@@ -15,6 +15,7 @@ use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\VisitBatchController;
 use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\InvestmentController;
+use App\Http\Controllers\DepenseController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -114,6 +115,19 @@ Route::middleware('auth')->group(function () {
         Route::post('/', [InvestmentController::class, 'store'])->name('store');
         Route::put('/{investment}', [InvestmentController::class, 'update'])->name('update');
         Route::delete('/{investment}', [InvestmentController::class, 'destroy'])->name('destroy');
+    });
+
+    // Expense Management Routes
+    Route::prefix('depenses')->name('depenses.')->group(function () {
+        Route::get('/', [DepenseController::class, 'index'])->name('index');
+        Route::post('/', [DepenseController::class, 'store'])->name('store');
+        Route::put('/{depense}', [DepenseController::class, 'update'])->name('update');
+        Route::delete('/{depense}', [DepenseController::class, 'destroy'])->name('destroy');
+        
+        // Type Depense Routes
+        Route::post('/types', [DepenseController::class, 'storeType'])->name('types.store');
+        Route::put('/types/{typeDepense}', [DepenseController::class, 'updateType'])->name('types.update');
+        Route::delete('/types/{typeDepense}', [DepenseController::class, 'destroyType'])->name('types.destroy');
     });
 });
 
