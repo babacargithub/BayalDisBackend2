@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import { Link } from '@inertiajs/vue3';
 
@@ -18,6 +18,7 @@ const menuItems = [
         items: [
             { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cash-register' },
             { name: 'Factures', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
+            { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
         ]
     },
     { 
@@ -32,7 +33,7 @@ const menuItems = [
         ]
     },
     { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
-    { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
+    // { name: 'Commerciaux', route: 'commercials.index', icon: 'mdi-account-tie' },
     {
         name: 'Commandes & Livraisons',
         icon: 'mdi-truck-delivery',

@@ -14,6 +14,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\VisitBatchController;
 use App\Http\Controllers\CustomerVisitController;
+use App\Http\Controllers\InvestmentController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -105,6 +106,14 @@ Route::middleware('auth')->group(function () {
         Route::post('/customer-visits/{customerVisit}/complete', [CustomerVisitController::class, 'complete'])->name('customer-visits.complete');
         Route::post('/customer-visits/{customerVisit}/cancel', [CustomerVisitController::class, 'cancel'])->name('customer-visits.cancel');
         Route::delete('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'destroy'])->name('customer-visits.destroy');
+    });
+
+    // Investment Management Routes
+    Route::prefix('investments')->name('investments.')->group(function () {
+        Route::get('/', [InvestmentController::class, 'index'])->name('index');
+        Route::post('/', [InvestmentController::class, 'store'])->name('store');
+        Route::put('/{investment}', [InvestmentController::class, 'update'])->name('update');
+        Route::delete('/{investment}', [InvestmentController::class, 'destroy'])->name('destroy');
     });
 });
 
