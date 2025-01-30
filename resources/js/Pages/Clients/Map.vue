@@ -24,7 +24,7 @@
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6">
+                    <div class="p-0">
                         <!-- Map Container -->
                         <div id="map" style="height: 600px; width: 100%;"></div>
                     </div>
@@ -87,6 +87,7 @@ function initMap() {
                                 <p>${client.address || 'Pas d\'adresse'}</p>
                                 <p>Tél: ${client.phone_number}</p>
                                 <p>${client.is_prospect ? 'Prospect' : 'Client'}</p>
+                                <p>${client.description}</p>
                             </div>
                         `
                     });

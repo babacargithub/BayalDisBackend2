@@ -129,7 +129,7 @@ class CustomerController extends Controller
     public function map()
     {
         $clients = Customer::query()
-            ->select('id', 'name', 'phone_number', 'address', 'gps_coordinates', 'is_prospect')
+            ->select('id', 'name', 'phone_number', 'address', 'gps_coordinates', 'is_prospect', 'description')
             ->whereNotNull('gps_coordinates')
             ->get();
 
