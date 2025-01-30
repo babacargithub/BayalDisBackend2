@@ -52,6 +52,7 @@ const props = defineProps({
 
 let map;
 let markers = [];
+let currentInfoWindow = null; // Track the currently open info window
 
 function initMap() {
     // Default center (Dakar coordinates)
@@ -84,16 +85,32 @@ function initMap() {
                         content: `
                             <div class="p-2">
                                 <h3 class="font-bold">${client.name}</h3>
-                                <p>${client.address || 'Pas d\'adresse'}</p>
-                                <p>Tél: ${client.phone_number}</p>
-                                <p>${client.is_prospect ? 'Prospect' : 'Client'}</p>
-                                <p>${client.description}</p>
+                                <ul>
+                                    <li>${client.address || 'Pas d\'adresse'}</li>
+                                    <li>Tél: ${client.phone_number}</li>
+                                    <li>${client.is_prospect ? 'Prospect' : 'Client'}</li>
+                                    <li>${client.description || ''}</li>
+                                </ul>
                             </div>
                         `
                     });
 
                     marker.addListener('click', () => {
+                        // Close the currently open info window if there is one
+                        if (currentInfoWindow) {
+                            currentInfoWindow.close();
+                        }
+                        // Open the new info window and update the reference
                         infoWindow.open(map, marker);
+                        currentInfoWindow = infoWindow;
+                    });
+
+                    // Add click listener to the map to close info window when clicking elsewhere
+                    map.addListener('click', () => {
+                        if (currentInfoWindow) {
+                            currentInfoWindow.close();
+                            currentInfoWindow = null;
+                        }
                     });
 
                     markers.push(marker);
