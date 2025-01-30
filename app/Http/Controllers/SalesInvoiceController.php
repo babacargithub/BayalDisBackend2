@@ -51,12 +51,12 @@ class SalesInvoiceController extends Controller
     {
         $request->validate([
             'customer_id' => 'required|exists:customers,id',
-            'comment' => 'nullable|string',
-            'should_be_paid_at' => 'nullable|date',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.price' => 'required|integer|min:0',
+            'items.*.price' => 'required|numeric|min:0',
+            'should_be_paid_at' => 'required|date',
+            'comment' => 'nullable|string',
         ]);
 
         try {
@@ -86,13 +86,21 @@ class SalesInvoiceController extends Controller
 
             // Insert all ventes in a single query
             Vente::insert($ventes);
+            // check if customer is prospect
+            $customer = Customer::findOrFail($request->customer_id);    
+            if ($customer->is_prospect) {
+                // Update customer's prospect status
+                $customer->is_prospect = false;
+                $customer->save();
+            }
 
             DB::commit();
-            return redirect()->back()->with('success', 'Invoice created successfully.');
+
+            return redirect()->back()->with('success', 'Facture créée avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
             report($e);
-            return redirect()->back()->with('error', 'Failed to create invoice. Please try again.');
+            return redirect()->back()->withErrors(['error' => 'Échec de la création de la facture. Veuillez réessayer.']);
         }
     }
 

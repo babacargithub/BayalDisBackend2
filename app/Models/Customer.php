@@ -19,15 +19,17 @@ class Customer extends Model
         'commercial_id',
         'gps_coordinates',
         'ligne_id',
-        "description"
+        'description',
+        'is_prospect'
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'is_prospect' => 'boolean',
     ];
 
-    protected $appends = ['is_prospect', 'last_visit'];
+    protected $appends = ['last_visit'];
 
     public function commercial(): BelongsTo
     {
@@ -48,19 +50,11 @@ class Customer extends Model
     }
 
     /**
-     * Determine if the customer is a prospect (no sales yet)
-     */
-    public function getIsProspectAttribute(): bool
-    {
-        return !$this->ventes()->exists();
-    }
-
-    /**
      * Scope a query to only include prospects
      */
     public function scopeProspects($query)
     {
-        return $query->whereDoesntHave('ventes');
+        return $query->where('is_prospect', true);
     }
 
     /**
@@ -68,7 +62,7 @@ class Customer extends Model
      */
     public function scopeNonProspects($query)
     {
-        return $query->whereHas('ventes');
+        return $query->where('is_prospect', false);
     }
 
     public function orders(): HasMany

@@ -15,7 +15,7 @@ class CustomerController extends Controller
             ->with(['commercial:id,name', 'ventes' => function($query) {
                 $query->select('id', 'customer_id', 'paid');
             }])
-            ->select('id', 'name', 'phone_number', 'owner_number', 'commercial_id', 'description', 'address', 'created_at');
+            ->select('id', 'name', 'phone_number', 'owner_number', 'commercial_id', 'description', 'address', 'gps_coordinates', 'is_prospect', 'created_at');
 
         // Filter by commercial_id if provided
         if ($request->filled('commercial_id')) {
@@ -40,6 +40,8 @@ class CustomerController extends Controller
                     'owner_number' => $customer->owner_number,
                     'description' => $customer->description,
                     'address' => $customer->address,
+                    'gps_coordinates' => $customer->gps_coordinates,
+                    'is_prospect' => $customer->is_prospect,
                     'created_at' => $customer->created_at,
                     'commercial' => $customer->commercial ? [
                         'id' => $customer->commercial->id,

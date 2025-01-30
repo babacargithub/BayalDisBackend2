@@ -102,7 +102,17 @@ class VenteController extends Controller
         // Add type for single vente
         $validated['type'] = 'SINGLE';
 
-        Vente::create($validated);
+        DB::transaction(function () use ($validated) {
+            // Create the vente
+            Vente::create($validated);
+            // check if the customer is a prospect
+            $customer = Customer::findOrFail($validated['customer_id']);
+            if ($customer->is_prospect) {
+                $customer->is_prospect = false;
+                $customer->save();
+            }
+
+        });
 
         return redirect()->back()->with('success', 'Vente enregistrée avec succès');
     }
