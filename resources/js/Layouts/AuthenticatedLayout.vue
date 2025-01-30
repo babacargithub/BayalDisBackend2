@@ -34,7 +34,7 @@ const menuItems = [
         ]
     },
     { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
-    // { name: 'Commerciaux', route: 'commercials.index', icon: 'mdi-account-tie' },
+    { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
     {
         name: 'Commandes & Livraisons',
         icon: 'mdi-truck-delivery',
