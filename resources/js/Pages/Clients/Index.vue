@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { ref, watch, computed } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import CustomerHistoryDialog from '@/Pages/Clients/CustomerHistoryDialog.vue';
+import { Link } from '@inertiajs/vue3';
 
 const props = defineProps({
     clients: {
@@ -188,7 +189,6 @@ const handlePageChange = (page) => {
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Clients</h2>
                 <div class="flex gap-2 items-center">
-                  
                     <v-btn-group>
                         <v-btn 
                             :color="filterForm.prospect_status === '' ? 'primary' : undefined"
@@ -209,6 +209,17 @@ const handlePageChange = (page) => {
                             Clients
                         </v-btn>
                     </v-btn-group>
+                    <Link
+                        :href="route('clients.map')"
+                        class="v-btn v-btn--variant-elevated v-theme--light v-btn--density-default v-btn--size-default bg-success text-white"
+                    >
+                        <v-icon
+                            icon="mdi-map-marker-multiple"
+                            size="small"
+                            class="mr-2"
+                        />
+                        Voir les adresses
+                    </Link>
                     <v-btn color="primary" @click="dialog = true">
                         Ajouter un client
                     </v-btn>

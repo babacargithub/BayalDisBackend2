@@ -48,7 +48,6 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('commerciaux/{commercial}/activity', [CommercialController::class, 'activity'])->name('commerciaux.activity');
     Route::resource('commerciaux', CommercialController::class);
-    Route::resource('clients', CustomerController::class);
     Route::resource('customers', CustomerController::class);
     Route::resource('produits', ProductController::class);
     Route::resource('ventes', VenteController::class);
@@ -129,6 +128,18 @@ Route::middleware('auth')->group(function () {
         Route::put('/types/{typeDepense}', [DepenseController::class, 'updateType'])->name('types.update');
         Route::delete('/types/{typeDepense}', [DepenseController::class, 'destroyType'])->name('types.destroy');
     });
+
+    // Customer Management Routes
+    Route::prefix('clients')->name('clients.')->group(function () {
+        Route::get('/', [CustomerController::class, 'index'])->name('index');
+        Route::get('/map', [CustomerController::class, 'map'])->name('map');
+        Route::post('/', [CustomerController::class, 'store'])->name('store');
+        Route::get('/{client}', [CustomerController::class, 'show'])->name('show');
+        Route::put('/{client}', [CustomerController::class, 'update'])->name('update');
+        Route::delete('/{client}', [CustomerController::class, 'destroy'])->name('destroy');
+    });
+    Route::resource('clients', CustomerController::class);
+
 });
 
 require __DIR__.'/auth.php';

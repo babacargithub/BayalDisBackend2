@@ -125,4 +125,52 @@ class CustomerController extends Controller
             'ventes' => $ventes
         ]);
     }
+
+    public function map()
+    {
+        $clients = Customer::query()
+            ->select('id', 'name', 'phone_number', 'address', 'gps_coordinates', 'is_prospect')
+            ->whereNotNull('gps_coordinates')
+            ->get();
+
+        return Inertia::render('Clients/Map', [
+            'clients' => $clients,
+            'googleMapsApiKey' => config('services.google.maps_api_key')
+        ]);
+    }
+
+    public function show(Customer $client)
+    {
+        $client->load(['commercial:id,name', 'ventes' => function($query) {
+            $query->select('id', 'customer_id', 'paid', 'created_at', 'product_id')
+                ->with('product:id,name');
+        }]);
+
+        return Inertia::render('Clients/Show', [
+            'client' => [
+                'id' => $client->id,
+                'name' => $client->name,
+                'phone_number' => $client->phone_number,
+                'owner_number' => $client->owner_number,
+                'description' => $client->description,
+                'address' => $client->address,
+                'gps_coordinates' => $client->gps_coordinates,
+                'is_prospect' => $client->is_prospect,
+                'created_at' => $client->created_at,
+                'commercial' => $client->commercial ? [
+                    'id' => $client->commercial->id,
+                    'name' => $client->commercial->name,
+                ] : null,
+                'ventes' => $client->ventes->map(fn ($vente) => [
+                    'id' => $vente->id,
+                    'paid' => $vente->paid,
+                    'created_at' => $vente->created_at,
+                    'product' => [
+                        'id' => $vente->product->id,
+                        'name' => $vente->product->name,
+                    ]
+                ])
+            ]
+        ]);
+    }
 } 

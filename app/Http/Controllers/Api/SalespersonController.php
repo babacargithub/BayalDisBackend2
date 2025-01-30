@@ -636,15 +636,13 @@ class SalespersonController extends Controller
                     'id' => $invoice->id,
                     'customer_id' => $invoice->customer_id,
                     'total' => $invoice->total,
-                    'total_paid' => $invoice->payments->sum('amount'),
-                    "total_remaining" => $invoice->total - $invoice->payments->sum('amount'),
                     'paid' => $invoice->paid,
                     'should_be_paid_at' => $invoice->should_be_paid_at,
                     'created_at' => $invoice->created_at,
                     'items' => $invoice->items->map(function ($item) {
                         return [
                             'id' => $item->id,
-                            'product' => $item->product->name,
+                            'product' => $item->product,
                             'quantity' => $item->quantity,
                             'price' => $item->price,
                         ];
