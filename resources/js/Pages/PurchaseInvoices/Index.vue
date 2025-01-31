@@ -2,11 +2,15 @@
     <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
-                <h2 class="font-semibold text-xl text-gray-800 leading-tight">Factures d'achat</h2>
-                <v-btn color="primary" @click="showCreateDialog">
-                    <v-icon>mdi-plus</v-icon>
-                    Nouvelle facture
-                </v-btn>
+                <div class="d-flex align-center gap-4">
+                    <div class="text-h6">
+                        Total des factures: {{ formatPrice(totalInvoicesAmount) }}
+                    </div>
+                    <v-btn color="primary" @click="showCreateDialog">
+                        <v-icon>mdi-plus</v-icon>
+                        Nouvelle facture
+                    </v-btn>
+                </div>
             </div>
         </template>
 
@@ -78,6 +82,11 @@
                     {{ editingInvoice ? 'Modifier la facture' : 'Nouvelle facture' }}
                 </v-card-title>
                 <v-card-text>
+                    <div class="d-flex justify-end mb-4">
+                        <div class="text-h6">
+                            Total: {{ formatPrice(calculateFormTotal) }}
+                        </div>
+                    </div>
                     <v-form @submit.prevent="saveInvoice">
                         <v-row>
                             <v-col cols="12" md="6">
@@ -121,10 +130,7 @@
                         <div class="mt-4">
                             <div class="d-flex justify-space-between align-center mb-4">
                                 <h3 class="text-h6">Articles</h3>
-                                <v-btn color="primary" @click="addItem">
-                                    <v-icon>mdi-plus</v-icon>
-                                    Ajouter un article
-                                </v-btn>
+                              
                             </div>
 
                             <div v-for="(item, index) in form.items" :key="index" class="mb-4">
@@ -159,11 +165,11 @@
                                         />
                                     </v-col>
                                     <v-col cols="12" md="3">
-                                        <v-text-field
-                                            v-model="item.description"
-                                            label="Description"
-                                            :error-messages="form.errors[`items.${index}.description`]"
-                                        />
+                                        <div class="d-flex align-center h-100">
+                                            <span class="text-subtitle-1 text-gray-600">
+                                               {{ formatPrice(calculateItemTotal(item)) }}
+                                            </span>
+                                        </div>
                                     </v-col>
                                     <v-col cols="12" md="1">
                                         <v-btn
@@ -174,6 +180,18 @@
                                         />
                                     </v-col>
                                 </v-row>
+                            </div>
+                            <div class="d-flex justify-center"><v-btn icon color="primary" @click="addItem">
+                                    <v-icon>mdi-plus</v-icon>
+                                    
+                                </v-btn>
+                            </div>
+                              
+                        </div>
+
+                        <div class="d-flex justify-end mt-4 mb-4">
+                            <div class="text-h6">
+                                 {{ formatPrice(calculateFormTotal) }}
                             </div>
                         </div>
 
@@ -186,7 +204,7 @@
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer />
-                    <v-btn color="error" @click="dialog = false">Annuler</v-btn>
+                    <v-btn color="error" @click="closeDialog">Annuler</v-btn>
                     <v-btn
                         color="primary"
                         @click="saveInvoice"
@@ -218,11 +236,69 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <!-- View Invoice Details Dialog -->
+        <v-dialog v-model="viewDialog" max-width="900px">
+            <v-card>
+                <v-card-title class="d-flex justify-space-between align-center">
+                    <span>Détails de la facture</span>
+                    <div class="text-h6">
+                        Total: {{ formatPrice(selectedInvoice?.total_amount || 0) }}
+                    </div>
+                </v-card-title>
+                <v-card-text>
+                    <v-row class="mb-4">
+                        <v-col cols="12" md="6">
+                            <div class="text-subtitle-1"><strong>Fournisseur:</strong> {{ selectedInvoice?.supplier?.name }}</div>
+                            <div class="text-subtitle-1"><strong>Numéro:</strong> {{ selectedInvoice?.invoice_number }}</div>
+                        </v-col>
+                        <v-col cols="12" md="6">
+                            <div class="text-subtitle-1"><strong>Date:</strong> {{ formatDate(selectedInvoice?.invoice_date) }}</div>
+                            <div class="text-subtitle-1"><strong>Échéance:</strong> {{ formatDate(selectedInvoice?.due_date) }}</div>
+                        </v-col>
+                    </v-row>
+
+                    <v-table>
+                        <thead>
+                            <tr>
+                                <th>Produit</th>
+                                <th class="text-right">Quantité</th>
+                                <th class="text-right">Prix unitaire</th>
+                                <th class="text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in selectedInvoice?.items" :key="item.id">
+                                <td>{{ item.product?.name }}</td>
+                                <td class="text-right">{{ item.quantity }}</td>
+                                <td class="text-right">{{ formatPrice(item.unit_price) }}</td>
+                                <td class="text-right">{{ formatPrice(item.total_price) }}</td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="3" class="text-right font-weight-bold">Total</td>
+                                <td class="text-right font-weight-bold">{{ formatPrice(selectedInvoice?.total_amount || 0) }}</td>
+                            </tr>
+                        </tfoot>
+                    </v-table>
+
+                    <div v-if="selectedInvoice?.comment" class="mt-4">
+                        <div class="font-weight-bold mb-2">Commentaire:</div>
+                        <div>{{ selectedInvoice.comment }}</div>
+                    </div>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" @click="viewDialog = false">Fermer</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
@@ -245,6 +321,8 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const editingInvoice = ref(null);
 const invoiceToDelete = ref(null);
+const viewDialog = ref(false);
+const selectedInvoice = ref(null);
 
 const form = useForm({
     supplier_id: '',
@@ -257,10 +335,70 @@ const form = useForm({
 
 const deleteForm = useForm({});
 
+const totalInvoicesAmount = computed(() => {
+    return props.purchaseInvoices.reduce((total, invoice) => {
+        return total + (invoice.total_amount || 0);
+    }, 0);
+});
+
+const calculateItemTotal = (item) => {
+    return (item.quantity || 0) * (item.unit_price || 0);
+};
+
+const calculateFormTotal = computed(() => {
+    return form.items.reduce((total, item) => {
+        return total + calculateItemTotal(item);
+    }, 0);
+});
+
+const DRAFT_KEY = 'purchase_invoice_draft';
+const isRestoringDraft = ref(false);
+
+// Watch for form changes and save to localStorage
+watch(() => ({
+    supplier_id: form.supplier_id,
+    invoice_number: form.invoice_number,
+    invoice_date: form.invoice_date,
+    due_date: form.due_date,
+    notes: form.notes,
+    items: form.items
+}), (newValue) => {
+    if (!editingInvoice.value && !isRestoringDraft.value) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(newValue));
+    }
+}, { deep: true });
+
+// Clear draft when form is successfully submitted
+function clearDraft() {
+    localStorage.removeItem(DRAFT_KEY);
+}
+
+// Restore draft when component is mounted
+onMounted(() => {
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+        const shouldRestore = window.confirm('Un brouillon de facture non enregistré a été trouvé. Voulez-vous le restaurer?');
+        if (shouldRestore) {
+            isRestoringDraft.value = true;
+            const draftData = JSON.parse(draft);
+            form.supplier_id = draftData.supplier_id;
+            form.invoice_number = draftData.invoice_number;
+            form.invoice_date = draftData.invoice_date;
+            form.due_date = draftData.due_date;
+            form.notes = draftData.notes;
+            form.items = draftData.items;
+            dialog.value = true;
+            isRestoringDraft.value = false;
+        } else {
+            clearDraft();
+        }
+    }
+});
+
 function showCreateDialog() {
     editingInvoice.value = null;
     form.reset();
-    form.items = [{ product_id: '', quantity: 1, unit_price: 0, description: '' }];
+    form.items = [{ product_id: '', quantity: 1, unit_price: 0 }];
     dialog.value = true;
 }
 
@@ -268,20 +406,20 @@ function editInvoice(invoice) {
     editingInvoice.value = invoice;
     form.supplier_id = invoice.supplier_id;
     form.invoice_number = invoice.invoice_number;
-    form.invoice_date = invoice.invoice_date;
-    form.due_date = invoice.due_date;
+    form.invoice_date = formatDateForInput(invoice.invoice_date);
+    form.due_date = formatDateForInput(invoice.due_date);
     form.notes = invoice.notes;
     form.items = invoice.items.map(item => ({
         product_id: item.product_id,
         quantity: item.quantity,
-        unit_price: item.unit_price,
-        description: item.description
+        unit_price: item.unit_price
     }));
     dialog.value = true;
 }
 
 function viewInvoice(invoice) {
-    window.location.href = route('purchase-invoices.show', invoice.id);
+    selectedInvoice.value = invoice;
+    viewDialog.value = true;
 }
 
 function deleteInvoice(invoice) {
@@ -299,7 +437,7 @@ function confirmDelete() {
 }
 
 function addItem() {
-    form.items.push({ product_id: '', quantity: 1, unit_price: 0, description: '' });
+    form.items.push({ product_id: '', quantity: 1, unit_price: 0 });
 }
 
 function removeItem(index) {
@@ -313,6 +451,7 @@ function saveInvoice() {
                 dialog.value = false;
                 editingInvoice.value = null;
                 form.reset();
+                clearDraft();
             }
         });
     } else {
@@ -320,6 +459,7 @@ function saveInvoice() {
             onSuccess: () => {
                 dialog.value = false;
                 form.reset();
+                clearDraft();
             }
         });
     }
@@ -356,6 +496,35 @@ function getStatusLabel(status) {
             return 'Partiellement payée';
         default:
             return 'En attente';
+    }
+}
+
+function formatDateForInput(date) {
+    if (!date) return '';
+    return new Date(date).toISOString().split('T')[0];
+}
+
+// Add a method to discard draft
+function discardDraft() {
+    if (window.confirm('Êtes-vous sûr de vouloir supprimer ce brouillon ?')) {
+        clearDraft();
+        form.reset();
+        form.items = [{ product_id: '', quantity: 1, unit_price: 0 }];
+        dialog.value = false;
+    }
+}
+
+// Update dialog close handling
+function closeDialog() {
+    if (!editingInvoice.value && form.isDirty) {
+        if (window.confirm('Voulez-vous sauvegarder ce brouillon pour plus tard ?')) {
+            dialog.value = false;
+        } else {
+            clearDraft();
+            dialog.value = false;
+        }
+    } else {
+        dialog.value = false;
     }
 }
 </script> 
