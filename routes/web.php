@@ -16,6 +16,7 @@ use App\Http\Controllers\VisitBatchController;
 use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\DepenseController;
+use App\Http\Controllers\CustomerCategoryController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -139,6 +140,9 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{client}', [CustomerController::class, 'destroy'])->name('destroy');
     });
     Route::resource('clients', CustomerController::class);
+
+    Route::resource('customer-categories', CustomerCategoryController::class);
+    Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');
 
 });
 

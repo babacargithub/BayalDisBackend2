@@ -30,6 +30,7 @@ const menuItems = [
         items: [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
             { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' },
+            { name: 'Catégories client', route: 'customer-categories.index', icon: 'mdi-folder-account' },
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
         ]
     },

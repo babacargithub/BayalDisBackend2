@@ -20,7 +20,8 @@ class Customer extends Model
         'gps_coordinates',
         'ligne_id',
         'description',
-        'is_prospect'
+        'is_prospect',
+        'customer_category_id'
     ];
 
     protected $casts = [
@@ -98,5 +99,10 @@ class Customer extends Model
     public function visits()
     {
         return $this->hasMany(CustomerVisit::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(CustomerCategory::class, 'customer_category_id');
     }
 } 
