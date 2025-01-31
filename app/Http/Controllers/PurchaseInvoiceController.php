@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\PurchaseInvoice;
 use App\Models\Supplier;
 use App\Models\Product;
+use App\Models\StockEntry;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Http\RedirectResponse;
 
@@ -52,28 +54,35 @@ class PurchaseInvoiceController extends Controller
             'items.*.unit_price' => 'required|numeric|min:0',
         ]);
 
-        $totalAmount = collect($validated['items'])->sum(function ($item) {
-            return $item['quantity'] * $item['unit_price'];
-        });
+        try {
+            DB::beginTransaction();
 
-        $purchaseInvoice = PurchaseInvoice::create([
-            'supplier_id' => $validated['supplier_id'],
-            'invoice_number' => $validated['invoice_number'],
-            'invoice_date' => $validated['invoice_date'] ?? null,
-            'due_date' => $validated['due_date'] ?? null,
-            'status' => 'pending',
-            'comment' => $validated['comment'] ?? null
-        ]);
-
-        foreach ($validated['items'] as $item) {
-            $purchaseInvoice->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price']
+            $invoice = PurchaseInvoice::create([
+                'supplier_id' => $validated['supplier_id'],
+                'invoice_number' => $validated['invoice_number'],
+                'invoice_date' => $validated['invoice_date'],
+                'due_date' => $validated['due_date'],
+                'comment' => $validated['comment'] ?? null,
+                'status' => 'pending'
             ]);
-        }
 
-        return redirect()->route('purchase-invoices.index');
+            foreach ($validated['items'] as $item) {
+                $invoiceItem = $invoice->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                ]);
+
+                // Create stock entry for each item
+               
+            }
+
+            DB::commit();
+            return redirect()->route('purchase-invoices.index')->with('success', 'Facture créée avec succès');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la création de la facture ' . $e->getMessage()]);
+        }
     }
 
     /**
@@ -112,30 +121,46 @@ class PurchaseInvoiceController extends Controller
             'items.*.unit_price' => 'required|numeric|min:0',
         ]);
 
-        $totalAmount = collect($validated['items'])->sum(function ($item) {
-            return $item['quantity'] * $item['unit_price'];
-        });
+        try {
+            DB::beginTransaction();
 
-        $purchaseInvoice->update([
-            'invoice_number' => $validated['invoice_number'],
-            'invoice_date' => $validated['invoice_date'],
-            'due_date' => $validated['due_date'],
-            'comment' => $validated['comment'] ?? null
-        ]);
-
-        // Delete existing items
-        $purchaseInvoice->items()->delete();
-
-        // Create new items
-        foreach ($validated['items'] as $item) {
-            $purchaseInvoice->items()->create([
-                'product_id' => $item['product_id'],
-                'quantity' => $item['quantity'],
-                'unit_price' => $item['unit_price'],
+            $purchaseInvoice->update([
+                'invoice_number' => $validated['invoice_number'],
+                'invoice_date' => $validated['invoice_date'],
+                'due_date' => $validated['due_date'],
+                'notes' => $validated['notes']
             ]);
-        }
 
-        return redirect()->route('purchase-invoices.index');
+            // Delete old items and their stock entries
+            foreach ($purchaseInvoice->items as $item) {
+                $item->stockEntries()->delete();
+            }
+            $purchaseInvoice->items()->delete();
+
+            // Create new items and stock entries
+            foreach ($validated['items'] as $item) {
+                $invoiceItem = $purchaseInvoice->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                ]);
+
+                // Create stock entry for each item
+                StockEntry::create([
+                    'product_id' => $item['product_id'],
+                    'purchase_invoice_item_id' => $invoiceItem->id,
+                    'quantity' => $item['quantity'],
+                    'quantity_left' => $item['quantity'],
+                    'unit_price' => $item['unit_price']
+                ]);
+            }
+
+            DB::commit();
+            return redirect()->route('purchase-invoices.index')->with('success', 'Facture mise à jour avec succès');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise à jour de la facture']);
+        }
     }
 
     /**
@@ -150,5 +175,36 @@ class PurchaseInvoiceController extends Controller
         $purchaseInvoice->delete();
 
         return redirect()->route('purchase-invoices.index');
+    }
+
+    public function putItemsToStock(PurchaseInvoice $purchaseInvoice): RedirectResponse
+    {
+        if ($purchaseInvoice->is_stocked) {
+            return redirect()->back()->withErrors(['error' => 'Cette facture est déjà en stock']);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            foreach ($purchaseInvoice->items as $item) {
+                StockEntry::create([
+                    'product_id' => $item->product_id,
+                    'purchase_invoice_item_id' => $item->id,
+                    'quantity' => $item->quantity,
+                    'quantity_left' => $item->quantity,
+                    'unit_price' => $item->unit_price
+                ]);
+            }
+
+            $purchaseInvoice->update([
+                'is_stocked' => true
+            ]);
+
+            DB::commit();
+            return redirect()->back()->with('success', 'Articles mis en stock avec succès');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise en stock des articles ' . $e->getMessage()]);
+        }
     }
 }

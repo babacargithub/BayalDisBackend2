@@ -16,8 +16,11 @@ class PurchaseInvoice extends Model
         'invoice_number',
         'invoice_date',
         'due_date',
+        'status',
         'comment',
-        'notes'
+        'is_draft',
+        'is_paid',
+        'is_stocked'
     ];
     protected $appends = ["total_amount", "paid_amount"];
 
@@ -25,7 +28,9 @@ class PurchaseInvoice extends Model
         'invoice_date' => 'date',
         'due_date' => 'date',
         'total_amount' => 'integer',
-        'paid_amount' => 'integer'
+        'is_draft' => 'boolean',
+        'is_paid' => 'boolean',
+        'is_stocked' => 'boolean'
     ];
 
     public function getTotalAmountAttribute()

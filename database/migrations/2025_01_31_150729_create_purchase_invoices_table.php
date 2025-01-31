@@ -19,6 +19,9 @@ return new class extends Migration
             $table->date('due_date')->nullable();
             $table->string('status')->default('pending'); // pending, paid, partially_paid
             $table->text('comment')->nullable();
+            $table->boolean('is_draft')->default(true);
+            $table->boolean('is_paid')->default(false);
+            $table->boolean('is_stocked')->default(false);
             $table->timestamps();
         });
     }

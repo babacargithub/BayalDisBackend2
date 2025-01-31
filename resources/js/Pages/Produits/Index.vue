@@ -5,7 +5,8 @@ import { ref, computed } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
-    produits: Array
+    products: Array,
+    total_stock_value: Number
 });
 
 const form = useForm({
@@ -21,8 +22,10 @@ const itemToDelete = ref(null);
 const deleteForm = ref(null);
 
 const margin = computed(() => {
-    if (!form.price || !form.cost_price) return 0;
-    return ((form.price - form.cost_price) / form.cost_price * 100).toFixed(2);
+    const price = Number(form.price) || 0;
+    const costPrice = Number(form.cost_price) || 0;
+    if (!price || !costPrice) return 0;
+    return ((price - costPrice) / costPrice * 100).toFixed(2);
 });
 
 const openDialog = (item = null) => {
@@ -86,6 +89,8 @@ const formatPrice = (price) => {
 };
 
 const calculateMargin = (price, costPrice) => {
+    price = Number(price) || 0;
+    costPrice = Number(costPrice) || 0;
     if (!price || !costPrice) return '0%';
     return ((price - costPrice) / costPrice * 100).toFixed(2) + '%';
 };
@@ -97,7 +102,12 @@ const calculateMargin = (price, costPrice) => {
     <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
-                <h2 class="font-semibold text-xl text-gray-800 leading-tight">Produits</h2>
+                <div>
+                    <h2 class="font-semibold text-xl text-gray-800 leading-tight">Produits</h2>
+                    <div class="text-subtitle-1 mt-2">
+                        Valeur totale du stock: {{ formatPrice(props.total_stock_value) }}
+                    </div>
+                </div>
                 <v-btn color="primary" @click="openDialog()">
                     Ajouter un produit
                 </v-btn>
@@ -114,29 +124,31 @@ const calculateMargin = (price, costPrice) => {
                                 <th>Prix de Vente</th>
                                 <th>Prix de Revient</th>
                                 <th>Marge</th>
-                                <th>Ventes totales</th>
+                                <th>Stock disponible</th>
+                                <th>Valeur du stock</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="produit in produits" :key="produit.id">
-                                <td>{{ produit.name }}</td>
-                                <td>{{ formatPrice(produit.price) }}</td>
-                                <td>{{ formatPrice(produit.cost_price) }}</td>
-                                <td>{{ calculateMargin(produit.price, produit.cost_price) }}</td>
-                                <td>{{ produit.ventes_count }}</td>
+                            <tr v-for="product in products" :key="product.id">
+                                <td>{{ product.name }}</td>
+                                <td>{{ formatPrice(product.price) }}</td>
+                                <td>{{ formatPrice(product.cost_price) }}</td>
+                                <td>{{ calculateMargin(product.price, product.cost_price) }}</td>
+                                <td>{{ product.stock_available }}</td>
+                                <td>{{ formatPrice(product.stock_value) }}</td>
                                 <td>
                                     <v-btn 
                                         icon="mdi-pencil" 
                                         variant="text" 
                                         color="primary"
-                                        @click="openDialog(produit)"
+                                        @click="openDialog(product)"
                                     />
                                     <v-btn 
                                         icon="mdi-delete" 
                                         variant="text" 
                                         color="error"
-                                        @click="openDeleteDialog(produit)"
+                                        @click="openDeleteDialog(product)"
                                     />
                                 </td>
                             </tr>

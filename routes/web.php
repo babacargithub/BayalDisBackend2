@@ -151,6 +151,8 @@ Route::middleware('auth')->group(function () {
 
     // Purchase Invoice Management Routes
     Route::resource('purchase-invoices', PurchaseInvoiceController::class);
+    Route::post('purchase-invoices/{purchaseInvoice}/put-in-stock', [PurchaseInvoiceController::class, 'putItemsToStock'])
+        ->name('purchase-invoices.put-in-stock');
 });
 
 require __DIR__.'/auth.php';

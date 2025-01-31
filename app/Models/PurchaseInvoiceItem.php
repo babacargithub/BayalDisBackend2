@@ -38,4 +38,9 @@ class PurchaseInvoiceItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    public function stockEntry(): HasOne
+    {
+        return $this->hasOne(StockEntry::class);
+    }
 }
