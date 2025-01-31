@@ -45,6 +45,15 @@ const menuItems = [
             { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
             { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
         ]
+    },{
+        name: 'Stock',
+        icon: 'mdi-truck-delivery',
+        isDropdown: true,
+        ref: ordersDropdownOpen,
+        items: [
+            //use shakehande icon
+            { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
+        ]
     },
 ];
 </script>

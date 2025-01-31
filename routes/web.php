@@ -17,6 +17,7 @@ use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\DepenseController;
 use App\Http\Controllers\CustomerCategoryController;
+use App\Http\Controllers\SupplierController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -144,6 +145,8 @@ Route::middleware('auth')->group(function () {
     Route::resource('customer-categories', CustomerCategoryController::class);
     Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');
 
+    // Supplier Management Routes
+    Route::resource('suppliers', SupplierController::class);
 });
 
 require __DIR__.'/auth.php';
