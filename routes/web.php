@@ -18,6 +18,7 @@ use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\DepenseController;
 use App\Http\Controllers\CustomerCategoryController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\PurchaseInvoiceController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -147,6 +148,9 @@ Route::middleware('auth')->group(function () {
 
     // Supplier Management Routes
     Route::resource('suppliers', SupplierController::class);
+
+    // Purchase Invoice Management Routes
+    Route::resource('purchase-invoices', PurchaseInvoiceController::class);
 });
 
 require __DIR__.'/auth.php';
