@@ -1,9 +1,11 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, router } from '@inertiajs/vue3';
+import { ref, watch, computed } from 'vue';
 
 const tab = ref('daily');
+const menu = ref(false);
+const datePickerKey = ref(0);
 
 const props = defineProps({
     dailyStats: {
@@ -18,7 +20,8 @@ const props = defineProps({
             total_amount_gross: 0,
             total_amount_paid: 0,
             total_amount_unpaid: 0,
-            total_profit: 0
+            total_profit: 0,
+            total_payments: 0
         })
     },
     weeklyStats: {
@@ -33,7 +36,8 @@ const props = defineProps({
             total_amount_gross: 0,
             total_amount_paid: 0,
             total_amount_unpaid: 0,
-            total_profit: 0
+            total_profit: 0,
+            total_payments: 0
         })
     },
     monthlyStats: {
@@ -48,7 +52,8 @@ const props = defineProps({
             total_amount_gross: 0,
             total_amount_paid: 0,
             total_amount_unpaid: 0,
-            total_profit: 0
+            total_profit: 0,
+            total_payments: 0
         })
     },
     overallStats: {
@@ -64,10 +69,52 @@ const props = defineProps({
             total_amount_paid: 0,
             total_amount_unpaid: 0,
             total_profit: 0,
-            total_commerciaux: 0
+            total_commerciaux: 0,
+            total_payments: 0
         })
+    },
+    selectedDate: {
+        type: String,
+        required: true
     }
 });
+// today
+const date = ref(props.selectedDate);
+
+const formattedDate = computed(() => {
+    try {
+        return new Date(date.value).toLocaleDateString('fr-FR', { 
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    } catch (e) {
+        return new Date().toLocaleDateString('fr-FR', { 
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    }
+});
+
+const today = computed(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+});
+
+const handleDateChange = (newDate) => {
+    if (newDate) {
+        // Format the date as YYYY-MM-DD
+        const formattedNewDate = new Date(newDate).toISOString().split('T')[0];
+        date.value = formattedNewDate;
+        menu.value = false;
+        router.get(route('dashboard'), { date: formattedNewDate }, {
+            preserveState: true,
+            preserveScroll: true,
+            only: ['dailyStats', 'weeklyStats', 'monthlyStats', 'selectedDate']
+        });
+    }
+};
 
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('fr-FR', {
@@ -121,7 +168,39 @@ const monthlyVentesSection = `
 
     <AuthenticatedLayout>
         <template #header>
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">Tableau de bord</h2>
+            <div class="flex justify-between items-center">
+                <h2 class="font-semibold text-xl text-gray-800 leading-tight">Tableau de bord</h2>
+                <div class="d-flex align-center">
+                    <v-menu
+                        v-model="menu"
+                        :close-on-content-click="false"
+                        min-width="auto"
+                        transition="scale-transition"
+                    >
+                        <template v-slot:activator="{ props }">
+                            <v-btn
+                                color="primary"
+                                v-bind="props"
+                                prepend-icon="mdi-calendar"
+                            >
+                                {{ formattedDate }}
+                            </v-btn>
+                        </template>
+                        
+                        <v-card>
+                            <v-card-text>
+                                <v-date-picker
+                                    :key="datePickerKey"
+                                    :max="today"
+                                    :first-day-of-week="1"
+                                    locale="fr"
+                                    @update:model-value="handleDateChange"
+                                />
+                            </v-card-text>
+                        </v-card>
+                    </v-menu>
+                </div>
+            </div>
         </template>
 
         <div class="py-12">
@@ -199,6 +278,19 @@ const monthlyVentesSection = `
                             </v-card-text>
                         </v-card>
                     </v-col>
+
+                    <v-col cols="12" sm="6" md="2">
+                        <v-card class="mx-auto" elevation="2">
+                            <v-card-text>
+                                <div class="text-overline mb-1">
+                                    TOTAL ENCAISSEMENTS
+                                </div>
+                                <div class="text-h4 mb-2 warning--text">
+                                    {{ formatCurrency(overallStats.total_payments) }}
+                                </div>
+                            </v-card-text>
+                        </v-card>
+                    </v-col>
                 </v-row>
 
                 <!-- Period Stats -->
@@ -263,6 +355,10 @@ const monthlyVentesSection = `
                                                     <div class="text-center">
                                                         <div class="text-h6 font-weight-bold error--text">{{ formatCurrency(dailyStats.total_amount_unpaid) }}</div>
                                                         <div class="text-caption">Impayé</div>
+                                                    </div>
+                                                    <div class="text-center">
+                                                        <div class="text-h6 font-weight-bold warning--text">{{ formatCurrency(dailyStats.total_payments) }}</div>
+                                                        <div class="text-caption">Encaissements</div>
                                                     </div>
                                                     <div class="text-center">
                                                         <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(dailyStats.total_profit) }}</div>
@@ -330,6 +426,10 @@ const monthlyVentesSection = `
                                                         <div class="text-caption">Impayé</div>
                                                     </div>
                                                     <div class="text-center">
+                                                        <div class="text-h6 font-weight-bold warning--text">{{ formatCurrency(weeklyStats.total_payments) }}</div>
+                                                        <div class="text-caption">Encaissements</div>
+                                                    </div>
+                                                    <div class="text-center">
                                                         <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(weeklyStats.total_profit) }}</div>
                                                         <div class="text-caption">Bénéfice</div>
                                                     </div>
@@ -393,6 +493,10 @@ const monthlyVentesSection = `
                                                     <div class="text-center">
                                                         <div class="text-h6 font-weight-bold error--text">{{ formatCurrency(monthlyStats.total_amount_unpaid) }}</div>
                                                         <div class="text-caption">Impayé</div>
+                                                    </div>
+                                                    <div class="text-center">
+                                                        <div class="text-h6 font-weight-bold warning--text">{{ formatCurrency(monthlyStats.total_payments) }}</div>
+                                                        <div class="text-caption">Encaissements</div>
                                                     </div>
                                                     <div class="text-center">
                                                         <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(monthlyStats.total_profit) }}</div>

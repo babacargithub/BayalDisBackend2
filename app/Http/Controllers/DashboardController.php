@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\User;
 use App\Models\Vente;
+use App\Models\Payment;
 use App\Models\Commercial;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -50,6 +52,9 @@ class DashboardController extends Controller
 
             $total_profit = Vente::whereDate('created_at', $today)
                 ->sum('profit');
+
+            $total_payments = Payment::whereDate('created_at', $today)
+                ->sum('amount');
             
             return [
                 'total_customers' => Customer::whereDate('created_at', $today)->count(),
@@ -62,6 +67,7 @@ class DashboardController extends Controller
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
                 'total_profit' => $total_profit,
+                'total_payments' => $total_payments,
             ];
         } catch (\Exception $e) {
             Log::error('Error getting daily stats: ' . $e->getMessage());
@@ -84,6 +90,9 @@ class DashboardController extends Controller
 
             $total_profit = Vente::where('created_at', '>=', $startOfWeek)
                 ->sum('profit');
+
+            $total_payments = Payment::where('created_at', '>=', $startOfWeek)
+                ->sum('amount');
             
             return [
                 'total_customers' => Customer::where('created_at', '>=', $startOfWeek)->count(),
@@ -96,6 +105,7 @@ class DashboardController extends Controller
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
                 'total_profit' => $total_profit,
+                'total_payments' => $total_payments,
             ];
         } catch (\Exception $e) {
             Log::error('Error getting weekly stats: ' . $e->getMessage());
@@ -118,6 +128,9 @@ class DashboardController extends Controller
 
             $total_profit = Vente::where('created_at', '>=', $startOfMonth)
                 ->sum('profit');
+
+            $total_payments = Payment::where('created_at', '>=', $startOfMonth)
+                ->sum('amount');
             
             return [
                 'total_customers' => Customer::where('created_at', '>=', $startOfMonth)->count(),
@@ -130,6 +143,7 @@ class DashboardController extends Controller
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
                 'total_profit' => $total_profit,
+                'total_payments' => $total_payments,
             ];
         } catch (\Exception $e) {
             Log::error('Error getting monthly stats: ' . $e->getMessage());
@@ -147,6 +161,8 @@ class DashboardController extends Controller
                 ->sum(DB::raw('price * quantity'));
 
             $total_profit = Vente::sum('profit');
+
+            $total_payments = Payment::sum('amount');
             
             return [
                 'total_customers' => Customer::count(),
@@ -160,6 +176,7 @@ class DashboardController extends Controller
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
                 'total_profit' => $total_profit,
                 'total_commerciaux' => Commercial::count(),
+                'total_payments' => $total_payments,
             ];
         } catch (\Exception $e) {
             Log::error('Error getting overall stats: ' . $e->getMessage());
