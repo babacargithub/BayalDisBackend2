@@ -33,7 +33,7 @@ const props = defineProps({
             total_ventes: 0,
             total_ventes_paid: 0,
             total_ventes_unpaid: 0,
-            total_amount_gross: 0,
+            total_amount_grss: 0,
             total_amount_paid: 0,
             total_amount_unpaid: 0,
             total_profit: 0,

@@ -66,14 +66,17 @@ echo "Creating stock entries for existing variants";
                     'unit_price' => $variant->cost_price,
                 ]);
 
-                // Create stock entry
-                StockEntry::create([
-                    'product_id' => $variant->id,
-                    'purchase_invoice_item_id' => $invoiceItem->id,
-                    'quantity' => $quantityToStock,
-                    'quantity_left' => $quantityToStock - $totalSold, // Subtract sold quantity
-                    'unit_price' => $variant->cost_price
-                ]);
+                // Create stock entry if not exists
+
+                if (!StockEntry::where('product_id', $variant->id)->exists()){
+                    StockEntry::create([
+                        'product_id' => $variant->id,
+                        'purchase_invoice_item_id' => $invoiceItem->id,
+                        'quantity' => $quantityToStock,
+                        'quantity_left' => $quantityToStock - $totalSold, // Subtract sold quantity
+                        'unit_price' => $variant->cost_price
+                    ]);
+                }
             }
         DB::commit();
         echo "Stock entries created successfully";
