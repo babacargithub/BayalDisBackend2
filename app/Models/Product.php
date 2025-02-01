@@ -15,14 +15,17 @@ class Product extends Model
         'description',
         'price',
         'cost_price',
+        'parent_id',
+        'base_quantity'
     ];
 
     protected $casts = [
         'price' => 'integer',
         'cost_price' => 'integer',
+        'base_quantity' => 'integer',
     ];
 
-    protected $appends = ['stock_available', 'stock_value'];
+    protected $appends = ['stock_available', 'stock_value', 'is_base_product'];
 
     public function ventes(): HasMany
     {
@@ -44,5 +47,20 @@ class Product extends Model
         return $this->stockEntries()
             ->selectRaw('SUM(quantity_left * unit_price) as value')
             ->value('value') ?? 0;
+    }
+
+    public function parent()
+    {
+        return $this->belongsTo(Product::class, 'parent_id');
+    }
+
+    public function variants()
+    {
+        return $this->hasMany(Product::class, 'parent_id');
+    }
+
+    public function getIsBaseProductAttribute()
+    {
+        return is_null($this->parent_id);
     }
 } 

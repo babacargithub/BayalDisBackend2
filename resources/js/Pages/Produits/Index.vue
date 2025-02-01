@@ -6,13 +6,16 @@ import { useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
     products: Array,
-    total_stock_value: Number
+    total_stock_value: Number,
+    base_products: Array
 });
 
 const form = useForm({
     name: '',
     price: '',
     cost_price: '',
+    parent_id: null,
+    base_quantity: 0
 });
 
 const dialog = ref(false);
@@ -20,6 +23,11 @@ const editedItem = ref(null);
 const deleteDialog = ref(false);
 const itemToDelete = ref(null);
 const deleteForm = ref(null);
+const stockEntriesDialog = ref(false);
+const selectedProduct = ref(null);
+const stockEntryForm = useForm({
+    stock_entries: []
+});
 
 const margin = computed(() => {
     const price = Number(form.price) || 0;
@@ -34,6 +42,8 @@ const openDialog = (item = null) => {
         form.name = item.name;
         form.price = item.price;
         form.cost_price = item.cost_price;
+        form.parent_id = item.parent_id;
+        form.base_quantity = item.base_quantity;
     } else {
         form.reset();
     }
@@ -43,6 +53,18 @@ const openDialog = (item = null) => {
 const openDeleteDialog = (item) => {
     itemToDelete.value = item;
     deleteDialog.value = true;
+};
+
+const openStockEntriesDialog = (product) => {
+    selectedProduct.value = product;
+    stockEntryForm.stock_entries = product.stock_entries.map(entry => ({
+        id: entry.id,
+        quantity_left: entry.quantity_left,
+        quantity: entry.quantity,
+        unit_price: entry.unit_price,
+        created_at: entry.created_at
+    })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    stockEntriesDialog.value = true;
 };
 
 const submit = () => {
@@ -79,6 +101,15 @@ const deleteProduct = () => {
             }
         });
     }
+};
+
+const updateStockEntries = () => {
+    stockEntryForm.put(route('products.update-stock-entries', selectedProduct.value.id), {
+        onSuccess: () => {
+            stockEntriesDialog.value = false;
+            selectedProduct.value = null;
+        },
+    });
 };
 
 const formatPrice = (price) => {
@@ -121,10 +152,13 @@ const calculateMargin = (price, costPrice) => {
                         <thead>
                             <tr>
                                 <th>Nom</th>
+                                <th>Type</th>
+                                
+                                <th>Qt base</th>
                                 <th>Prix de Vente</th>
                                 <th>Prix de Revient</th>
                                 <th>Marge</th>
-                                <th>Stock disponible</th>
+                                <th>Stock</th>
                                 <th>Valeur du stock</th>
                                 <th>Actions</th>
                             </tr>
@@ -132,12 +166,28 @@ const calculateMargin = (price, costPrice) => {
                         <tbody>
                             <tr v-for="product in products" :key="product.id">
                                 <td>{{ product.name }}</td>
+                                <td>
+                                    <v-icon
+  :color="product.is_base_product ? 'primary' : 'info'"
+  :title="product.is_base_product ? 'Produit de base' : 'Variante'"
+>
+  {{ product.is_base_product ? 'mdi-package-variant' : 'mdi-package-variant-closed' }}
+</v-icon>
+                                </td>
+                                <td>{{ product.base_quantity }}</td>
                                 <td>{{ formatPrice(product.price) }}</td>
                                 <td>{{ formatPrice(product.cost_price) }}</td>
                                 <td>{{ calculateMargin(product.price, product.cost_price) }}</td>
                                 <td>{{ product.stock_available }}</td>
                                 <td>{{ formatPrice(product.stock_value) }}</td>
                                 <td>
+                                    <v-btn 
+                                        icon="mdi-package-variant-plus" 
+                                        variant="text" 
+                                        color="info"
+                                        @click="openStockEntriesDialog(product)"
+                                        :title="'Gérer le stock'"
+                                    />
                                     <v-btn 
                                         icon="mdi-pencil" 
                                         variant="text" 
@@ -167,6 +217,23 @@ const calculateMargin = (price, costPrice) => {
                             v-model="form.name"
                             label="Nom"
                             :error-messages="form.errors.name"
+                        />
+                        <v-select
+                            v-model="form.parent_id"
+                            :items="base_products"
+                            item-title="name"
+                            item-value="id"
+                            label="Produit de base"
+                            clearable
+                            :error-messages="form.errors.parent_id"
+                            :hint="form.parent_id ? 'Ce produit sera une variante' : 'Ce produit sera un produit de base'"
+                            persistent-hint
+                        />
+                        <v-text-field
+                            v-model.number="form.base_quantity"
+                            label="Quantité de base"
+                            type="number"
+                            :error-messages="form.errors.base_quantity"
                         />
                         <v-text-field
                             v-model="form.cost_price"
@@ -237,6 +304,58 @@ const calculateMargin = (price, costPrice) => {
                         Confirmer
                     </v-btn>
                 </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <v-dialog v-model="stockEntriesDialog" max-width="700px">
+            <v-card>
+                <v-card-title class="text-h5">
+                    Gestion du stock - {{ selectedProduct?.name }}
+                </v-card-title>
+                <v-card-text>
+                    <v-form @submit.prevent="updateStockEntries">
+                        <v-table>
+                            <thead>
+                                <tr>
+                                    <th>Date d'entrée</th>
+                                    <th>Quantité initiale</th>
+                                    <th>Prix unitaire</th>
+                                    <th>Quantité restante</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(entry, index) in stockEntryForm.stock_entries" :key="entry.id">
+                                    <td>{{ new Date(entry.created_at).toLocaleDateString() }}</td>
+                                    <td>{{ entry.quantity }}</td>
+                                    <td>{{ formatPrice(entry.unit_price) }}</td>
+                                    <td>
+                                        <v-text-field
+                                            v-model.number="stockEntryForm.stock_entries[index].quantity_left"
+                                            type="number"
+                                            :max="entry.quantity"
+                                            :min="0"
+                                            density="compact"
+                                            hide-details
+                                            variant="outlined"
+                                        />
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </v-table>
+                        
+                        <v-card-actions>
+                            <v-spacer />
+                            <v-btn color="error" @click="stockEntriesDialog = false">Annuler</v-btn>
+                            <v-btn 
+                                color="primary" 
+                                type="submit" 
+                                :loading="stockEntryForm.processing"
+                            >
+                                Mettre à jour
+                            </v-btn>
+                        </v-card-actions>
+                    </v-form>
+                </v-card-text>
             </v-card>
         </v-dialog>
     </AuthenticatedLayout>

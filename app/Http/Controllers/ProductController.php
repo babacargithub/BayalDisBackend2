@@ -13,7 +13,9 @@ class ProductController extends Controller
     public function index()
     {
         return Inertia::render('Produits/Index', [
-            'products' => Product::with('stockEntries')
+            'products' => Product::with(['stockEntries' => function($query) {
+                    $query->orderBy('created_at', 'desc');
+                }])
                 ->get()
                 ->map(function ($product) {
                     return [
@@ -23,12 +25,27 @@ class ProductController extends Controller
                         'cost_price' => $product->cost_price,
                         'price' => $product->price,
                         'stock_available' => $product->stock_available,
-                        'stock_value' => $product->stock_value
+                        'stock_value' => $product->stock_value,
+                        'parent_id' => $product->parent_id,
+                        'base_quantity' => $product->base_quantity,
+                        'is_base_product' => $product->is_base_product,
+                        'stock_entries' => $product->stockEntries->map(function ($entry) {
+                            return [
+                                'id' => $entry->id,
+                                'quantity' => $entry->quantity,
+                                'quantity_left' => $entry->quantity_left,
+                                'unit_price' => $entry->unit_price,
+                                'created_at' => $entry->created_at
+                            ];
+                        })
                     ];
                 }),
             'total_stock_value' => Product::with('stockEntries')
                 ->get()
-                ->sum('stock_value')
+                ->sum('stock_value'),
+            'base_products' => Product::whereNull('parent_id')
+                ->select('id', 'name')
+                ->get()
         ]);
     }
 
@@ -38,6 +55,8 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:0',
             'cost_price' => 'required|numeric|min:0',
+            'parent_id' => 'nullable|exists:products,id',
+            'base_quantity' => 'required|integer|min:0'
         ]);
 
         Product::create($validated);
@@ -51,6 +70,8 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:0',
             'cost_price' => 'required|numeric|min:0',
+            'parent_id' => 'nullable|exists:products,id',
+            'base_quantity' => 'required|integer|min:0'
         ]);
 
         $produit->update($validated);
@@ -85,6 +106,31 @@ class ProductController extends Controller
 
             DB::commit();
 
+            return redirect()->back()->with('success', 'Stock mis à jour avec succès');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Erreur lors de la mise à jour du stock');
+        }
+    }
+
+    public function updateStockEntries(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'stock_entries' => 'required|array',
+            'stock_entries.*.id' => 'required|exists:stock_entries,id',
+            'stock_entries.*.quantity_left' => 'required|integer|min:0'
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            foreach ($validated['stock_entries'] as $entry) {
+                StockEntry::where('id', $entry['id'])
+                    ->where('product_id', $product->id)
+                    ->update(['quantity_left' => $entry['quantity_left']]);
+            }
+
+            DB::commit();
             return redirect()->back()->with('success', 'Stock mis à jour avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
