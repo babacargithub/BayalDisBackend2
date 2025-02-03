@@ -60,23 +60,12 @@
                                         color="primary"
                                         class="mr-2"
                                         @click="editInvoice(invoice)"
-                                        v-if="!invoice.is_stocked"
                                     />
                                     <v-btn 
                                         icon="mdi-delete"
                                         variant="text"
                                         color="error"
                                         @click="deleteInvoice(invoice)"
-                                        v-if="!invoice.is_stocked"
-                                    />
-                                    <v-btn
-                                        icon="mdi-package-variant-plus"
-                                        variant="text"
-                                        color="success"
-                                        class="mr-2"
-                                        @click="putInStock(invoice)"
-                                        v-if="!invoice.is_stocked"
-                                        :title="'Mettre en stock'"
                                     />
                                 </td>
                             </tr>
@@ -538,18 +527,4 @@ function closeDialog() {
         dialog.value = false;
     }
 }
-
-const putInStock = (invoice) => {
-    if (confirm('Êtes-vous sûr de vouloir mettre ces articles en stock ?')) {
-        form.post(route('purchase-invoices.put-in-stock', invoice.id), {
-            preserveScroll: true,
-            onSuccess: () => {
-                // Success message is handled by the backend
-            },
-            onError: (errors) => {
-                console.error('Stocking failed:', errors);
-            }
-        });
-    }
-};
 </script> 

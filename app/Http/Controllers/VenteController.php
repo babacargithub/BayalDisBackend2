@@ -10,9 +10,17 @@ use Exception;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use App\Services\PaymentService;
 
 class VenteController extends Controller
 {
+    protected $paymentService;
+
+    public function __construct(PaymentService $paymentService)
+    {
+        $this->paymentService = $paymentService;
+    }
+
     public function index(Request $request)
     {
         // Base query with optimized eager loading and join to ensure products exist
@@ -73,13 +81,21 @@ class VenteController extends Controller
                 return $vente;
             });
 
+        // Get today's payments
+        $payments = $this->paymentService->getTodayPayments();
+        $paymentStats = $this->paymentService->getPaymentStatistics();
+
         return Inertia::render('Ventes/Index', [
             'ventes' => $ventes,
             'produits' => Product::select(['id', 'name', 'price'])->orderBy('name')->get(),
             'clients' => Customer::select(['id', 'name'])->orderBy('name')->get(),
             'commerciaux' => Commercial::select(['id', 'name'])->orderBy('name')->get(),
             'filters' => $request->only(['date_debut', 'date_fin', 'paid', 'commercial_id']),
-            'statistics' => $statistics
+            'statistics' => $statistics,
+            'payments' => [
+                'data' => $payments,
+                'statistics' => $paymentStats,
+            ],
         ]);
     }
 

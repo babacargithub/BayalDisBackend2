@@ -47,12 +47,12 @@ const menuItems = [
         ]
     },{
         name: 'Stock',
-        icon: 'mdi-package-variant',
+        icon: 'mdi-truck-delivery',
         isDropdown: true,
         ref: ordersDropdownOpen,
         items: [
+            //use shakehande icon
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
-            { name: 'Factures d\'achat', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
         ]
     },
 ];

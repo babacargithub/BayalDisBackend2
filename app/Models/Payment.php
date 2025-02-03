@@ -18,13 +18,9 @@ class Payment extends Model
     protected $casts = [
         'amount' => 'integer'];
 
-    public function order(): BelongsTo
-    {
-        return $this->belongsTo(Order::class);
-    }
-
     public function salesInvoice(): BelongsTo
     {
         return $this->belongsTo(SalesInvoice::class);
     }
+
 } 

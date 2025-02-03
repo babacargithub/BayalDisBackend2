@@ -306,57 +306,5 @@ const calculateMargin = (price, costPrice) => {
                 </v-card-actions>
             </v-card>
         </v-dialog>
-
-        <v-dialog v-model="stockEntriesDialog" max-width="700px">
-            <v-card>
-                <v-card-title class="text-h5">
-                    Gestion du stock - {{ selectedProduct?.name }}
-                </v-card-title>
-                <v-card-text>
-                    <v-form @submit.prevent="updateStockEntries">
-                        <v-table>
-                            <thead>
-                                <tr>
-                                    <th>Date d'entrée</th>
-                                    <th>Quantité initiale</th>
-                                    <th>Prix unitaire</th>
-                                    <th>Quantité restante</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="(entry, index) in stockEntryForm.stock_entries" :key="entry.id">
-                                    <td>{{ new Date(entry.created_at).toLocaleDateString() }}</td>
-                                    <td>{{ entry.quantity }}</td>
-                                    <td>{{ formatPrice(entry.unit_price) }}</td>
-                                    <td>
-                                        <v-text-field
-                                            v-model.number="stockEntryForm.stock_entries[index].quantity_left"
-                                            type="number"
-                                            :max="entry.quantity"
-                                            :min="0"
-                                            density="compact"
-                                            hide-details
-                                            variant="outlined"
-                                        />
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </v-table>
-                        
-                        <v-card-actions>
-                            <v-spacer />
-                            <v-btn color="error" @click="stockEntriesDialog = false">Annuler</v-btn>
-                            <v-btn 
-                                color="primary" 
-                                type="submit" 
-                                :loading="stockEntryForm.processing"
-                            >
-                                Mettre à jour
-                            </v-btn>
-                        </v-card-actions>
-                    </v-form>
-                </v-card-text>
-            </v-card>
-        </v-dialog>
     </AuthenticatedLayout>
 </template> 

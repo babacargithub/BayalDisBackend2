@@ -10,8 +10,12 @@ const props = defineProps({
     clients: Array,
     commerciaux: Array,
     filters: Object,
-    statistics: Object
+    statistics: Object,
+    payments: Object
 });
+
+// Add console log to debug payments data
+console.log('Payments data:', props.payments);
 
 const form = useForm({
     product_id: '',
@@ -161,198 +165,533 @@ const changePage = (page) => {
 watch([() => filterForm.date_debut, () => filterForm.date_fin, () => filterForm.commercial_id], () => {
     currentPage.value = 1;
 });
+
+// Add new data for payments
+const paymentSearch = ref('');
+const paymentMethodFilter = ref('');
+const selectedTab = ref('ventes');
+
+const filteredPayments = computed(() => {
+    if (!props.payments?.data) {
+        return [];
+    }
+    
+    let filtered = props.payments.data;
+    
+    // Filter by payment method if selected
+    if (paymentMethodFilter.value) {
+        filtered = filtered.filter(payment => payment.payment_method === paymentMethodFilter.value);
+    }
+    
+    // Filter by search term
+    if (paymentSearch.value) {
+        const searchTerm = paymentSearch.value.toLowerCase();
+        filtered = filtered.filter(payment => {
+            return payment.customer?.name?.toLowerCase().includes(searchTerm) ||
+                   payment.customer?.phone_number?.toLowerCase().includes(searchTerm);
+        });
+    }
+    
+    return filtered;
+});
+
+const paymentStatistics = computed(() => {
+    if (!props.payments?.statistics) return {
+        today_total: 0,
+        today_count: 0,
+        week_total: 0,
+        month_total: 0
+    };
+    
+    const stats = props.payments.statistics;
+    return {
+        ...stats,
+        average_transaction: stats.today_count ? Math.round(stats.today_total / stats.today_count) : 0
+    };
+});
+
+// Update the header title check
+const pageTitle = computed(() => {
+    return selectedTab.value === 'encaissements' ? 'Encaissements' : 'Ventes';
+});
+
+const paymentToDelete = ref(null);
+const deletePaymentDialog = ref(false);
+
+const confirmDeletePayment = (payment) => {
+    paymentToDelete.value = payment;
+    deletePaymentDialog.value = true;
+};
+
+const deletePayment = () => {
+    if (!paymentToDelete.value || !paymentToDelete.value.invoice_id) {
+        console.error('Missing required payment or invoice data');
+        return;
+    }
+    
+    router.delete(route('sales-invoices.payments.destroy', {
+        salesInvoice: paymentToDelete.value.invoice_id,
+        payment: paymentToDelete.value.id
+    }), {
+        onSuccess: () => {
+            deletePaymentDialog.value = false;
+            paymentToDelete.value = null;
+        },
+    });
+};
+
+const paymentHeaders = [
+    { 
+        title: 'Client',
+        key: 'customer.name',
+        align: 'start',
+        sortable: true
+    },
+    { 
+        title: 'Date',
+        key: 'created_at',
+        align: 'center',
+        sortable: true
+    },
+    { 
+        title: 'Montant Facture',
+        key: 'invoice_total',
+        align: 'end',
+        sortable: true
+    },
+    { 
+        title: 'Montant Payé',
+        key: 'amount_paid',
+        align: 'end',
+        sortable: true
+    },
+    { 
+        title: 'Reste à Payer',
+        key: 'amount_remaining',
+        align: 'end',
+        sortable: true
+    },
+    { 
+        title: 'Mode de Paiement',
+        key: 'payment_method',
+        align: 'center',
+        sortable: true
+    },
+    { 
+        title: 'Actions',
+        key: 'actions',
+        align: 'center',
+        sortable: false
+    }
+];
 </script>
 
 <template>
-    <Head title="Ventes" />
+    <Head :title="pageTitle" />
 
     <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
-                <h2 class="font-semibold text-xl text-gray-800 leading-tight">Ventes</h2>
+                <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                    {{ pageTitle }}
+                </h2>
                 <div class="flex gap-2">
-                    <v-btn-group class="mr-2">
-                        <v-btn 
-                            :color="filterForm.paid === '' ? 'primary' : undefined"
-                            @click="filterForm.paid = ''"
-                        >
-                            Tous
+                    <template v-if="selectedTab === 'ventes'">
+                        <v-btn-group class="mr-2">
+                            <v-btn 
+                                :color="filterForm.paid === '' ? 'primary' : undefined"
+                                @click="filterForm.paid = ''"
+                            >
+                                Tous
+                            </v-btn>
+                            <v-btn 
+                                :color="filterForm.paid === true ? 'primary' : undefined"
+                                @click="filterForm.paid = true"
+                            >
+                                Payées
+                            </v-btn>
+                            <v-btn 
+                                :color="filterForm.paid === false ? 'primary' : undefined"
+                                @click="filterForm.paid = false"
+                            >
+                                Impayées
+                            </v-btn>
+                        </v-btn-group>
+                        <v-btn color="secondary" @click="filterDialog = true">
+                            Plus de filtres
                         </v-btn>
-                        <v-btn 
-                            :color="filterForm.paid === true ? 'primary' : undefined"
-                            @click="filterForm.paid = true"
-                        >
-                            Payées
+                        <v-btn color="primary" @click="dialog = true">
+                            Nouvelle vente
                         </v-btn>
-                        <v-btn 
-                            :color="filterForm.paid === false ? 'primary' : undefined"
-                            @click="filterForm.paid = false"
-                        >
-                            Impayées
-                        </v-btn>
-                    </v-btn-group>
-                    <v-btn color="secondary" @click="filterDialog = true">
-                        Plus de filtres
-                    </v-btn>
-                    <v-btn color="primary" @click="dialog = true">
-                        Nouvelle vente
-                    </v-btn>
+                    </template>
                 </div>
             </div>
         </template>
 
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                <!-- Statistics Cards -->
-                <v-row class="mb-6">
-                    <v-col cols="12" md="3">
-                        <v-card elevation="2" class="rounded-lg">
-                            <v-card-item>
-                                <div class="d-flex justify-space-between align-center">
-                                    <div>
-                                        <div class="text-subtitle-2 mb-1">Total Ventes</div>
-                                        <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.total_amount) }}</div>
-                                        <div class="text-caption mt-1">
-                                            {{ formatNumber(statistics.total_ventes) }} ventes
-                                        </div>
-                                    </div>
-                                    <v-icon size="48" color="primary">mdi-cart</v-icon>
-                                </div>
-                            </v-card-item>
-                        </v-card>
-                    </v-col>
-
-                    <v-col cols="12" md="3">
-                        <v-card elevation="2" class="rounded-lg">
-                            <v-card-item>
-                                <div class="d-flex justify-space-between align-center">
-                                    <div>
-                                        <div class="text-subtitle-2 mb-1">Ventes Payées</div>
-                                        <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.paid_amount) }}</div>
-                                        <div class="text-caption mt-1">
-                                            {{ formatNumber(statistics.paid_count) }} ventes payées
-                                        </div>
-                                    </div>
-                                    <v-icon size="48" color="success">mdi-cash-check</v-icon>
-                                </div>
-                            </v-card-item>
-                        </v-card>
-                    </v-col>
-
-                    <v-col cols="12" md="3">
-                        <v-card elevation="2" class="rounded-lg">
-                            <v-card-item>
-                                <div class="d-flex justify-space-between align-center">
-                                    <div>
-                                        <div class="text-subtitle-2 mb-1">Ventes Impayées</div>
-                                        <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.unpaid_amount) }}</div>
-                                        <div class="text-caption mt-1">
-                                            {{ formatNumber(statistics.unpaid_count) }} ventes impayées
-                                        </div>
-                                    </div>
-                                    <v-icon size="48" color="error">mdi-cash-remove</v-icon>
-                                </div>
-                            </v-card-item>
-                        </v-card>
-                    </v-col>
-
-                    <v-col cols="12" md="3">
-                        <v-card elevation="2" class="rounded-lg">
-                            <v-card-item>
-                                <div class="d-flex justify-space-between align-center">
-                                    <div>
-                                        <div class="text-subtitle-2 mb-1">Taux de Paiement</div>
-                                        <div class="text-h5 font-weight-bold">
-                                            {{ formatNumber((statistics.paid_count / statistics.total_ventes) * 100) }}%
-                                        </div>
-                                        <div class="text-caption mt-1">
-                                            des ventes sont payées
-                                        </div>
-                                    </div>
-                                    <v-icon size="48" color="info">mdi-chart-pie</v-icon>
-                                </div>
-                            </v-card-item>
-                        </v-card>
-                    </v-col>
-                </v-row>
-
-                <!-- Product Statistics -->
-                <v-card class="mb-6">
-                    <v-card-title class="d-flex align-center">
-                        <v-icon start color="primary">mdi-chart-box</v-icon>
-                        Statistiques par Produit
-                    </v-card-title>
-                    <v-table>
-                        <thead>
-                            <tr>
-                                <th>Produit</th>
-                                <th>Quantité Totale</th>
-                                <th>Montant Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="stat in productStats" :key="stat.product.id">
-                                <td>{{ stat.product.name }}</td>
-                                <td>{{ formatNumber(stat.totalQuantity) }}</td>
-                                <td>{{ formatCurrency(stat.totalAmount) }}</td>
-                            </tr>
-                        </tbody>
-                    </v-table>
-                </v-card>
-
-                <!-- Main Table -->
                 <v-card>
-                    <v-table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Produit</th>
-                                <th>Client</th>
-                                <th>Quantité</th>
-                                <th>Prix Total</th>
-                                <th>Statut</th>
-                                <th>Date Échéance</th>
-                                <th>Commercial</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="vente in ventes.data" :key="vente.id">
-                                <td>{{ formatDate(vente.created_at) }}</td>
-                                <td>{{ vente.product?.name }}</td>
-                                <td>{{ vente.customer?.name }}</td>
-                                <td>{{ vente.quantity }}</td>
-                                <td>{{ formatPrice(vente.price * vente.quantity) }}</td>
-                                <td>
-                                    <v-chip
-                                        :color="vente.paid ? 'success' : 'error'"
-                                        @click="togglePaid(vente)"
-                                    >
-                                        {{ vente.paid ? 'Payé' : 'Non payé' }}
-                                    </v-chip>
-                                </td>
-                                <td>{{ formatDate(vente.should_be_paid_at) }}</td>
-                                <td>{{ vente.commercial?.name }}</td>
-                                <td>
-                                    <v-btn 
-                                        icon="mdi-delete" 
-                                        variant="text" 
-                                        color="error"
-                                        @click="confirmDelete(vente)"
-                                    />
-                                </td>
-                            </tr>
-                        </tbody>
-                    </v-table>
-                    <!-- Add pagination -->
-                    <div class="d-flex justify-center mt-4" v-if="ventes.links && ventes.links.length > 3">
-                        <v-pagination
-                            v-model="currentPage"
-                            :length="Math.ceil(ventes.total / ventes.per_page)"
-                            :total-visible="7"
-                            @update:model-value="changePage"
-                        ></v-pagination>
-                    </div>
+                    <v-tabs
+                        v-model="selectedTab"
+                        color="primary"
+                        align-tabs="center"
+                    >
+                        <v-tab value="ventes">
+                            <v-icon start>mdi-cart</v-icon>
+                            Ventes
+                        </v-tab>
+                        <v-tab value="encaissements">
+                            <v-icon start>mdi-cash-register</v-icon>
+                            Encaissements
+                        </v-tab>
+                    </v-tabs>
+
+                    <v-tabs-window v-model="selectedTab">
+                        <!-- Ventes Tab -->
+                        <v-tabs-window-item value="ventes">
+                            <!-- Statistics Cards -->
+                            <v-row class="mb-6">
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Total Ventes</div>
+                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.total_amount) }}</div>
+                                                    <div class="text-caption mt-1">
+                                                        {{ formatNumber(statistics.total_ventes) }} ventes
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="primary">mdi-cart</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Ventes Payées</div>
+                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.paid_amount) }}</div>
+                                                    <div class="text-caption mt-1">
+                                                        {{ formatNumber(statistics.paid_count) }} ventes payées
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="success">mdi-cash-check</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Ventes Impayées</div>
+                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.unpaid_amount) }}</div>
+                                                    <div class="text-caption mt-1">
+                                                        {{ formatNumber(statistics.unpaid_count) }} ventes impayées
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="error">mdi-cash-remove</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Taux de Paiement</div>
+                                                    <div class="text-h5 font-weight-bold">
+                                                        {{ formatNumber((statistics.paid_count / statistics.total_ventes) * 100) }}%
+                                                    </div>
+                                                    <div class="text-caption mt-1">
+                                                        des ventes sont payées
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="info">mdi-chart-pie</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+                            </v-row>
+
+                            <!-- Product Statistics -->
+                            <v-card class="mb-6">
+                                <v-card-title class="d-flex align-center">
+                                    <v-icon start color="primary">mdi-chart-box</v-icon>
+                                    Statistiques par Produit
+                                </v-card-title>
+                                <v-table>
+                                    <thead>
+                                        <tr>
+                                            <th>Produit</th>
+                                            <th>Quantité Totale</th>
+                                            <th>Montant Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="stat in productStats" :key="stat.product.id">
+                                            <td>{{ stat.product.name }}</td>
+                                            <td>{{ formatNumber(stat.totalQuantity) }}</td>
+                                            <td>{{ formatCurrency(stat.totalAmount) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                            </v-card>
+
+                            <!-- Main Table -->
+                            <v-card>
+                                <v-table>
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Produit</th>
+                                            <th>Client</th>
+                                            <th>Quantité</th>
+                                            <th>Prix Total</th>
+                                            <th>Statut</th>
+                                            <th>Date Échéance</th>
+                                            <th>Commercial</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="vente in ventes.data" :key="vente.id">
+                                            <td>{{ formatDate(vente.created_at) }}</td>
+                                            <td>{{ vente.product?.name }}</td>
+                                            <td>{{ vente.customer?.name }}</td>
+                                            <td>{{ vente.quantity }}</td>
+                                            <td>{{ formatPrice(vente.price * vente.quantity) }}</td>
+                                            <td>
+                                                <v-chip
+                                                    :color="vente.paid ? 'success' : 'error'"
+                                                    @click="togglePaid(vente)"
+                                                >
+                                                    {{ vente.paid ? 'Payé' : 'Non payé' }}
+                                                </v-chip>
+                                            </td>
+                                            <td>{{ formatDate(vente.should_be_paid_at) }}</td>
+                                            <td>{{ vente.commercial?.name }}</td>
+                                            <td>
+                                                <v-btn 
+                                                    icon="mdi-delete" 
+                                                    variant="text" 
+                                                    color="error"
+                                                    @click="confirmDelete(vente)"
+                                                />
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </v-table>
+                                <!-- Add pagination -->
+                                <div class="d-flex justify-center mt-4" v-if="ventes.links && ventes.links.length > 3">
+                                    <v-pagination
+                                        v-model="currentPage"
+                                        :length="Math.ceil(ventes.total / ventes.per_page)"
+                                        :total-visible="7"
+                                        @update:model-value="changePage"
+                                    ></v-pagination>
+                                </div>
+                            </v-card>
+                        </v-tabs-window-item>
+
+                        <!-- Encaissements Tab -->
+                        <v-tabs-window-item value="encaissements">
+                            <!-- Payment Statistics Cards -->
+                            <v-row class="mb-6">
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Encaissements du Jour</div>
+                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(props.payments?.statistics?.today_total || 0) }}</div>
+                                                    <div class="text-caption mt-1">
+                                                        {{ formatNumber(props.payments?.statistics?.today_count || 0) }} transactions
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="success">mdi-cash-plus</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Total Semaine</div>
+                                                    <div class="text-h5 font-weight-bold">
+                                                        {{ formatCurrency(props.payments?.statistics?.week_total || 0) }}
+                                                    </div>
+                                                    <div class="text-caption mt-1">
+                                                        Cumul hebdomadaire
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="info">mdi-calendar-week</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Total Mois</div>
+                                                    <div class="text-h5 font-weight-bold">
+                                                        {{ formatCurrency(props.payments?.statistics?.month_total || 0) }}
+                                                    </div>
+                                                    <div class="text-caption mt-1">
+                                                        Cumul mensuel
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="primary">mdi-calendar-month</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+
+                                <v-col cols="12" md="3">
+                                    <v-card elevation="2" class="rounded-lg">
+                                        <v-card-item>
+                                            <div class="d-flex justify-space-between align-center">
+                                                <div>
+                                                    <div class="text-subtitle-2 mb-1">Moyenne par Transaction</div>
+                                                    <div class="text-h5 font-weight-bold">
+                                                        {{ formatCurrency(props.payments?.statistics?.today_count ? (props.payments?.statistics?.today_total / props.payments?.statistics?.today_count) : 0) }}
+                                                    </div>
+                                                    <div class="text-caption mt-1">
+                                                        Aujourd'hui
+                                                    </div>
+                                                </div>
+                                                <v-icon size="48" color="warning">mdi-chart-line</v-icon>
+                                            </div>
+                                        </v-card-item>
+                                    </v-card>
+                                </v-col>
+                            </v-row>
+
+                            <!-- Search and Filter Section -->
+                            <v-card class="mb-6">
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col cols="12" md="4">
+                                            <v-text-field
+                                                v-model="paymentSearch"
+                                                prepend-icon="mdi-magnify"
+                                                label="Rechercher par client"
+                                                hide-details
+                                                density="compact"
+                                                variant="outlined"
+                                                class="mb-2"
+                                            />
+                                        </v-col>
+                                        <v-col cols="12" md="4">
+                                            <v-select
+                                                v-model="paymentMethodFilter"
+                                                :items="[
+                                                    { title: 'Tous', value: '' },
+                                                    { title: 'Espèces', value: 'cash' },
+                                                    { title: 'Virement', value: 'bank_transfer' },
+                                                    { title: 'Mobile Money', value: 'mobile_money' }
+                                                ]"
+                                                label="Mode de paiement"
+                                                hide-details
+                                                density="compact"
+                                                variant="outlined"
+                                            />
+                                        </v-col>
+                                    </v-row>
+                                </v-card-text>
+                            </v-card>
+
+                            <!-- Payments Table -->
+                            <v-card>
+                                <v-data-table
+                                    :headers="paymentHeaders"
+                                    :items="filteredPayments"
+                                    :search="paymentSearch"
+                                    :loading="false"
+                                    class="elevation-1"
+                                >
+                                    <template v-slot:item.customer.name="{ item }">
+                                        <div>
+                                            <div class="font-weight-medium">{{ item.customer?.name }}</div>
+                                            <div class="text-caption text-grey">
+                                                {{ item.customer?.phone_number }}
+                                                <template v-if="item.customer?.address">
+                                                    • {{ item.customer?.address }}
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <template v-slot:item.created_at="{ item }">
+                                        <div class="text-center">
+                                            {{ formatDate(item.created_at) }}
+                                        </div>
+                                    </template>
+
+                                    <template v-slot:item.invoice_total="{ item }">
+                                        {{ formatCurrency(item.invoice_total) }}
+                                    </template>
+
+                                    <template v-slot:item.amount_paid="{ item }">
+                                        <span class="text-success">
+                                            {{ formatCurrency(item.amount_paid) }}
+                                        </span>
+                                    </template>
+
+                                    <template v-slot:item.amount_remaining="{ item }">
+                                        <span :class="item.amount_remaining > 0 ? 'text-error' : 'text-success'">
+                                            {{ formatCurrency(item.amount_remaining) }}
+                                        </span>
+                                    </template>
+
+                                    <template v-slot:item.payment_method="{ item }">
+                                        <v-chip
+                                            :color="item.payment_method === 'cash' ? 'success' : 
+                                                   item.payment_method === 'bank_transfer' ? 'info' : 
+                                                   'warning'"
+                                            size="small"
+                                            class="text-capitalize"
+                                        >
+                                            {{ item.payment_method === 'cash' ? 'Espèces' : 
+                                               item.payment_method === 'bank_transfer' ? 'Virement' : 
+                                               item.payment_method === 'mobile_money' ? 'Mobile Money' : 
+                                               item.payment_method }}
+                                        </v-chip>
+                                    </template>
+
+                                    <template v-slot:item.actions="{ item }">
+                                        <v-btn 
+                                            icon="mdi-delete" 
+                                            variant="text" 
+                                            color="error"
+                                            @click="confirmDeletePayment(item)"
+                                        />
+                                    </template>
+
+                                    <template v-slot:no-data>
+                                        <div class="d-flex align-center justify-center pa-4">
+                                            <v-icon color="grey" class="mr-2">mdi-alert-circle-outline</v-icon>
+                                            Aucun encaissement trouvé
+                                        </div>
+                                    </template>
+                                </v-data-table>
+                            </v-card>
+                        </v-tabs-window-item>
+                    </v-tabs-window>
                 </v-card>
             </div>
         </div>
@@ -499,6 +838,31 @@ watch([() => filterForm.date_debut, () => filterForm.date_fin, () => filterForm.
                         Annuler
                     </v-btn>
                     <v-btn color="error" variant="text" @click="deleteVente">
+                        Confirmer la suppression
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Delete Payment Confirmation Dialog -->
+        <v-dialog v-model="deletePaymentDialog" max-width="500px">
+            <v-card>
+                <v-card-title class="text-h5">Confirmer la suppression</v-card-title>
+                <v-card-text>
+                    Êtes-vous sûr de vouloir supprimer cet encaissement ? Cette action est irréversible.
+                    <div v-if="paymentToDelete" class="mt-4">
+                        <strong>Détails de l'encaissement :</strong>
+                        <div>Client : {{ paymentToDelete.customer?.name }}</div>
+                        <div>Montant : {{ formatCurrency(paymentToDelete.amount_paid) }}</div>
+                        <div>Date : {{ formatDate(paymentToDelete.created_at) }}</div>
+                    </div>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" variant="text" @click="deletePaymentDialog = false">
+                        Annuler
+                    </v-btn>
+                    <v-btn color="error" variant="text" @click="deletePayment">
                         Confirmer la suppression
                     </v-btn>
                 </v-card-actions>

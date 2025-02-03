@@ -6,6 +6,7 @@ Here are the rules for my app
  Every time there is a funcitonality that is common to the Api and Monolith, create a Service class to handle it.
  Controllers should only be used to handle requests and responses.
  The service class also plays the role of the repository.
+ All amounts are in integers. From now on, all amounts should be in integers.
 
  -- FRONTEND RULES of the backend --
  All texts and labels should be in french.
@@ -44,6 +45,8 @@ Here are the rules for my app
  Always use the same layout for the tabs.
  Always use the same layout for the breadcrumbs.
  Always use the same layout for the breadcrumbs.
+  All amounts are in integers. From now on, all amounts should be in integers.
+
 
 == FLUTTER MOBILE APP RULES ==
 Use flutter as the mobile app framework.
@@ -52,3 +55,5 @@ Use consistent fonts for the UI.
 Use consistent sizes for the UI.
 Use consistent spacing for the UI.
 Use consistent icons for the UI.
+All amounts are in integers. From now on, all amounts should be in integers.
+
