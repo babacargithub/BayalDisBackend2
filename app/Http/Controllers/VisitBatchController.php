@@ -55,7 +55,7 @@ class VisitBatchController extends Controller
             }])
             ->orderBy('name')
             ->get()
-            ->map(function ($customer) {
+            ->map(function (Customer $customer) {
                 return [
                     'id' => $customer->id,
                     'name' => $customer->name,

@@ -110,25 +110,32 @@
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <InputLabel :for="'customer_' + index" value="Client" />
-                                            <select
+                                            <v-autocomplete
                                                 :id="'customer_' + index"
                                                 v-model="visit.customer_id"
-                                                class="mt-1 block w-full rounded-md border-gray-300"
+                                                v-model:search="search"
+                                                :items="filteredCustomers"
+                                                item-title="name"
+                                                item-value="id"
+                                                :error-messages="form.errors['visits.' + index + '.customer_id']"
+                                                label="Sélectionner un client"
                                                 required
                                             >
-                                                <option value="">Sélectionner un client</option>
-                                                <option
-                                                    v-for="customer in customers"
-                                                    :key="customer.id"
-                                                    :value="customer.id"
-                                                >
-                                                    {{ customer.name }} - {{ customer.phone_number }}
-                                                </option>
-                                            </select>
-                                            <InputError
-                                                :message="form.errors['visits.' + index + '.customer_id']"
-                                                class="mt-2"
-                                            />
+                                                <template v-slot:item="{ item, props: itemProps }">
+                                                    <v-list-item v-bind="itemProps">
+                                                        <template v-slot:prepend>
+                                                            <v-checkbox-btn
+                                                                :model-value="visit.customer_id === item.value"
+                                                                @update:model-value="visit.customer_id = item.value"
+                                                            />
+                                                        </template>
+                                                        <v-list-item-title>{{ item.title }}</v-list-item-title>
+                                                        <v-list-item-subtitle>
+                                                            {{ item.raw.phone_number }} - {{ item.raw.address }}
+                                                        </v-list-item-subtitle>
+                                                    </v-list-item>
+                                                </template>
+                                            </v-autocomplete>
                                         </div>
                                         <div>
                                             <InputLabel :for="'time_' + index" value="Heure prévue" />
@@ -191,6 +198,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
+import { ref, watch } from 'vue';
 
 const props = defineProps({
     customers: {
@@ -208,6 +216,24 @@ const form = useForm({
     visit_date: '',
     commercial_id: '',
     visits: []
+});
+
+const search = ref('');
+const filteredCustomers = ref([...props.customers]);
+
+// Watch for changes in the search input
+watch(search, (val) => {
+    if (!val) {
+        filteredCustomers.value = props.customers;
+        return;
+    }
+    
+    // Filter customers based on search term
+    filteredCustomers.value = props.customers.filter(customer => 
+        customer.name.toLowerCase().includes(val.toLowerCase()) ||
+        customer.phone_number?.toLowerCase().includes(val.toLowerCase()) ||
+        customer.address?.toLowerCase().includes(val.toLowerCase())
+    );
 });
 
 const addVisit = () => {

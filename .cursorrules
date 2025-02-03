@@ -1,0 +1,50 @@
+Here are the rules for my app
+ For the backend, I want to use the following rules:
+ -- BACKEND RULES ---
+ Migration files should always use current data and time as the timestamp.
+
+ -- FRONTEND RULES of the backend --
+ All texts and labels should be in french.
+ Use Vuetify as the UI framework.
+ Always use v-data-table for tables.
+ Use v-select for select inputs.
+ Use v-checkbox for checkbox inputs.
+ Use v-radio for radio inputs.
+ Use v-btn for buttons.
+ Use v-dialog for dialogs.
+ Use v-snackbar for snackbars.
+ Use v-tooltip for tooltips.
+ Use v-autocomplete for autocomplete inputs.
+ For action buttons in the table, use the following icon button (no text)s:
+ - edit: mdi-pencil
+ - delete: mdi-delete
+ - view: mdi-eye
+ - add: mdi-plus
+ For "delete" button, use red color.
+ For "delete" buttons always ask for confirmation before deleting (Use sweetalert2 for this).
+ Edits should be done in a dialog.
+ Add button should be done in a dialog.
+ Use consistent colors for the UI (same color schemes in the design).
+ Use consistent fonts for the UI.
+ Use consistent sizes for the UI.
+ Use consistent spacing for the UI.
+ Use consistent icons for the UI.
+ Always should HasMany items in a dialog. (For example In a list of customers, when you click on a customer, a dialog should open with the customer details, and if the customer has many orders, the orders should be displayed in a table in the dialog.)
+ Always use the same layout for the dialogs.
+ Always use the same layout for the tables.
+ Always use the same layout for the forms.
+ Form use bordered inputs and stacked lables (the color of the border should be the primary color of the theme)
+ Always use the same layout for the buttons.
+ Always use the same layout for the cards.
+ Always use the same layout for the modals.
+ Always use the same layout for the tabs.
+ Always use the same layout for the breadcrumbs.
+ Always use the same layout for the breadcrumbs.
+
+== FLUTTER MOBILE APP RULES ==
+Use flutter as the mobile app framework.
+Use consistent colors for the UI (same color schemes in the design).
+Use consistent fonts for the UI.
+Use consistent sizes for the UI.
+Use consistent spacing for the UI.
+Use consistent icons for the UI.
