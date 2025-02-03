@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Vente;
+use App\Models\CustomerVisit;
+use App\Models\VisitBatch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,9 +15,17 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Commercial;
 use Carbon\Carbon;
 use App\Models\Order;
+use App\Services\CustomerVisitService;
 
 class SalespersonController extends Controller
 {
+    protected $visitService;
+
+    public function __construct(CustomerVisitService $visitService)
+    {
+        $this->visitService = $visitService;
+    }
+
     /**
      * Get today's customer count for the authenticated salesperson
      */
@@ -297,6 +307,7 @@ class SalespersonController extends Controller
       
             return response()->json([
                 'message' => 'Paiement effectué avec succès',
+                'data' => $invoice->load(['items.product', 'customer', 'payments']),
             ]);
       
     }
@@ -660,5 +671,100 @@ class SalespersonController extends Controller
             });
 
         return response()->json(['data' => $invoices]);
+    }
+
+    /**
+     * Get all visit batches for the authenticated salesperson
+     */
+    public function getVisitBatches(Request $request): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+        $batches = $this->visitService->getVisitBatches($commercial);
+        return response()->json($batches);
+    }
+
+    /**
+     * Get today's visits for the authenticated salesperson
+     */
+    public function getTodayVisits(Request $request): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+        $data = $this->visitService->getTodayVisits($commercial);
+        return response()->json($data);
+    }
+
+    /**
+     * Get details of a specific visit batch
+     */
+    public function getVisitBatchDetails(Request $request, \App\Models\VisitBatch $batch): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+        
+        if (!$this->visitService->canAccessVisitBatch($commercial, $batch)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $batch = $this->visitService->getVisitBatchDetails($batch);
+        return response()->json($batch);
+    }
+
+    /**
+     * Mark a visit as completed
+     */
+    public function completeVisit(Request $request, CustomerVisit $visit): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+        
+        if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'notes' => 'nullable|string',
+            'gps_coordinates' => 'required|string',
+            'resulted_in_sale' => 'required|boolean',
+        ]);
+
+        $visit = $this->visitService->completeVisit($visit, $validated);
+        return response()->json($visit);
+    }
+
+    /**
+     * Cancel a visit
+     */
+    public function cancelVisit(Request $request, CustomerVisit $customerVisit): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+        
+        if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'notes' => 'nullable|string',
+        ]);
+
+        $visit = $this->visitService->cancelVisit($customerVisit, $validated);
+        return response()->json($visit);
+    }
+
+    /**
+     * Update a visit's details
+     */
+    public function updateVisit(Request $request, CustomerVisit $customerVisit): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+        
+        if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'notes' => 'nullable|string',
+            'visit_planned_at' => 'nullable|date_format:H:i',
+        ]);
+
+        $visit = $this->visitService->updateVisit($customerVisit, $validated);
+        return response()->json($visit);
     }
 }

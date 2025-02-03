@@ -6,6 +6,7 @@ use App\Models\Vente;
 use App\Models\Product;
 use App\Models\Customer;
 use App\Models\Commercial;
+use Exception;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -74,9 +75,9 @@ class VenteController extends Controller
 
         return Inertia::render('Ventes/Index', [
             'ventes' => $ventes,
-            'produits' => Product::select('id', 'name', 'price')->orderBy('name')->get(),
-            'clients' => Customer::select('id', 'name')->orderBy('name')->get(),
-            'commerciaux' => Commercial::select('id', 'name')->orderBy('name')->get(),
+            'produits' => Product::select(['id', 'name', 'price'])->orderBy('name')->get(),
+            'clients' => Customer::select(['id', 'name'])->orderBy('name')->get(),
+            'commerciaux' => Commercial::select(['id', 'name'])->orderBy('name')->get(),
             'filters' => $request->only(['date_debut', 'date_fin', 'paid', 'commercial_id']),
             'statistics' => $statistics
         ]);
@@ -106,6 +107,7 @@ class VenteController extends Controller
             // Create the vente
             Vente::create($validated);
             // check if the customer is a prospect
+            /** @var Customer $customer */
             $customer = Customer::findOrFail($validated['customer_id']);
             if ($customer->is_prospect) {
                 $customer->is_prospect = false;
@@ -137,8 +139,8 @@ class VenteController extends Controller
             }
             $vente->delete();
             return redirect()->back()->with('success', 'Vente supprimée avec succès');
-        } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Erreur lors de la suppression de la vente');
+        } catch (Exception $e) {
+            return redirect()->back()->with('error', 'Erreur lors de la suppression de la vente : ' . $e->getMessage());
         }
     }
 } 

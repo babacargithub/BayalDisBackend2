@@ -2,6 +2,10 @@ Here are the rules for my app
  For the backend, I want to use the following rules:
  -- BACKEND RULES ---
  Migration files should always use current data and time as the timestamp.
+ Use the Service layer architecture to handle business logic.
+ Every time there is a funcitonality that is common to the Api and Monolith, create a Service class to handle it.
+ Controllers should only be used to handle requests and responses.
+ The service class also plays the role of the repository.
 
  -- FRONTEND RULES of the backend --
  All texts and labels should be in french.

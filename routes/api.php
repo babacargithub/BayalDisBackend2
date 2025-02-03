@@ -48,6 +48,14 @@ Route::middleware('auth:sanctum')->group(function () {
         // Vente payment
         Route::post('ventes/{vente}/pay', [SalespersonController::class, 'payVente']);
         Route::get('/activity_report', [SalespersonController::class, 'getActivityReport']);
+
+        // Customer Visits
+        Route::get('/visits', [SalespersonController::class, 'getVisitBatches']);
+        Route::get('/visits/today', [SalespersonController::class, 'getTodayVisits']);
+        Route::get('/visits/{batch}', [SalespersonController::class, 'getVisitBatchDetails']);
+        Route::post('/visits/{customerVisit}/complete', [SalespersonController::class, 'completeVisit']);
+        Route::post('/visits/{customerVisit}/cancel', [SalespersonController::class, 'cancelVisit']);
+        Route::put('/visits/{customerVisit}', [SalespersonController::class, 'updateVisit']);
     });
 
     // Add this route with the other API routes
