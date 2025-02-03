@@ -79,10 +79,10 @@ class CustomerVisitService
         DB::transaction(function () use ($visit, $data) {
             $visit->update([
                 'status' => 'completed',
-                'visit_completed_at' => now(),
+                'visited_at' => now(),
                 'notes' => $data['notes'] ?? null,
                 'gps_coordinates' => $data['gps_coordinates'],
-                'resulted_in_sale' => $data['resulted_in_sale'],
+                'resulted_in_sale' => $data['resulted_in_sale'] ?? false,
             ]);
         });
 

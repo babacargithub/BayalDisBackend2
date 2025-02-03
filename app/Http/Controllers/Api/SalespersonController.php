@@ -734,7 +734,7 @@ class SalespersonController extends Controller
     /**
      * Mark a visit as completed
      */
-    public function completeVisit(Request $request, CustomerVisit $visit): JsonResponse
+    public function completeVisit(Request $request, CustomerVisit $customerVisit): JsonResponse
     {
         
         $validated = $request->validate([
@@ -743,8 +743,36 @@ class SalespersonController extends Controller
             'resulted_in_sale' => 'required|boolean',
         ]);
 
-        $visit = $this->visitService->completeVisit($visit, $validated);
-        return response()->json($visit);
+        $visit = $this->visitService->completeVisit($customerVisit, $validated);
+        /**
+         * returned data should be like this
+         * id: json['id'],
+         * customerId: json['customer_id'],
+         * customerName: json['name'],
+         * customerPhoneNumber: json['phone_number'],
+         * customerAddress: json['address'],
+         * status: json['status'],
+         * visitPlannedAt: json['visit_planned_at'],
+         * visitCompletedAt: json['visit_completed_at'],
+         * notes: json['notes'],
+         * gpsCoordinates: json['gps_coordinates'],
+         * resultedInSale: json['resulted_in_sale'],
+         */
+        // keys should be snake case
+        return response()->json([
+            'id' => $visit->id,
+            'customer_id' => $visit->customer_id,
+            'name' => $visit->customer->name,
+            'phone_number' => $visit->customer->phone_number,
+            'address' => $visit->customer->address,
+            'status' => $visit->status,
+            'visit_planned_at' => $visit->visit_planned_at,
+            'visit_completed_at' => $visit->visited_at,
+            'notes' => $visit->notes,
+            'gps_coordinates' => $visit->customer->gps_coordinates,
+            'resulted_in_sale' => $visit->resulted_in_sale,
+
+        ]);
     }
 
     /**
