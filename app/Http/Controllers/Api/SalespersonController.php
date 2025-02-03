@@ -680,7 +680,7 @@ class SalespersonController extends Controller
     {
         $commercial = $request->user()->commercial;
         $batches = $this->visitService->getVisitBatches($commercial);
-        return response()->json($batches);
+        return response()->json(['data' => $batches]);
     }
 
     /**
@@ -694,18 +694,41 @@ class SalespersonController extends Controller
     }
 
     /**
-     * Get details of a specific visit batch
+     * Get visit batch details with all visits
      */
-    public function getVisitBatchDetails(Request $request, \App\Models\VisitBatch $batch): JsonResponse
+    public function getVisitBatchDetails(Request $request, \App\Models\VisitBatch $visitBatch): JsonResponse
     {
         $commercial = $request->user()->commercial;
-        
-        if (!$this->visitService->canAccessVisitBatch($commercial, $batch)) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
 
-        $batch = $this->visitService->getVisitBatchDetails($batch);
-        return response()->json($batch);
+        $visitBatch->load(['visits' => function ($query) {
+            $query->with('customer:id,name,phone_number,address,gps_coordinates')
+                  ->orderBy('visit_planned_at');
+        }]);
+
+        return response()->json([
+            'data' => [
+                'id' => $visitBatch->id,
+                'name' => $visitBatch->name,
+                'visit_date' => $visitBatch->visit_date,
+                'commercial_id' => $visitBatch->commercial_id,
+                'created_at' => $visitBatch->created_at,
+                'visits' => $visitBatch->visits->map(function ($visit) {
+                    return [
+                        'id' => $visit->id,
+                        'customer_id' => $visit->customer_id,
+                        'name' => $visit->customer->name,
+                        'phone_number' => $visit->customer->phone_number,
+                        'address' => $visit->customer->address,
+                        'status' => $visit->status,
+                        'visit_planned_at' => $visit->visit_planned_at,
+                        'visit_completed_at' => $visit->visited_at,
+                        'notes' => $visit->notes,
+                        'gps_coordinates' => $visit->customer->gps_coordinates,
+                        'resulted_in_sale' => $visit->resulted_in_sale,
+                    ];
+                }),
+            ]
+        ]);
     }
 
     /**
@@ -713,12 +736,7 @@ class SalespersonController extends Controller
      */
     public function completeVisit(Request $request, CustomerVisit $visit): JsonResponse
     {
-        $commercial = $request->user()->commercial;
         
-        if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
         $validated = $request->validate([
             'notes' => 'nullable|string',
             'gps_coordinates' => 'required|string',

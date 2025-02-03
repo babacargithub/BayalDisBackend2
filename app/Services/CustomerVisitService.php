@@ -14,14 +14,27 @@ class CustomerVisitService
     /**
      * Get visit batches for a commercial
      */
-    public function getVisitBatches(Commercial $commercial, int $perPage = 20): LengthAwarePaginator
+    public function getVisitBatches(Commercial $commercial, int $perPage = 20)
     {
-        return VisitBatch::with(['visits' => function ($query) {
-            $query->select('id', 'visit_batch_id', 'customer_id', 'status', 'visit_planned_at', 'visited_at')
-                ->with(['customer:id,name,phone_number,address']);
-        }])
-        ->latest()
-        ->paginate($perPage);
+        $batches = VisitBatch::latest()
+        ->paginate($perPage)->map(function (VisitBatch $batch){
+                /**
+                 * visitsCount: json['visits_count'],
+                 * completedCount: json['completed_count'],
+                 * pendingCount: json['pending_count'],
+                 */
+            return [
+                'id' => $batch->id,
+                'name' => $batch->name,
+                'visit_date' => $batch->visit_date,
+                'visits'=>[],
+                'visits_count' => $batch->visits->count(),
+                'pending_count' => $batch->visits->where('status', 'planned')->count(),
+                'completed_count' => $batch->visits->where('status', 'completed')->count(),
+                'created_at' => $batch->created_at,
+            ];
+            });
+        return $batches;
     }
 
     /**
