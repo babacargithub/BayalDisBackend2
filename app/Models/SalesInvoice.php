@@ -20,7 +20,7 @@ class SalesInvoice extends Model
         'should_be_paid_at' => 'datetime',
     ];
 
-    protected $appends = ['total'];
+    protected $appends = ['total', 'total_remaining'];
 
     public function customer(): BelongsTo
     {
@@ -56,5 +56,10 @@ class SalesInvoice extends Model
                 $invoice->items()->update(['should_be_paid_at' => $invoice->should_be_paid_at]);
             }
         });
+    }
+
+    public function getTotalRemainingAttribute()
+    {
+        return $this->total - $this->payments->sum('amount');
     }
 } 

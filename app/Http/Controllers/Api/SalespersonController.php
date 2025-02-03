@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\CustomerVisitResource;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Vente;
@@ -712,21 +713,7 @@ class SalespersonController extends Controller
                 'visit_date' => $visitBatch->visit_date,
                 'commercial_id' => $visitBatch->commercial_id,
                 'created_at' => $visitBatch->created_at,
-                'visits' => $visitBatch->visits->map(function ($visit) {
-                    return [
-                        'id' => $visit->id,
-                        'customer_id' => $visit->customer_id,
-                        'name' => $visit->customer->name,
-                        'phone_number' => $visit->customer->phone_number,
-                        'address' => $visit->customer->address,
-                        'status' => $visit->status,
-                        'visit_planned_at' => $visit->visit_planned_at,
-                        'visit_completed_at' => $visit->visited_at,
-                        'notes' => $visit->notes,
-                        'gps_coordinates' => $visit->customer->gps_coordinates,
-                        'resulted_in_sale' => $visit->resulted_in_sale,
-                    ];
-                }),
+                'visits' => CustomerVisitResource::collection($visitBatch->visits)
             ]
         ]);
     }
@@ -744,35 +731,8 @@ class SalespersonController extends Controller
         ]);
 
         $visit = $this->visitService->completeVisit($customerVisit, $validated);
-        /**
-         * returned data should be like this
-         * id: json['id'],
-         * customerId: json['customer_id'],
-         * customerName: json['name'],
-         * customerPhoneNumber: json['phone_number'],
-         * customerAddress: json['address'],
-         * status: json['status'],
-         * visitPlannedAt: json['visit_planned_at'],
-         * visitCompletedAt: json['visit_completed_at'],
-         * notes: json['notes'],
-         * gpsCoordinates: json['gps_coordinates'],
-         * resultedInSale: json['resulted_in_sale'],
-         */
         // keys should be snake case
-        return response()->json([
-            'id' => $visit->id,
-            'customer_id' => $visit->customer_id,
-            'name' => $visit->customer->name,
-            'phone_number' => $visit->customer->phone_number,
-            'address' => $visit->customer->address,
-            'status' => $visit->status,
-            'visit_planned_at' => $visit->visit_planned_at,
-            'visit_completed_at' => $visit->visited_at,
-            'notes' => $visit->notes,
-            'gps_coordinates' => $visit->customer->gps_coordinates,
-            'resulted_in_sale' => $visit->resulted_in_sale,
-
-        ]);
+        return response()->json(new CustomerVisitResource($visit));
     }
 
     /**
