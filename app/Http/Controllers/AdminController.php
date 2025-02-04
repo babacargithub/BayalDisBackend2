@@ -34,6 +34,7 @@ class AdminController extends Controller
 
         // Calculate total profits (sales - (investments + expenses))
         $totalProfits = Vente::sum("profit");
+        $totalCaisses = Caisse::all()->sum('balance');
 
         return Inertia::render('Admin/Rapport', [
             'statistics' => [
@@ -43,7 +44,9 @@ class AdminController extends Controller
                 'total_depenses' => $totalDepenses,
                 'total_sales' => $totalSales,
                 'total_profits' => $totalProfits,
-                "total_caisses"=>Caisse::all()->sum('balance'),
+                "total_caisses"=>"$totalCaisses",
+                "total_payments"=>Payment::all()->sum('amount'),
+                "value_of_business"=>($stockValue+$totalCaisses+$totalDebt)
             ]
         ]);
     }
