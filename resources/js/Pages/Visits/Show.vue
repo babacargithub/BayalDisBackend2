@@ -51,104 +51,94 @@
                     </div>
                 </div>
 
-                <!-- Visits List -->
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6">
-                        <h3 class="text-lg font-medium text-gray-900 mb-4">Liste des visites</h3>
-                        <div class="space-y-4">
-                            <div
-                                v-for="visit in batch.visits"
-                                :key="visit.id"
-                                class="border rounded-lg overflow-hidden"
-                            >
-                                <div class="p-4">
-                                    <div class="flex justify-between items-start">
-                                        <div>
-                                            <h4 class="text-lg font-medium text-gray-900">
-                                                {{ visit.customer.name }}
-                                            </h4>
-                                            <p class="text-sm text-gray-500">
-                                                {{ visit.customer.phone_number }}
-                                            </p>
-                                            <p class="text-sm text-gray-500">
-                                                {{ visit.customer.address }}
-                                            </p>
-                                        </div>
-                                        <div class="flex items-center space-x-2">
-                                            <span
-                                                class="px-2 py-1 text-xs font-medium rounded-full"
-                                                :class="{
-                                                    'bg-yellow-100 text-yellow-800': visit.status === 'planned',
-                                                    'bg-green-100 text-green-800': visit.status === 'completed',
-                                                    'bg-red-100 text-red-800': visit.status === 'cancelled'
-                                                }"
-                                            >
-                                                {{ visitStatusText(visit.status) }}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <h5 class="text-sm font-medium text-gray-500">Heure prévue</h5>
-                                            <p class="mt-1">
-                                                {{ formatTime(visit.visit_planned_at) }}
-                                            </p>
-                                        </div>
-                                        <div v-if="visit.visited_at">
-                                            <h5 class="text-sm font-medium text-gray-500">Heure de visite</h5>
-                                            <p class="mt-1">
-                                                {{ formatDateTime(visit.visited_at) }}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div v-if="visit.notes" class="mt-4">
-                                        <h5 class="text-sm font-medium text-gray-500">Notes</h5>
-                                        <p class="mt-1 text-gray-700">{{ visit.notes }}</p>
-                                    </div>
-
-                                    <div v-if="visit.status === 'completed'" class="mt-4">
-                                        <h5 class="text-sm font-medium text-gray-500">Résultat</h5>
-                                        <p class="mt-1">
-                                            {{ visit.resulted_in_sale ? 'Vente réalisée' : 'Pas de vente' }}
-                                        </p>
-                                    </div>
-
-                                    <div v-if="visit.gps_coordinates" class="mt-4">
-                                        <h5 class="text-sm font-medium text-gray-500">Coordonnées GPS</h5>
-                                        <p class="mt-1 text-gray-700">{{ visit.gps_coordinates }}</p>
-                                    </div>
-
-                                    <div class="mt-4 flex gap-2">
-                                        <button
-                                            v-if="visit.status === 'planned'"
-                                            @click="completeVisit(visit)"
-                                            class="inline-flex items-center px-3 py-1 bg-green-100 border border-transparent rounded-md text-sm font-medium text-green-700 hover:bg-green-200"
-                                        >
-                                            <v-icon
-                                                icon="mdi-check"
-                                                size="small"
-                                                class="mr-1"
-                                            />
-                                            Terminer
-                                        </button>
-                                        <button
-                                            @click="confirmDeleteVisit(visit)"
-                                            class="inline-flex items-center px-3 py-1 bg-red-100 border border-transparent rounded-md text-sm font-medium text-red-700 hover:bg-red-200"
-                                        >
-                                            <v-icon
-                                                icon="mdi-delete"
-                                                size="small"
-                                                class="mr-1"
-                                            />
-                                            Supprimer
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                <!-- Filters and Search -->
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
+                    <div class="p-4">
+                        <div class="flex flex-wrap gap-4 items-center">
+                            <v-text-field
+                                v-model="searchQuery"
+                                label="Rechercher un client"
+                                prepend-icon="mdi-magnify"
+                                hide-details
+                                density="compact"
+                                variant="outlined"
+                                class="max-w-sm"
+                            />
+                            <v-select
+                                v-model="statusFilter"
+                                :items="[
+                                    { title: 'Tous', value: 'all' },
+                                    { title: 'Planifiées', value: 'planned' },
+                                    { title: 'Terminées', value: 'completed' },
+                                    { title: 'Annulées', value: 'cancelled' }
+                                ]"
+                                label="Statut"
+                                hide-details
+                                density="compact"
+                                variant="outlined"
+                                class="max-w-xs"
+                            />
                         </div>
                     </div>
+                </div>
+
+                <!-- Visits Table -->
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <v-data-table
+                        :headers="headers"
+                        :items="filteredVisits"
+                        :search="searchQuery"
+                        density="compact"
+                        :items-per-page="filteredVisits.length"
+                        :items-per-page-options="[filteredVisits.length]"
+                        class="elevation-1"
+                    >
+                        <template v-slot:item.customer.name="{ item }">
+                            <div>
+                                <div class="font-medium">{{ item.customer.name }}</div>
+                                <div class="text-sm text-gray-500">{{ item.customer.address }}</div>
+                                <div class="text-sm text-gray-500">{{ item.customer.phone_number }}</div>
+                            </div>
+                        </template>
+
+                        <template v-slot:item.visit_planned_at="{ item }">
+                            {{ formatTime(item.visit_planned_at) }}
+                        </template>
+
+                        <template v-slot:item.visited_at="{ item }">
+                            {{ formatDateTime(item.visited_at) }}
+                        </template>
+
+                        <template v-slot:item.status="{ item }">
+                            <v-chip
+                                :color="item.status === 'completed' ? 'success' : 
+                                       item.status === 'cancelled' ? 'error' : 'warning'"
+                                size="small"
+                            >
+                                {{ visitStatusText(item.status) }}
+                            </v-chip>
+                        </template>
+
+                        <template v-slot:item.actions="{ item }">
+                            <div class="flex gap-2 justify-center">
+                                <v-btn
+                                    v-if="item.status === 'planned'"
+                                    icon="mdi-check"
+                                    variant="text"
+                                    color="success"
+                                    size="small"
+                                    @click="completeVisit(item)"
+                                />
+                                <v-btn
+                                    icon="mdi-delete"
+                                    variant="text"
+                                    color="error"
+                                    size="small"
+                                    @click="confirmDeleteVisit(item)"
+                                />
+                            </div>
+                        </template>
+                    </v-data-table>
                 </div>
             </div>
         </div>
@@ -203,6 +193,37 @@ const props = defineProps({
         required: true
     }
 });
+
+const searchQuery = ref('');
+const statusFilter = ref('all');
+
+const filteredVisits = computed(() => {
+    let filtered = props.batch.visits;
+
+    // Apply status filter
+    if (statusFilter.value !== 'all') {
+        filtered = filtered.filter(visit => visit.status === statusFilter.value);
+    }
+
+    // Apply search filter
+    if (searchQuery.value) {
+        const query = searchQuery.value.toLowerCase();
+        filtered = filtered.filter(visit => 
+            visit.customer.name.toLowerCase().includes(query) ||
+            visit.customer.address.toLowerCase().includes(query) ||
+            visit.customer.phone_number.toLowerCase().includes(query)
+        );
+    }
+
+    return filtered;
+});
+
+const headers = [
+    { title: 'Client', key: 'customer.name', align: 'start', sortable: true },
+    { title: 'Heure de visite', key: 'visited_at', align: 'center' },
+    { title: 'Statut', key: 'status', align: 'center' },
+    { title: 'Actions', key: 'actions', align: 'center', sortable: false },
+];
 
 const completedVisitsCount = computed(() => {
     return props.batch.visits.filter(visit => visit.status === 'completed').length;
