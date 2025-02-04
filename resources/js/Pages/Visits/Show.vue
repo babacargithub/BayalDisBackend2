@@ -50,11 +50,46 @@
                         </div>
                     </div>
                 </div>
+              
+
+                <!-- Progress Bar -->
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
+                    <div class="p-4">
+                        <div class="flex items-center gap-4">
+                            <div class="flex-grow">
+                                <v-progress-linear
+                                    :model-value="progressPercentage"
+                                    :color="progressColor"
+                                    height="20"
+                                    rounded
+                                >
+                                    <template v-slot:default="{ value }">
+                                        <div class="text-white font-medium">{{ Math.ceil(value) }}%</div>
+                                    </template>
+                                </v-progress-linear>
+                            </div>
+                            <div class="flex gap-4 items-center text-sm">
+                                <div class="flex items-center gap-1">
+                                    <v-icon color="success" size="small">mdi-check-circle</v-icon>
+                                    <span>{{ completedVisitsCount }} terminées</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <v-icon color="warning" size="small">mdi-clock</v-icon>
+                                    <span>{{ plannedVisitsCount }} planifiées</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <v-icon color="error" size="small">mdi-close-circle</v-icon>
+                                    <span>{{ cancelledVisitsCount }} annulées</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Filters and Search -->
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
                     <div class="p-4">
-                        <div class="flex flex-wrap gap-4 items-center">
+                        <div class="flex flex-wrap gap-6 items-center">
                             <v-text-field
                                 v-model="searchQuery"
                                 label="Rechercher un client"
@@ -64,20 +99,29 @@
                                 variant="outlined"
                                 class="max-w-sm"
                             />
-                            <v-select
-                                v-model="statusFilter"
-                                :items="[
-                                    { title: 'Tous', value: 'all' },
-                                    { title: 'Planifiées', value: 'planned' },
-                                    { title: 'Terminées', value: 'completed' },
-                                    { title: 'Annulées', value: 'cancelled' }
-                                ]"
-                                label="Statut"
-                                hide-details
-                                density="compact"
-                                variant="outlined"
-                                class="max-w-xs"
-                            />
+                            <div class="flex gap-4 items-center">
+                                <v-checkbox
+                                    v-model="statusFilters.planned"
+                                    label="Planifiées"
+                                    color="warning"
+                                    hide-details
+                                    density="compact"
+                                />
+                                <v-checkbox
+                                    v-model="statusFilters.completed"
+                                    label="Terminées"
+                                    color="success"
+                                    hide-details
+                                    density="compact"
+                                />
+                                <v-checkbox
+                                    v-model="statusFilters.cancelled"
+                                    label="Annulées"
+                                    color="error"
+                                    hide-details
+                                    density="compact"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -186,6 +230,7 @@ import { Link, router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import CompleteVisitDialog from './Partials/CompleteVisitDialog.vue';
+import { onMounted, onBeforeUnmount } from 'vue';
 
 const props = defineProps({
     batch: {
@@ -194,16 +239,32 @@ const props = defineProps({
     }
 });
 
+const refreshInterval = ref(null);
+
+onMounted(() => {
+    refreshInterval.value = setInterval(() => {
+        router.reload({ preserveScroll: true });
+    }, 600000);
+});
+
+onBeforeUnmount(() => {
+    if (refreshInterval.value) {
+        clearInterval(refreshInterval.value);
+    }
+});
+
 const searchQuery = ref('');
-const statusFilter = ref('all');
+const statusFilters = ref({
+    planned: true,
+    completed: true,
+    cancelled: true
+});
 
 const filteredVisits = computed(() => {
     let filtered = props.batch.visits;
 
-    // Apply status filter
-    if (statusFilter.value !== 'all') {
-        filtered = filtered.filter(visit => visit.status === statusFilter.value);
-    }
+    // Apply status filters
+    filtered = filtered.filter(visit => statusFilters.value[visit.status]);
 
     // Apply search filter
     if (searchQuery.value) {
@@ -290,4 +351,25 @@ const deleteVisit = () => {
 const completeVisit = (visit) => {
     visitToComplete.value = visit;
 };
+
+const progressPercentage = computed(() => {
+    if (props.batch.visits.length === 0) return 0;
+    return (completedVisitsCount.value / props.batch.visits.length) * 100;
+});
+
+const progressColor = computed(() => {
+    const percentage = progressPercentage.value;
+    if (percentage >= 75) return 'success';
+    if (percentage >= 50) return 'info';
+    if (percentage >= 25) return 'warning';
+    return 'error';
+});
+
+const plannedVisitsCount = computed(() => {
+    return props.batch.visits.filter(visit => visit.status === 'planned').length;
+});
+
+const cancelledVisitsCount = computed(() => {
+    return props.batch.visits.filter(visit => visit.status === 'cancelled').length;
+});
 </script> 
