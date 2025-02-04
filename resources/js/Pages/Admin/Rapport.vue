@@ -69,6 +69,12 @@ const formatAmount = (amount) => {
                             <div class="text-gray-600">Total des profits</div>
                         </v-card-text>
                     </v-card>
+                  <v-card class="rounded-lg">
+                        <v-card-text class="text-center">
+                            <div class="text-3xl font-bold mb-2">{{ formatAmount(statistics.total_caisses) }}</div>
+                            <div class="text-gray-600">Solde Caisses</div>
+                        </v-card-text>
+                    </v-card>
                 </div>
             </div>
         </div>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Caisse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\Product;
@@ -42,6 +43,7 @@ class AdminController extends Controller
                 'total_depenses' => $totalDepenses,
                 'total_sales' => $totalSales,
                 'total_profits' => $totalProfits,
+                "total_caisses"=>Caisse::all()->sum('balance'),
             ]
         ]);
     }

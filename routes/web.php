@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CaisseController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\CommercialController;
 use App\Http\Controllers\CustomerController;
@@ -56,6 +57,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('produits', ProductController::class);
     Route::resource('ventes', VenteController::class);
     Route::resource('zones', ZoneController::class);
+    Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
     Route::get('zones/{zone}/lignes', [ZoneController::class, 'lignes'])->name('zones.lignes');
     Route::get('lignes/unassigned-customers', [LigneController::class, 'getUnassignedCustomers'])->name('lignes.unassigned-customers');
     Route::resource('lignes', LigneController::class)->only(['index', 'store', 'update', 'destroy', 'show']);
@@ -157,7 +159,6 @@ Route::middleware('auth')->group(function () {
 
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
 });
-
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');
     Route::get('/admin/users', [AdminController::class, 'rapport'])->name('users.index');

@@ -37,6 +37,7 @@ const menuItems = [
     },
     { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
     { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
+    { name: 'Caisses', route: 'caisses.index', icon: 'mdi-cash-register' },
     {
         name: 'Commandes & Livraisons',
         icon: 'mdi-truck-delivery',
