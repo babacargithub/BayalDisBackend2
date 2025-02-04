@@ -238,11 +238,6 @@ class SalespersonController extends Controller
     public function getCustomerVentes(Request $request, Customer $customer)
     {
         // Verify that the customer belongs to the authenticated commercial
-        if ($customer->commercial_id !== $request->user()->commercial->id) {
-            return response()->json([
-                'message' => 'Ce client ne vous appartient pas'
-            ], 403);
-        }
 
         $query = $customer->ventes()->with('product')->latest();
 
