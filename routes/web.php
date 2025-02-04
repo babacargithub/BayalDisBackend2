@@ -19,6 +19,7 @@ use App\Http\Controllers\DepenseController;
 use App\Http\Controllers\CustomerCategoryController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\PurchaseInvoiceController;
+use App\Http\Controllers\AdminController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -155,6 +156,11 @@ Route::middleware('auth')->group(function () {
         ->name('purchase-invoices.put-in-stock');
 
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
+});
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');
+    Route::get('/admin/users', [AdminController::class, 'rapport'])->name('users.index');
 });
 
 require __DIR__.'/auth.php';

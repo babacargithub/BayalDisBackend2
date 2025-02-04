@@ -7,6 +7,7 @@ const showSidebar = ref(false);
 const clientsDropdownOpen = ref(false);
 const ordersDropdownOpen = ref(false);
 const ventesDropdownOpen = ref(false);
+const adminDropdownOpen = ref(false);
 
 const menuItems = [
     { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
@@ -53,6 +54,16 @@ const menuItems = [
         items: [
             //use shakehande icon
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
+        ]
+    },
+    {
+        name: 'Admin',
+        icon: 'mdi-shield-account',
+        isDropdown: true,
+        ref: adminDropdownOpen,
+        items: [
+            { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
+            { name: 'Utilisateurs', route: 'users.index', icon: 'mdi-account-multiple' },
         ]
     },
 ];
