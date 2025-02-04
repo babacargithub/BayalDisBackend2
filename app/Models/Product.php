@@ -89,4 +89,8 @@ class Product extends Model
             'remaining_variant_quantity' => intval($remainingVariantUnits)
         ];
     }
+    public function getTotalSoldAttribute()
+    {
+        return $this->ventes()->sum('quantity');
+    }
 }

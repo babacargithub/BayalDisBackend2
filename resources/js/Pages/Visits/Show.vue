@@ -281,7 +281,8 @@ const filteredVisits = computed(() => {
 
 const headers = [
     { title: 'Client', key: 'customer.name', align: 'start', sortable: true },
-    { title: 'Heure de visite', key: 'visited_at', align: 'center' },
+    { title: 'Heure de visite', key: 'visited_at', align: 'start' },
+    { title: 'Notes', key: 'notes', align: 'start' },
     { title: 'Statut', key: 'status', align: 'center' },
     { title: 'Actions', key: 'actions', align: 'center', sortable: false },
 ];

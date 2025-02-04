@@ -28,6 +28,7 @@ class ProductController extends Controller
                         'stock_value' => $product->stock_value,
                         'parent_id' => $product->parent_id,
                         'base_quantity' => $product->base_quantity,
+                        "total_sold" => $product->total_sold,
                         'is_base_product' => $product->is_base_product,
                         'stock_entries' => $product->stockEntries->map(function ($entry) {
                             return [
