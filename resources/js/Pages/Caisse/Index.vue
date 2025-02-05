@@ -60,12 +60,28 @@
                                     variant="text" 
                                     color="primary"
                                     @click="openDialog(item)"
+                                    title="Modifier"
                                 />
                                 <v-btn 
                                     icon="mdi-delete" 
                                     variant="text" 
                                     color="error"
                                     @click="openDeleteDialog(item)"
+                                    title="Supprimer"
+                                />
+                                <v-btn 
+                                    icon="mdi-cash-multiple" 
+                                    variant="text" 
+                                    color="info"
+                                    @click="openTransactionsDialog(item)"
+                                    title="Voir les transactions"
+                                />
+                                <v-btn 
+                                    icon="mdi-plus" 
+                                    variant="text" 
+                                    color="success"
+                                    @click="openNewTransactionDialog(item)"
+                                    title="Nouvelle transaction"
                                 />
                             </div>
                         </template>
@@ -149,6 +165,150 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <!-- Transactions Dialog -->
+        <v-dialog v-model="transactionsDialog" max-width="900px">
+            <v-card v-if="selectedCaisse">
+                <v-card-title>
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <span class="text-h5">Transactions - {{ selectedCaisse.name }}</span>
+                            <div class="text-subtitle-1 mt-1">
+                                Balance: {{ formatAmount(selectedCaisse.balance) }}
+                            </div>
+                        </div>
+                        <v-btn
+                            color="primary"
+                            @click="openNewTransactionDialog(selectedCaisse)"
+                        >
+                            <v-icon start>mdi-plus</v-icon>
+                            Nouvelle Transaction
+                        </v-btn>
+                    </div>
+                </v-card-title>
+                <v-card-text>
+                    <v-data-table
+                        :headers="[
+                            { title: 'Date', key: 'created_at' },
+                            { title: 'Type', key: 'transaction_type' },
+                            { title: 'Montant', key: 'amount' },
+                            { title: 'Label', key: 'label' },
+                            { title: 'Actions', key: 'actions', sortable: false },
+                        ]"
+                        :items="selectedCaisse.transactions || []"
+                        :loading="!selectedCaisse.transactions"
+                        class="mt-4"
+                    >
+                        <template v-slot:item.created_at="{ item }">
+                            {{ formatDate(item.created_at) }}
+                        </template>
+
+                        <template v-slot:item.transaction_type="{ item }">
+                            <v-chip
+                                :color="item.transaction_type === 'WITHDRAW' ? 'error' : 'success'"
+                                :text="item.transaction_type === 'WITHDRAW' ? 'Retrait' : 'Dépôt'"
+                            />
+                        </template>
+
+                        <template v-slot:item.amount="{ item }">
+                            <span :class="item.transaction_type === 'WITHDRAW' ? 'text-error' : 'text-success'">
+                                {{ formatAmount(Math.abs(item.amount)) }}
+                            </span>
+                        </template>
+
+                        <template v-slot:item.actions="{ item }">
+                            <v-btn 
+                                icon="mdi-delete" 
+                                variant="text" 
+                                color="error"
+                                @click="deleteTransaction(item)"
+                                title="Supprimer"
+                            />
+                        </template>
+
+                        <template v-slot:no-data>
+                            Aucune transaction trouvée
+                        </template>
+                    </v-data-table>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" @click="transactionsDialog = false">
+                        Fermer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- New Transaction Dialog -->
+        <v-dialog v-model="transactionDialog" max-width="500px">
+            <v-card>
+                <v-card-title>Nouvelle Transaction</v-card-title>
+                <v-card-text>
+                    <v-form @submit.prevent="submitTransaction">
+                        <div class="mb-4">
+                            <label class="text-subtitle-1 mb-2 block">Type de transaction*</label>
+                            <v-radio-group
+                                v-model="transactionType"
+                                inline
+                                :error-messages="!transactionType ? 'Le type de transaction est obligatoire' : ''"
+                                class="mt-0"
+                            >
+                                <v-radio
+                                    label="Dépôt"
+                                    value="DEPOSIT"
+                                    color="success"
+                                />
+                                <v-radio
+                                    label="Retrait"
+                                    value="WITHDRAW"
+                                    color="error"
+                                />
+                            </v-radio-group>
+                        </div>
+                       
+                        <v-text-field
+                            v-model="transactionForm.label"
+                            label="Libellé*"
+                            :error-messages="transactionForm.errors.label"
+                            variant="outlined"
+                            class="mb-4"
+                            :rules="[v => !!v || 'Le libellé est obligatoire']"
+                        />
+                         <v-text-field
+                            v-model.number="transactionForm.amount"
+                            label="Montant*"
+                            type="number"
+                            :error-messages="transactionForm.errors.amount"
+                            variant="outlined"
+                            class="mb-4"
+                            :rules="[v => !!v || 'Le montant est obligatoire']"
+                        />
+                        <v-card-actions>
+                            <v-spacer />
+                            <v-btn 
+                                color="error" 
+                                @click="() => {
+                                    transactionDialog = false;
+                                    transactionForm.reset();
+                                    transactionType = null;
+                                }"
+                            >
+                                Annuler
+                            </v-btn>
+                            <v-btn 
+                                color="primary" 
+                                type="submit" 
+                                :loading="transactionForm.processing"
+                                :disabled="!transactionType || !transactionForm.amount || !transactionForm.label"
+                            >
+                                Ajouter
+                            </v-btn>
+                        </v-card-actions>
+                    </v-form>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
@@ -157,6 +317,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
+import axios from 'axios';
 
 const props = defineProps({
     caisses: Array
@@ -165,13 +327,19 @@ const props = defineProps({
 const flash = computed(() => usePage().props.flash || {});
 const flashMessage = computed(() => flash.value.success || '');
 const snackbar = ref(false);
-
 const dialog = ref(false);
+const transactionsDialog = ref(false);
+const transactionDialog = ref(false);
 const editedItem = ref(null);
 const deleteDialog = ref(false);
-const itemToDelete = ref(null);
+const selectedCaisse = ref(null);
+const transactionType = ref(null);
 
-// Watch for flash messages
+const transactionForm = useForm({
+    amount: null,
+    label: ''
+});
+
 watch(() => flash.value.success, (message) => {
     if (message) {
         snackbar.value = true;
@@ -191,6 +359,16 @@ const formatAmount = (amount) => {
     }).format(amount);
 };
 
+const formatDate = (date) => {
+    return new Date(date).toLocaleDateString('fr-FR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+};
+
 const openDialog = (item = null) => {
     editedItem.value = item;
     if (item) {
@@ -201,6 +379,67 @@ const openDialog = (item = null) => {
         form.reset();
     }
     dialog.value = true;
+};
+
+const openTransactionsDialog = async (caisse) => {
+    try {
+        selectedCaisse.value = {
+            ...caisse,
+            transactions: null // Reset transactions to show loading state
+        };
+        transactionsDialog.value = true;
+        
+        const response = await axios.get(route('caisses.transactions', caisse.id));
+        selectedCaisse.value = {
+            ...caisse,
+            transactions: response.data.transactions
+        };
+    } catch (error) {
+        console.error('Error fetching transactions:', error);
+        // Show error message in snackbar
+        snackbar.value = true;
+        flashMessage.value = 'Erreur lors du chargement des transactions';
+    }
+};
+
+const openNewTransactionDialog = (caisse) => {
+    selectedCaisse.value = caisse;
+    transactionForm.reset();
+    transactionType.value = null;
+    transactionDialog.value = true;
+};
+
+const submitTransaction = () => {
+    if (!transactionType.value || !transactionForm.amount || !transactionForm.label) {
+        return;
+    }
+
+    const amount = transactionType.value === 'WITHDRAW' ? -Math.abs(transactionForm.amount) : Math.abs(transactionForm.amount);
+    transactionForm.amount = amount;
+
+    transactionForm.post(route('caisses.transactions.store', selectedCaisse.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            transactionDialog.value = false;
+            transactionForm.reset();
+            transactionType.value = null;
+            // Refresh transactions if the dialog is open
+            if (transactionsDialog.value) {
+                openTransactionsDialog(selectedCaisse.value);
+            }
+        }
+    });
+};
+
+const deleteTransaction = (transaction) => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cette transaction ?')) {
+        transactionForm.delete(route('caisses.transactions.destroy', [selectedCaisse.value.id, transaction.id]), {
+            preserveScroll: true,
+            onSuccess: () => {
+                openTransactionsDialog(selectedCaisse.value);
+            }
+        });
+    }
 };
 
 const openDeleteDialog = (item) => {

@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Caisse;
+use App\Models\CaisseTransaction;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class CaisseController extends Controller
 {
@@ -70,6 +72,79 @@ class CaisseController extends Controller
             return redirect()->route('caisses.index')->with('success', 'Caisse supprimée avec succès');
         } catch (\Exception $e) {
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la suppression de la caisse']);
+        }
+    }
+
+    public function transactions(Caisse $caisse)
+    {
+        $transactions = $caisse->transactions()
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($transaction) {
+                return [
+                    'id' => $transaction->id,
+                    'amount' => $transaction->amount,
+                    'effective_amount' => $transaction->effective_amount,
+                    'label' => $transaction->label,
+                    'transaction_type' => $transaction->transaction_type,
+                    'created_at' => $transaction->created_at
+                ];
+            });
+
+        if (request()->wantsJson()) {
+            return response()->json([
+                'transactions' => $transactions
+            ]);
+        }
+
+        return Inertia::render('Caisse/Transactions', [
+            'caisse' => $caisse,
+            'transactions' => $transactions
+        ]);
+    }
+
+    public function storeTransaction(Request $request, Caisse $caisse)
+    {
+        try {
+            DB::beginTransaction();
+
+            $validated = $request->validate([
+                'amount' => 'required|integer|not_in:0',
+                'label' => 'required|string|max:255'
+            ]);
+
+            $transaction = $caisse->transactions()->create($validated);
+            
+            // Update caisse balance using effective amount
+            $caisse->balance += $transaction->effective_amount;
+            $caisse->save();
+
+            DB::commit();
+
+            return redirect()->back()->with('success', 'Transaction enregistrée avec succès');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de l\'enregistrement de la transaction']);
+        }
+    }
+
+    public function destroyTransaction(Caisse $caisse, CaisseTransaction $transaction)
+    {
+        try {
+            DB::beginTransaction();
+
+            // Update caisse balance using effective amount
+            $caisse->balance -= $transaction->effective_amount;
+            $caisse->save();
+
+            $transaction->delete();
+
+            DB::commit();
+
+            return redirect()->back()->with('success', 'Transaction supprimée avec succès');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la suppression de la transaction']);
         }
     }
 } 

@@ -50,7 +50,6 @@ Route::middleware('auth')->group(function () {
     Route::resource('produits', ProductController::class);
     Route::resource('ventes', VenteController::class);
     Route::resource('zones', ZoneController::class);
-    Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
     Route::get('zones/{zone}/lignes', [ZoneController::class, 'lignes'])->name('zones.lignes');
     Route::get('lignes/unassigned-customers', [LigneController::class, 'getUnassignedCustomers'])->name('lignes.unassigned-customers');
     Route::resource('lignes', LigneController::class)->only(['index', 'store', 'update', 'destroy', 'show']);
@@ -61,8 +60,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.store');
     Route::delete('/orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.destroy');
     Route::post('/orders/{order}/create-invoice', [OrderController::class, 'createInvoice'])
-        ->name('orders.create-invoice');
-
+    ->name('orders.create-invoice');
+    
     Route::get('/delivery-batches', [DeliveryBatchController::class, 'index'])->name('delivery-batches.index');
     Route::post('/delivery-batches', [DeliveryBatchController::class, 'store'])->name('delivery-batches.store');
     Route::put('/delivery-batches/{deliveryBatch}', [DeliveryBatchController::class, 'update'])->name('delivery-batches.update');
@@ -72,12 +71,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/delivery-batches/{deliveryBatch}/assign-livreur', [DeliveryBatchController::class, 'assignLivreur'])->name('delivery-batches.assign-livreur');
     Route::get('/delivery-batches/available-orders', [DeliveryBatchController::class, 'getAvailableOrders'])->name('delivery-batches.available-orders');
     Route::get('/delivery-batches/{deliveryBatch}/export-pdf', [DeliveryBatchController::class, 'exportPdf'])
-        ->name('delivery-batches.export-pdf');
-
+    ->name('delivery-batches.export-pdf');
+    
     Route::get('/clients/{client}/history', [CustomerController::class, 'history'])->name('clients.history');
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index'])->name('orders.payments.index');
-
+    
     Route::resource('sales-invoices', SalesInvoiceController::class);
     Route::get('/sales-invoices/{salesInvoice}/pdf', [SalesInvoiceController::class, 'exportPdf'])->name('sales-invoices.pdf');
     Route::post('/sales-invoices/{salesInvoice}/items', [SalesInvoiceController::class, 'addItem'])->name('sales-invoices.items.store');
@@ -86,7 +85,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/sales-invoices/{salesInvoice}/payments', [SalesInvoiceController::class, 'addPayment'])->name('sales-invoices.payments.store');
     Route::put('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'updatePayment'])->name('sales-invoices.payments.update');
     Route::delete('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'removePayment'])->name('sales-invoices.payments.destroy');
-
+    
     // Visit Management Routes
     Route::prefix('visits')->name('visits.')->group(function () {
         // Visit Batches
@@ -98,7 +97,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/{visitBatch}', [VisitBatchController::class, 'update'])->name('update');
         Route::delete('/{visitBatch}', [VisitBatchController::class, 'destroy'])->name('destroy');
         Route::post('/{visitBatch}/add-customers', [VisitBatchController::class, 'addCustomers'])->name('add-customers');
-
+        
         // Customer Visits
         Route::post('/customer-visits', [CustomerVisitController::class, 'store'])->name('customer-visits.store');
         Route::get('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'show'])->name('customer-visits.show');
@@ -106,7 +105,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/customer-visits/{customerVisit}/cancel', [CustomerVisitController::class, 'cancel'])->name('customer-visits.cancel');
         Route::delete('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'destroy'])->name('customer-visits.destroy');
     });
-
+    
     // Investment Management Routes
     Route::prefix('investments')->name('investments.')->group(function () {
         Route::get('/', [InvestmentController::class, 'index'])->name('index');
@@ -114,7 +113,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/{investment}', [InvestmentController::class, 'update'])->name('update');
         Route::delete('/{investment}', [InvestmentController::class, 'destroy'])->name('destroy');
     });
-
+    
     // Expense Management Routes
     Route::prefix('depenses')->name('depenses.')->group(function () {
         Route::get('/', [DepenseController::class, 'index'])->name('index');
@@ -127,7 +126,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/types/{typeDepense}', [DepenseController::class, 'updateType'])->name('types.update');
         Route::delete('/types/{typeDepense}', [DepenseController::class, 'destroyType'])->name('types.destroy');
     });
-
+    
     // Customer Management Routes
     Route::prefix('clients')->name('clients.')->group(function () {
         Route::get('/', [CustomerController::class, 'index'])->name('index');
@@ -138,19 +137,24 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{client}', [CustomerController::class, 'destroy'])->name('destroy');
     });
     Route::resource('clients', CustomerController::class);
-
+    
     Route::resource('customer-categories', CustomerCategoryController::class);
     Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');
-
+    
     // Supplier Management Routes
     Route::resource('suppliers', SupplierController::class);
-
+    
     // Purchase Invoice Management Routes
     Route::resource('purchase-invoices', PurchaseInvoiceController::class);
     Route::post('purchase-invoices/{purchaseInvoice}/put-in-stock', [PurchaseInvoiceController::class, 'putItemsToStock'])
-        ->name('purchase-invoices.put-in-stock');
-
+    ->name('purchase-invoices.put-in-stock');
+    
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
+    
+    Route::get('caisses/{caisse}/transactions', [CaisseController::class, 'transactions'])->name('caisses.transactions');
+    Route::post('caisses/{caisse}/transactions', [CaisseController::class, 'storeTransaction'])->name('caisses.transactions.store');
+    Route::delete('caisses/{caisse}/transactions/{transaction}', [CaisseController::class, 'destroyTransaction'])->name('caisses.transactions.destroy');
+    Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
 });
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');
