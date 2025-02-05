@@ -33,7 +33,7 @@ class SalespersonController extends Controller
     public function getTodayCustomersCount(Request $request)
     {
         $commercial = $request->user()->commercial;
-        
+
         $count = $commercial->customers()
             ->whereDate('created_at', today())
             ->count();
@@ -49,7 +49,7 @@ class SalespersonController extends Controller
     public function getCustomers(Request $request)
     {
         $commercial = $request->user()->commercial;
-        
+
         $query = $commercial->customers()->latest();
 
         // Get today's count if requested
@@ -74,22 +74,22 @@ class SalespersonController extends Controller
             'name.required' => 'Le nom est obligatoire',
             'name.string' => 'Le nom doit être une chaîne de caractères',
             'name.max' => 'Le nom ne doit pas dépasser 255 caractères',
-            
+
             'phone_number.required' => 'Le numéro de téléphone est obligatoire',
             'phone_number.numeric' => 'Le numéro de téléphone doit être numérique',
             'phone_number.digits' => 'Le numéro de téléphone doit contenir 9 chiffres',
             'phone_number.unique' => 'Ce numéro de téléphone est déjà utilisé',
-            
+
             'owner_phone_number.required' => 'Le numéro du propriétaire est obligatoire',
             'owner_phone_number.numeric' => 'Le numéro du propriétaire doit être numérique',
             'owner_phone_number.digits' => 'Le numéro du propriétaire doit contenir 9 chiffres',
-            
+
             'latitude.required' => 'La latitude est obligatoire',
             'latitude.numeric' => 'La latitude doit être un nombre',
-            
+
             'longitude.required' => 'La longitude est obligatoire',
             'longitude.numeric' => 'La longitude doit être un nombre',
-            
+
             'address.max' => 'L\'adresse ne doit pas dépasser 255 caractères',
         ];
 
@@ -103,7 +103,7 @@ class SalespersonController extends Controller
         ], $messages);
 
         $commercial = $request->user()->commercial;
-        
+
         $customer = $commercial->customers()->create($validated);
 
         return response()->json($customer, 201);
@@ -123,21 +123,21 @@ class SalespersonController extends Controller
             'name.required' => 'Le nom est obligatoire',
             'name.string' => 'Le nom doit être une chaîne de caractères',
             'name.max' => 'Le nom ne doit pas dépasser 255 caractères',
-            
+
             'phone_number.required' => 'Le numéro de téléphone est obligatoire',
             'phone_number.numeric' => 'Le numéro de téléphone doit être numérique',
             'phone_number.digits' => 'Le numéro de téléphone doit contenir 9 chiffres',
-            
+
             'owner_phone_number.required' => 'Le numéro du propriétaire est obligatoire',
             'owner_phone_number.numeric' => 'Le numéro du propriétaire doit être numérique',
             'owner_phone_number.digits' => 'Le numéro du propriétaire doit contenir 9 chiffres',
-            
+
             'latitude.required' => 'La latitude est obligatoire',
             'latitude.numeric' => 'La latitude doit être un nombre',
-            
+
             'longitude.required' => 'La longitude est obligatoire',
             'longitude.numeric' => 'La longitude doit être un nombre',
-            
+
             'address.max' => 'L\'adresse ne doit pas dépasser 255 caractères',
         ];
 
@@ -163,21 +163,21 @@ class SalespersonController extends Controller
         $messages = [
             'customer_id.required' => 'Le client est obligatoire',
             'customer_id.exists' => 'Le client sélectionné n\'existe pas',
-            
+
             'product_id.required' => 'Le produit est obligatoire',
             'product_id.exists' => 'Le produit sélectionné n\'existe pas',
-            
+
             'quantity.required' => 'La quantité est obligatoire',
             'quantity.integer' => 'La quantité doit être un nombre entier',
             'quantity.min' => 'La quantité doit être au moins 1',
-            
+
             'price.required' => 'Le prix est obligatoire',
             'price.numeric' => 'Le prix doit être un nombre',
             'price.min' => 'Le prix doit être positif',
-            
+
             'paid.required' => 'Le statut de paiement est obligatoire',
             'paid.boolean' => 'Le statut de paiement doit être vrai ou faux',
-            
+
             'should_be_paid_at.required_if' => 'La date de paiement est obligatoire si la vente n\'est pas payée',
             'should_be_paid_at.date' => 'La date de paiement n\'est pas valide',
         ];
@@ -196,7 +196,7 @@ class SalespersonController extends Controller
 
         // Verify that the customer belongs to this salesperson
         $customer = Customer::findOrFail($validated['customer_id']);
-        
+
         $vente = $commercial->ventes()->create([
             'product_id' => $validated['product_id'],
             'customer_id' => $validated['customer_id'],
@@ -207,6 +207,20 @@ class SalespersonController extends Controller
             'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
             'payment_method' => $validated['payment_method'] ?? "Cash",
         ]);
+        if ($customer->is_prospect){
+            $customer->is_prospect = false;
+            $customer->save();
+        }
+        // check if customer has visit planned if yes we mark it as completed
+        $visit = $customer->visits()->whereDate('visit_planned_at', '<=', now()->toDateString())->where('status',
+            CustomerVisit::STATUS_PLANNED)->first();
+        if ($visit) {
+            $visit->status = CustomerVisit::STATUS_COMPLETED;
+            $visit->visited_at = now();
+            $visit->notes = "Visite marquée comme terminée directement suite à une vente";
+            $visit->gps_coordinates = $customer->gps_coordinates;
+            $visit->save();
+        }
 
         // Load the relationships
         $vente->load(['customer', 'product']);
@@ -251,13 +265,13 @@ class SalespersonController extends Controller
     public function payVente(Request $request, Vente $vente)
     {
 
-            $validated = $request->validate([
-                'payment_method' => 'required|in:' . implode(',', [
+        $validated = $request->validate([
+            'payment_method' => 'required|in:' . implode(',', [
                     Vente::PAYMENT_METHOD_CASH,
                     Vente::PAYMENT_METHOD_WAVE,
                     Vente::PAYMENT_METHOD_OM,
                 ]),
-            ]);
+        ]);
 
         $vente->paid = true;
         $vente->paid_at = now();
@@ -300,12 +314,12 @@ class SalespersonController extends Controller
         });
 
 
-      
-            return response()->json([
-                'message' => 'Paiement effectué avec succès',
-                'data' => $invoice->load(['items.product', 'customer', 'payments']),
-            ]);
-      
+
+        return response()->json([
+            'message' => 'Paiement effectué avec succès',
+            'data' => $invoice->load(['items.product', 'customer', 'payments']),
+        ]);
+
     }
 
     public function getVentes(Request $request)
@@ -380,11 +394,11 @@ class SalespersonController extends Controller
 
         // Parse the date and set the time range
         $date = Carbon::parse($validated['date']);
-        $startDate = $validated['type'] === 'weekly' 
-            ? $date->copy()->startOfWeek() 
+        $startDate = $validated['type'] === 'weekly'
+            ? $date->copy()->startOfWeek()
             : $date->copy()->startOfDay();
-        $endDate = $validated['type'] === 'weekly' 
-            ? $date->copy()->endOfWeek() 
+        $endDate = $validated['type'] === 'weekly'
+            ? $date->copy()->endOfWeek()
             : $date->copy()->endOfDay();
 
         // Get total customers and prospects
@@ -464,7 +478,7 @@ class SalespersonController extends Controller
         }
 
         $orders =Order::
-            with(['customer', 'product'])
+        with(['customer', 'product'])
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -536,54 +550,54 @@ class SalespersonController extends Controller
             'should_be_paid_at' => 'required_if:paid,false|nullable|date',
         ]);
 
-            // Create sales invoice
-            DB::transaction(function () use ($order, $validated, $request) {
-                $salesInvoice = \App\Models\SalesInvoice::create([
-                    'customer_id' => $order->customer_id,
-                    'paid' => $validated['paid'],
-                    'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
-                    'comment' => "Facture de livraison",
-                ]);
-
-                // Create invoice items from order items
-                $ordersToCreate =[];
-                foreach ($order->items as $item) {
-                    $ordersToCreate[] = [
-                        'product_id' => $item->product_id,
-                        'quantity' => $item->quantity,
-                        'price' => $item->price,
-                        'commercial_id' => $request->user()->commercial->id,
-                        'type' => 'INVOICE_ITEM',
-                        'paid' => $validated['paid'],
-                        'payment_method' => $validated['payment_method'] ?? null,
-                        'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
-                        'paid_at' => $validated['paid'] ? now() : null,
-                    ];
-                }
-                $salesInvoice->items()->createMany($ordersToCreate);
-
-                // Update order status and link to invoice
-                $order->update([
-                    'status' => Order::STATUS_DELIVERED,
-                    'sales_invoice_id' => $salesInvoice->id,
-                ]);
-
-                // If paid, create a payment record
-                if ($validated['paid']) {
-                    $salesInvoice->payments()->create([
-                        'amount' => $salesInvoice->total,
-                        'payment_method' => $validated['payment_method'],
-                        'comment' => 'Paiement à la livraison',
-                    ]);
-                }
-            });
-
-            return response()->json([
-                'message' => 'Order delivered successfully and invoice created',
-                'data' => [
-                    'order' => $order->load(['customer', 'product']),
-                ],
+        // Create sales invoice
+        DB::transaction(function () use ($order, $validated, $request) {
+            $salesInvoice = \App\Models\SalesInvoice::create([
+                'customer_id' => $order->customer_id,
+                'paid' => $validated['paid'],
+                'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
+                'comment' => "Facture de livraison",
             ]);
+
+            // Create invoice items from order items
+            $ordersToCreate =[];
+            foreach ($order->items as $item) {
+                $ordersToCreate[] = [
+                    'product_id' => $item->product_id,
+                    'quantity' => $item->quantity,
+                    'price' => $item->price,
+                    'commercial_id' => $request->user()->commercial->id,
+                    'type' => 'INVOICE_ITEM',
+                    'paid' => $validated['paid'],
+                    'payment_method' => $validated['payment_method'] ?? null,
+                    'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
+                    'paid_at' => $validated['paid'] ? now() : null,
+                ];
+            }
+            $salesInvoice->items()->createMany($ordersToCreate);
+
+            // Update order status and link to invoice
+            $order->update([
+                'status' => Order::STATUS_DELIVERED,
+                'sales_invoice_id' => $salesInvoice->id,
+            ]);
+
+            // If paid, create a payment record
+            if ($validated['paid']) {
+                $salesInvoice->payments()->create([
+                    'amount' => $salesInvoice->total,
+                    'payment_method' => $validated['payment_method'],
+                    'comment' => 'Paiement à la livraison',
+                ]);
+            }
+        });
+
+        return response()->json([
+            'message' => 'Order delivered successfully and invoice created',
+            'data' => [
+                'order' => $order->load(['customer', 'product']),
+            ],
+        ]);
 
     }
 
@@ -633,7 +647,7 @@ class SalespersonController extends Controller
 
     public function getCustomerInvoices(Customer $customer)
     {
-      
+
         $invoices = \App\Models\SalesInvoice::with(['items.product', 'payments'])
             ->where('customer_id', $customer->id)
             ->latest()
@@ -698,7 +712,7 @@ class SalespersonController extends Controller
 
         $visitBatch->load(['visits' => function ($query) {
             $query->with('customer:id,name,phone_number,address,gps_coordinates')
-                  ->orderBy('visit_planned_at');
+                ->orderBy('visit_planned_at');
         }]);
 
         return response()->json([
@@ -718,7 +732,7 @@ class SalespersonController extends Controller
      */
     public function completeVisit(Request $request, CustomerVisit $customerVisit): JsonResponse
     {
-        
+
         $validated = $request->validate([
             'notes' => 'nullable|string',
             'gps_coordinates' => 'required|string',
@@ -736,7 +750,7 @@ class SalespersonController extends Controller
     public function cancelVisit(Request $request, CustomerVisit $customerVisit): JsonResponse
     {
         $commercial = $request->user()->commercial;
-        
+
         if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
@@ -755,7 +769,7 @@ class SalespersonController extends Controller
     public function updateVisit(Request $request, CustomerVisit $customerVisit): JsonResponse
     {
         $commercial = $request->user()->commercial;
-        
+
         if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
