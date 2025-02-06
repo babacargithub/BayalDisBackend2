@@ -70,6 +70,12 @@ class SalespersonController extends Controller
         ]);
     }
 
+    public function getCustomerCategories()
+    {
+        $categories = \App\Models\CustomerCategory::select('id', 'name')->get();
+        return response()->json($categories);
+    }
+
     public function createCustomer(Request $request)
     {
         $messages = [
@@ -86,13 +92,7 @@ class SalespersonController extends Controller
             'owner_phone_number.numeric' => 'Le numéro du propriétaire doit être numérique',
             'owner_phone_number.digits' => 'Le numéro du propriétaire doit contenir 9 chiffres',
 
-            'latitude.required' => 'La latitude est obligatoire',
-            'latitude.numeric' => 'La latitude doit être un nombre',
-
-            'longitude.required' => 'La longitude est obligatoire',
-            'longitude.numeric' => 'La longitude doit être un nombre',
-
-            'address.max' => 'L\'adresse ne doit pas dépasser 255 caractères',
+            'category_id.exists' => 'La catégorie sélectionnée n\'existe pas',
         ];
 
         $validated = $request->validate([
@@ -102,6 +102,7 @@ class SalespersonController extends Controller
             'gps_coordinates' => 'required|string',
             'description' => 'nullable|string',
             'address' => 'nullable|string|max:255',
+            'customer_category_id' => 'nullable|exists:customer_categories,id',
         ], $messages);
 
         $commercial = $request->user()->commercial;
@@ -134,8 +135,8 @@ class SalespersonController extends Controller
             'owner_phone_number.numeric' => 'Le numéro du propriétaire doit être numérique',
             'owner_phone_number.digits' => 'Le numéro du propriétaire doit contenir 9 chiffres',
 
-            'latitude.required' => 'La latitude est obligatoire',
-            'latitude.numeric' => 'La latitude doit être un nombre',
+            'gps_coordinates.required' => 'Les coordonnées GPS sont obligatoires',
+            'gps_coordinates.string' => 'Les coordonnées GPS doivent être une chaîne de caractères',
 
             'longitude.required' => 'La longitude est obligatoire',
             'longitude.numeric' => 'La longitude doit être un nombre',
@@ -451,16 +452,37 @@ class SalespersonController extends Controller
                     'total_amount' => $sale->total_amount,
                 ];
             });
+        $totalPayes = Vente::where("commercial_id",$commercial->id)->where("paid", true)->whereBetween('created_at',
+            [$startDate,
+            $endDate])->sum('price');
+            // TODO add user_id to payments
+        $encaissements =  Payment::whereBetween('created_at',
+            [$startDate, $endDate])->sum('amount');
 
-        \Log::info('Activity Report Query', [
-            'date' => $validated['date'],
-            'type' => $validated['type'],
-            'start_date' => $startDate->toDateTimeString(),
-            'end_date' => $endDate->toDateTimeString(),
-            'customers_created' => $customersCreated,
-            'product_sales_count' => $productSales->count(),
-            'payment_method_sales_count' => $paymentMethodSales->count()
-        ]);
+        $totals = [
+           [
+               "name" => "Total Ventes",
+               "total_amount" => Vente::where("commercial_id",$commercial->id)->whereBetween('created_at',
+                   [$startDate, $endDate])->sum('price'),
+           ],
+            [
+               "name" => "Ventes payées",
+               "total_amount" => Vente::where("commercial_id",$commercial->id)->where("paid",true)->whereBetween('created_at',
+                   [$startDate, $endDate])->sum('price')
+           ], [
+               "name" => "Ventes Impayées",
+               "total_amount" => Vente::where("commercial_id",$commercial->id)->where("paid",false)->whereBetween('created_at',
+                       [$startDate, $endDate])->sum('price')
+           ],
+            [
+               "name" => "Encaissements",
+                "total_amount"=>$encaissements
+           ], [
+               "name" => "Total à verser",
+                "total_amount"=> $totalPayes + $encaissements
+           ],
+
+        ];
 
         return response()->json([
             'period' => [
@@ -473,6 +495,7 @@ class SalespersonController extends Controller
             'prospects_count' => $prospectsCount,
             'product_sales' => $productSales,
             'payment_method_sales' => $paymentMethodSales,
+            "totals" => $totals
         ]);
     }
 

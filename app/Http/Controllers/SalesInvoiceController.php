@@ -454,10 +454,14 @@ class SalesInvoiceController extends Controller
         // Calculate total if not already done
         $salesInvoice->total = $salesInvoice->items->sum('subtotal');
 
+//        return view('pdf.invoice', [
+//            'invoice' => $salesInvoice
+//        ]);
         $pdf = \PDF::loadView('pdf.invoice', [
             'invoice' => $salesInvoice
         ]);
 
         return $pdf->download('facture de '.$salesInvoice->customer->name.'-' . $salesInvoice->id . '.pdf');
+
     }
 } 

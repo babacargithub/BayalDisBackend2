@@ -62,4 +62,9 @@ class SalesInvoice extends Model
     {
         return $this->total - $this->payments->sum('amount');
     }
+
+    public function getTotalPaidAttribute() : int
+    {
+        return $this->payments->sum('amount');
+    }
 } 

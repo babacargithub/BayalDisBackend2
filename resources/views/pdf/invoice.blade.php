@@ -64,7 +64,9 @@
 <body>
     <div class="container">
         <div class="header">
+            
             <div class="company-info">
+                <img src="{{asset("logo.jpg")}}" alt="Bayal Services" style="width: 100px; height: 100px;">
                 <div class="company-name">Bayal Services</div>
                 <div>Adresse: Route de l'aéroport, DAKAR</div>
                 <div>Contacts: 777761935/773300853</div>
@@ -100,10 +102,22 @@
                     <td>{{ number_format($item->subtotal, 0, ',', ' ') }} FCFA</td>
                 </tr>
                 @endforeach
-                <tr class="total-row">
+                <!--  if invoice has been partially paid -->
+                 <tr class="total-row">
                     <td colspan="3" style="text-align: right">Total:</td>
                     <td>{{ number_format($invoice->total, 0, ',', ' ') }} FCFA</td>
                 </tr>
+                @if($invoice->total_paid < $invoice->total)
+                <tr class="total-row">
+                    <td colspan="3" style="text-align: right">Avance:</td>
+                    <td>{{ number_format($invoice->total_paid, 0, ',', ' ') }} FCFA</td>
+
+                <tr class="total-row" >
+                    <td colspan="3" style="text-align: right">Reste à payer:</td>
+                    <td>{{ number_format(($invoice->total - $invoice->total_paid), 0, ',', ' ') }} FCFA</td>
+                </tr>
+                @endif
+              
             </tbody>
         </table>
 
@@ -111,12 +125,12 @@
             
         
             @if($invoice->paid)
-                <div style="color: green;">PAYÉ</div>
+                <div style="color: green;">FACTUREE PAYÉE</div>
             @else
                 <div style="color: red;">
                     À PAYER
                     @if($invoice->should_be_paid_at)
-                        au plus tard le {{ \Carbon\Carbon::parse($invoice->should_be_paid_at)->format('d/m/Y') }}
+                        Echéance le {{ \Carbon\Carbon::parse($invoice->should_be_paid_at)->format('d/m/Y') }}
                     @endif
                 </div>
             @endif

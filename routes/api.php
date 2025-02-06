@@ -56,6 +56,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/visits/{customerVisit}/complete', [SalespersonController::class, 'completeVisit']);
         Route::post('/visits/{customerVisit}/cancel', [SalespersonController::class, 'cancelVisit']);
         Route::put('/visits/{customerVisit}', [SalespersonController::class, 'updateVisit']);
+
+        Route::get('customer-categories', [SalespersonController::class, 'getCustomerCategories']);
     });
 
     // Add this route with the other API routes
