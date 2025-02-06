@@ -85,7 +85,7 @@ const menuItems = [
                     <!-- Logo -->
                     <div class="p-4">
                         <Link :href="route('dashboard')">
-                            <ApplicationLogo class="h-9 w-auto fill-current text-white" />
+                            <img src="/logo.jpg" alt="Logo" class="h-12 w-auto" />
                         </Link>
                     </div>
 
