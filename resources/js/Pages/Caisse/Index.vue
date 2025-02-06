@@ -385,18 +385,19 @@ const openTransactionsDialog = async (caisse) => {
     try {
         selectedCaisse.value = {
             ...caisse,
-            transactions: null // Reset transactions to show loading state
+            transactions: []
         };
         transactionsDialog.value = true;
         
         const response = await axios.get(route('caisses.transactions', caisse.id));
-        selectedCaisse.value = {
-            ...caisse,
-            transactions: response.data.transactions
-        };
+        if (response.data && response.data.transactions) {
+            selectedCaisse.value = {
+                ...caisse,
+                transactions: response.data.transactions
+            };
+        }
     } catch (error) {
         console.error('Error fetching transactions:', error);
-        // Show error message in snackbar
         snackbar.value = true;
         flashMessage.value = 'Erreur lors du chargement des transactions';
     }
@@ -419,13 +420,14 @@ const submitTransaction = () => {
 
     transactionForm.post(route('caisses.transactions.store', selectedCaisse.value.id), {
         preserveScroll: true,
-        onSuccess: () => {
+        onSuccess: async () => {
             transactionDialog.value = false;
             transactionForm.reset();
             transactionType.value = null;
-            // Refresh transactions if the dialog is open
-            if (transactionsDialog.value) {
-                openTransactionsDialog(selectedCaisse.value);
+            
+            // Refresh the caisse data
+            if (selectedCaisse.value) {
+                await openTransactionsDialog(selectedCaisse.value);
             }
         }
     });

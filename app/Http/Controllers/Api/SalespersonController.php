@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerVisitResource;
 use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\Product;
+use App\Models\SalesInvoice;
 use App\Models\Vente;
 use App\Models\CustomerVisit;
 use App\Models\VisitBatch;
@@ -278,11 +280,15 @@ class SalespersonController extends Controller
         $vente->payment_method = $validated['payment_method'];
         $vente->save();
 
-        return response()->json($vente->load(['customer', 'product']));
+        return response()->json($vente);
     }
 
-    public function paySalesInvoice(Request $request, \App\Models\SalesInvoice $invoice)
+    public function paySalesInvoice(Request $request, $invoice)
     {
+        $invoice_id = $invoice;
+//        $invoice = SalesInvoice::findOrFail($invoice);
+
+
         $validated = $request->validate([
             'amount' => 'required|integer|min:1',
             'payment_method' => 'required',
@@ -293,20 +299,21 @@ class SalespersonController extends Controller
             'amount.min' => 'Le montant doit être supérieur à 0',
             'payment_method.required' => 'La méthode de paiement est obligatoire',
         ]);
-        DB::transaction(function () use ($invoice, $validated) {
+        DB::transaction(function () use ($invoice_id, $validated) {
 
             // Create the payment
-            $payment = $invoice->payments()->create([
+            $payment = Payment::create(["sales_invoice_id"=>$invoice_id,
                 'amount' => $validated['amount'],
                 'payment_method' => $validated['payment_method'],
                 'comment' => $validated['comment'],
             ]);
 
             // Check if invoice is fully paid
-            $totalPaid = $invoice->payments()->sum('amount') + $validated['amount'];
-            if ($totalPaid >= $invoice->total) {
-                $invoice->update(['paid' => true]);
-                $invoice->items()->update([
+            $totalPaid = Payment::where("sales_invoice_id",$invoice_id)->sum('amount');
+            $invoiceTotal = Vente::where("sales_invoice_id",$invoice_id)->sum(DB::raw('quantity * price'));
+            if ($totalPaid >= $invoiceTotal) {
+                SalesInvoice::where("id",$invoice_id)->update(['paid' => true]);
+                Vente::where("sales_invoice_id",$invoice_id)->update([
                     'paid' => true,
                     'paid_at' => now(),
                 ]);
@@ -317,8 +324,7 @@ class SalespersonController extends Controller
 
         return response()->json([
             'message' => 'Paiement effectué avec succès',
-            'data' => $invoice->load(['items.product', 'customer', 'payments']),
-        ]);
+            'data' => $invoice_id]);
 
     }
 
@@ -552,7 +558,7 @@ class SalespersonController extends Controller
 
         // Create sales invoice
         DB::transaction(function () use ($order, $validated, $request) {
-            $salesInvoice = \App\Models\SalesInvoice::create([
+            $salesInvoice = SalesInvoice::create([
                 'customer_id' => $order->customer_id,
                 'paid' => $validated['paid'],
                 'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
@@ -648,7 +654,7 @@ class SalespersonController extends Controller
     public function getCustomerInvoices(Customer $customer)
     {
 
-        $invoices = \App\Models\SalesInvoice::with(['items.product', 'payments'])
+        $invoices = SalesInvoice::with(['items.product', 'payments'])
             ->where('customer_id', $customer->id)
             ->latest()
             ->get()
