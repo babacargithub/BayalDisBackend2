@@ -13,31 +13,59 @@ class PaymentController extends Controller
     public function store(Request $request, Order $order)
     {
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:0.01|max:' . $order->remaining_amount,
-            'payment_method' => 'required|string|in:CASH,WAVE,OM',
-            'comment' => 'nullable|string',
+            'amount' => 'required|numeric|min:0',
+            'payment_method' => 'required|string',
+            'comment' => 'nullable|string'
         ]);
 
+        DB::transaction(function () use ($order, $validated, $request) {
+            // Create payment with user_id
+            $payment = $order->payments()->create([
+                'amount' => $validated['amount'],
+                'payment_method' => $validated['payment_method'],
+                'comment' => $validated['comment'],
+                'user_id' => $request->user()->id
+            ]);
+
+            // Check if order is fully paid
+            $totalPaid = $order->payments()->sum('amount');
+            $orderTotal = $order->items()->sum(DB::raw('price * quantity'));
+
+            if ($totalPaid >= $orderTotal) {
+                $order->update(['paid' => true]);
+                $order->items()->update([
+                    'paid' => true,
+                    'paid_at' => now()
+                ]);
+            }
+        });
+
+        return redirect()->back()->with('success', 'Paiement enregistré avec succès');
+    }
+
+    public function destroy(Payment $payment)
+    {
         try {
-            DB::beginTransaction();
+            DB::transaction(function () use ($payment) {
+                $order = $payment->order;
+                $payment->delete();
 
-            $payment = $order->addPayment(
-                $validated['amount'],
-                $validated['payment_method'],
-                $validated['comment']
-            );
+                // Recalculate if order is still fully paid
+                $totalPaid = $order->payments()->sum('amount');
+                $orderTotal = $order->items()->sum(DB::raw('price * quantity'));
 
-            // Refresh the order to get updated payment status
-            $order->load('payments');
-            $order->refresh();
+                if ($totalPaid < $orderTotal) {
+                    $order->update(['paid' => false]);
+                    $order->items()->update([
+                        'paid' => false,
+                        'paid_at' => null
+                    ]);
+                }
+            });
 
-            DB::commit();
-
-            return back()->with('success', 'Paiement enregistré avec succès');
-
+            return redirect()->back()->with('success', 'Paiement supprimé avec succès');
         } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->withErrors(['error' => 'Erreur lors de l\'enregistrement du paiement: ' . $e->getMessage()]);
+            return redirect()->back()->with('error', 'Erreur lors de la suppression du paiement');
         }
     }
 

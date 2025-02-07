@@ -279,6 +279,7 @@ class SalespersonController extends Controller
         $vente->paid = true;
         $vente->paid_at = now();
         $vente->payment_method = $validated['payment_method'];
+
         $vente->save();
 
         return response()->json($vente);
@@ -300,13 +301,14 @@ class SalespersonController extends Controller
             'amount.min' => 'Le montant doit être supérieur à 0',
             'payment_method.required' => 'La méthode de paiement est obligatoire',
         ]);
-        DB::transaction(function () use ($invoice_id, $validated) {
+        DB::transaction(function () use ($invoice_id, $validated, $request) {
 
             // Create the payment
             $payment = Payment::create(["sales_invoice_id"=>$invoice_id,
                 'amount' => $validated['amount'],
                 'payment_method' => $validated['payment_method'],
                 'comment' => $validated['comment'],
+                "user_id"=>$request->user()->id
             ]);
 
             // Check if invoice is fully paid
@@ -452,27 +454,34 @@ class SalespersonController extends Controller
                     'total_amount' => $sale->total_amount,
                 ];
             });
-        $totalPayes = Vente::where("commercial_id",$commercial->id)->where("paid", true)->whereBetween('created_at',
-            [$startDate,
-            $endDate])->sum('price');
-            // TODO add user_id to payments
-        $encaissements =  Payment::whereBetween('created_at',
+        $totalPayes = Vente::selectRaw("SUM(quantity * price) as total")
+            ->where("commercial_id", $commercial->id)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->where("paid", true)
+            ->value('total');
+
+        $encaissements =  Payment::where("user_id")->whereBetween('created_at',
             [$startDate, $endDate])->sum('amount');
 
         $totals = [
            [
                "name" => "Total Ventes",
-               "total_amount" => Vente::where("commercial_id",$commercial->id)->whereBetween('created_at',
-                   [$startDate, $endDate])->sum('price'),
+               "total_amount" =>  Vente::selectRaw("SUM(quantity * price) as total")
+                   ->where("commercial_id", $commercial->id)
+                   ->whereBetween('created_at', [$startDate, $endDate])
+                   ->value('total'),
            ],
             [
                "name" => "Ventes payées",
                "total_amount" => Vente::where("commercial_id",$commercial->id)->where("paid",true)->whereBetween('created_at',
                    [$startDate, $endDate])->sum('price')
            ], [
-               "name" => "Ventes Impayées",
-               "total_amount" => Vente::where("commercial_id",$commercial->id)->where("paid",false)->whereBetween('created_at',
-                       [$startDate, $endDate])->sum('price')
+               "name" => "Ventes à crédit",
+               "total_amount" => Vente::selectRaw("SUM(quantity * price) as total")
+                   ->where("commercial_id", $commercial->id)
+                   ->where("paid", false)
+                   ->whereBetween('created_at', [$startDate, $endDate])
+                   ->value('total')
            ],
             [
                "name" => "Encaissements",

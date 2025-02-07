@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 
 class Payment extends Model
 {
@@ -13,14 +14,23 @@ class Payment extends Model
         'amount',
         'payment_method',
         'comment',
+        'user_id',
+        'sales_invoice_id'
     ];
 
     protected $casts = [
-        'amount' => 'integer'];
+        'amount' => 'integer',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime'
+    ];
 
     public function salesInvoice(): BelongsTo
     {
         return $this->belongsTo(SalesInvoice::class);
     }
 
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
 } 

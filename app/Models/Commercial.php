@@ -42,6 +42,12 @@ class Commercial extends Model
         return $this->hasMany(Order::class);
     }
 
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'user_id', 'user_id');
+
+    }
+
     public function verifySecretCode(string $secretCode): bool
     {
         return Hash::check($secretCode, $this->secret_code);
@@ -57,4 +63,6 @@ class Commercial extends Model
 
         return $commercial;
     }
+
+    
 } 
