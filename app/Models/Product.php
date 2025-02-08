@@ -93,4 +93,29 @@ class Product extends Model
     {
         return $this->ventes()->sum('quantity');
     }
+
+    public function decrementStock(int $quantity): self
+    {
+        $totalAvailableStock = $this->stockEntries()->sum('quantity_left');
+
+        if ($totalAvailableStock < $quantity) {
+            throw new \Exception("Stock insuffisant. Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}");
+        }
+        // decrement stock using FIFO method
+        $stockEntries = $this->stockEntries()->orderBy('created_at', 'asc')->get();
+        $remainingQuantity = $quantity;
+
+        foreach ($stockEntries as $stockEntry) {
+            if ($stockEntry->quantity_left >= $remainingQuantity) {
+                $stockEntry->decrement('quantity_left', $remainingQuantity);
+                break;
+            }
+
+            $remainingQuantity -= $stockEntry->quantity_left;
+            $stockEntry->quantity_left = 0;
+            $stockEntry->save();
+        }
+        return $this;
+
+    }
 }

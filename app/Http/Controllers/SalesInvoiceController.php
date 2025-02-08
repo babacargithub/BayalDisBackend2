@@ -408,7 +408,6 @@ class SalesInvoiceController extends Controller
             return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture']);
         }
 
-        try {
             $validated = $request->validate([
                 'product_id' => 'required|exists:products,id',
                 'quantity' => 'required|integer|min:1',
@@ -437,11 +436,7 @@ class SalesInvoiceController extends Controller
                 'success' => 'Article mis à jour avec succès',
                 'invoice' => $salesInvoice
             ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            report($e);
-            return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour de l\'article. Veuillez réessayer.']);
-        }
+
     }
 
     public function exportPdf(SalesInvoice $salesInvoice)

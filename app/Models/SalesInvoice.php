@@ -6,6 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int total
+ * @property int total_remaining
+ * @property int total_paid
+ */
 class SalesInvoice extends Model
 {
     protected $fillable = [

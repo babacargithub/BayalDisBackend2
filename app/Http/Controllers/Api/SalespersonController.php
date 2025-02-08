@@ -19,6 +19,7 @@ use App\Models\Commercial;
 use Carbon\Carbon;
 use App\Models\Order;
 use App\Services\CustomerVisitService;
+use App\Services\SalesInvoiceService;
 
 class SalespersonController extends Controller
 {
@@ -469,7 +470,7 @@ class SalespersonController extends Controller
                "total_amount" =>  Vente::selectRaw("SUM(quantity * price) as total")
                    ->where("commercial_id", $commercial->id)
                    ->whereBetween('created_at', [$startDate, $endDate])
-                   ->value('total'),
+                   ->value('total') ?? 0,
            ],
             [
                "name" => "Ventes payées",
@@ -481,7 +482,7 @@ class SalespersonController extends Controller
                    ->where("commercial_id", $commercial->id)
                    ->where("paid", false)
                    ->whereBetween('created_at', [$startDate, $endDate])
-                   ->value('total')
+                   ->value('total') ?? 0
            ],
             [
                "name" => "Encaissements",
@@ -819,5 +820,28 @@ class SalespersonController extends Controller
 
         $visit = $this->visitService->updateVisit($customerVisit, $validated);
         return response()->json($visit);
+    }
+
+    public function createSalesInvoice(Request $request, SalesInvoiceService $salesInvoiceService)
+    {
+        $validated = $request->validate([
+            'customer_id' => 'required|exists:customers,id',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.price' => 'required|integer|min:1',
+            'paid' => 'required|boolean',
+            'payment_method' => 'required_if:paid,true|nullable|string',
+            'should_be_paid_at' => 'required_if:paid,false|nullable|date',
+        ]);
+
+
+            $salesInvoice = $salesInvoiceService->createSalesInvoice($validated);
+            return response()->json([
+                'message' => 'Facture créée avec succès',
+                'data' => $salesInvoice
+            ], 201);
+        
+    
     }
 }
