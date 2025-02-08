@@ -461,7 +461,7 @@ class SalespersonController extends Controller
             ->where("paid", true)
             ->value('total');
 
-        $encaissements =  Payment::where("user_id")->whereBetween('created_at',
+        $encaissements =  Payment::where("user_id",request()->user()->id)->whereBetween('created_at',
             [$startDate, $endDate])->sum('amount');
 
         $totals = [
