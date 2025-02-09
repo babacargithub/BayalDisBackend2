@@ -139,6 +139,24 @@
                         </div>
 
                         <div class="mb-4">
+                            <label for="caisse_id" class="block text-sm font-medium text-gray-700">Caisse</label>
+                            <select
+                                id="caisse_id"
+                                v-model="form.caisse_id"
+                                class="mt-1 block w-full rounded-md border-gray-300"
+                                required
+                            >
+                                <option value="">Sélectionner une caisse</option>
+                                <option v-for="caisse in caisses" :key="caisse.id" :value="caisse.id">
+                                    {{ caisse.name }} ({{ formatAmount(caisse.balance) }} FCFA)
+                                </option>
+                            </select>
+                            <p v-if="form.errors.caisse_id" class="mt-1 text-sm text-red-600">
+                                {{ form.errors.caisse_id }}
+                            </p>
+                        </div>
+
+                        <div class="mb-4">
                             <label for="amount" class="block text-sm font-medium text-gray-700">Montant (FCFA)</label>
                             <input
                                 id="amount"
@@ -373,6 +391,10 @@ const props = defineProps({
     totalDepenses: {
         type: Number,
         required: true
+    },
+    caisses: {
+        type: Array,
+        required: true
     }
 });
 
@@ -383,8 +405,12 @@ const editedDepense = ref(null);
 const form = useForm({
     type_depense_id: '',
     amount: '',
-    comment: ''
+    comment: '',
+    caisse_id: ''
 });
+
+// For delete operations
+const deleteForm = useForm({});
 
 // Type Dialog
 const typeDialog = ref(false);
@@ -429,6 +455,7 @@ const openEditDialog = (depense) => {
     form.type_depense_id = depense.type.id;
     form.amount = depense.amount;
     form.comment = depense.comment;
+    form.caisse_id = depense.caisse_id;
     dialog.value = true;
 };
 
@@ -455,7 +482,7 @@ const confirmDelete = (depense) => {
 };
 
 const deleteDepense = () => {
-    router.delete(route('depenses.destroy', depenseToDelete.value.id), {
+    deleteForm.delete(route('depenses.destroy', depenseToDelete.value.id), {
         onSuccess: () => {
             deleteDialog.value = false;
             depenseToDelete.value = null;
@@ -498,7 +525,7 @@ const confirmDeleteType = (type) => {
 };
 
 const deleteType = () => {
-    router.delete(route('depenses.types.destroy', typeToDelete.value.id), {
+    deleteForm.delete(route('depenses.types.destroy', typeToDelete.value.id), {
         onSuccess: () => {
             deleteTypeDialog.value = false;
             typeToDelete.value = null;

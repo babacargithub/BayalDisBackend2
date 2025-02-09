@@ -118,8 +118,8 @@ Route::middleware('auth')->group(function () {
     Route::prefix('depenses')->name('depenses.')->group(function () {
         Route::get('/', [DepenseController::class, 'index'])->name('index');
         Route::post('/', [DepenseController::class, 'store'])->name('store');
-        Route::put('/{depense}', [DepenseController::class, 'update'])->name('update');
         Route::delete('/{depense}', [DepenseController::class, 'destroy'])->name('destroy');
+        Route::put('/{depense}', [DepenseController::class, 'update'])->name('update');
         
         // Type Depense Routes
         Route::post('/types', [DepenseController::class, 'storeType'])->name('types.store');

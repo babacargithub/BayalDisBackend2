@@ -13,7 +13,8 @@ class Depense extends Model
     protected $fillable = [
         'amount',
         'type_depense_id',
-        'comment'
+        'comment',
+        "caisse_id",
     ];
 
     protected $casts = [
@@ -26,4 +27,9 @@ class Depense extends Model
     {
         return $this->belongsTo(TypeDepense::class);
     }
-} 
+
+    public function caisse(): BelongsTo
+    {
+        return $this->belongsTo(Caisse::class);
+    }
+}
