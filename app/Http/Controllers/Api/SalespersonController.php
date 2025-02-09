@@ -161,6 +161,7 @@ class SalespersonController extends Controller
 
     /**
      * Create a new vente
+     * @throws \Exception
      */
     public function createVente(Request $request)
     {
@@ -200,6 +201,7 @@ class SalespersonController extends Controller
 
         // Verify that the customer belongs to this salesperson
         $customer = Customer::findOrFail($validated['customer_id']);
+        
 
         $vente = $commercial->ventes()->create([
             'product_id' => $validated['product_id'],
@@ -210,6 +212,7 @@ class SalespersonController extends Controller
             'paid_at' => $validated['paid'] ? now() : null,
             'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
             'payment_method' => $validated['payment_method'] ?? "Cash",
+            'user_id' => $request->user()->id,
         ]);
         if ($customer->is_prospect){
             $customer->is_prospect = false;
@@ -225,6 +228,9 @@ class SalespersonController extends Controller
             $visit->gps_coordinates = $customer->gps_coordinates;
             $visit->save();
         }
+        $product = Product::findOrFail($validated['product_id']);
+    
+        $product->decrementStock($validated['quantity']);
 
         // Load the relationships
         $vente->load(['customer', 'product']);

@@ -86,6 +86,11 @@ class SalesInvoiceController extends Controller
 
             // Insert all ventes in a single query
             Vente::insert($ventes);
+            // update stock of products
+            foreach ($ventes as $vente) {
+                $product = Product::findOrFail($vente['product_id']);
+                $product->decrementStock($vente['quantity']);
+            }
             // check if customer is prospect
             $customer = Customer::findOrFail($request->customer_id);    
             if ($customer->is_prospect) {
@@ -129,6 +134,8 @@ class SalesInvoiceController extends Controller
         try {
             DB::beginTransaction();
             $salesInvoice->update($request->only(['paid', 'should_be_paid_at', 'comment']));
+            // update stock of products by calcaulating the difference between the old quantity and the new quantity
+          
             DB::commit();
             return redirect()->back()->with('success', 'Invoice updated successfully.');
         } catch (\Exception $e) {
@@ -422,6 +429,15 @@ class SalesInvoiceController extends Controller
                 'quantity' => $request->quantity,
                 'price' => $request->price,
             ]);
+            // update stock of products by calcaulating the difference between the old quantity and the new quantity
+            $product = Product::findOrFail($item->product_id);
+            // calculate the difference between the old quantity and the new quantity
+            $difference = $item->quantity - $request->quantity;
+           if ($difference > 0) {
+            $product->incrementStock($difference);
+           } else {
+            $product->decrementStock(abs($difference));
+           }
 
             // Reload the invoice with its relationships
             $salesInvoice->load([

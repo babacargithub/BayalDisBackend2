@@ -25,7 +25,7 @@ class SalesInvoiceService
             $salesInvoice->save();
             $totalAmount = 0;
 
-            // Add items to the invoice
+            // Add items to the invoice and update stock
             foreach ($data['items'] as $item) {
                 $itemAmount = $item['quantity'] * $item['price'];
                 $totalAmount += $itemAmount;
@@ -37,12 +37,10 @@ class SalesInvoiceService
                     "type" => "INVOICE_ITEM",
                 ]);
 
-                // Update product stock
-                $product = Product::find($item['product_id']);
+                // Update product stock using the decrementStock method
+                $product = Product::findOrFail($item['product_id']);
                 $product->decrementStock($item['quantity']);
             }
-
-
 
             // If paid, create payment record
             if ($data['paid']) {
