@@ -138,4 +138,57 @@ class ProductController extends Controller
             return redirect()->back()->with('error', 'Erreur lors de la mise à jour du stock');
         }
     }
+
+    public function transformToVariants(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'variant_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+            'unused_quantity' => 'required|integer|min:0',
+        ], [
+            'variant_id.required' => 'Le produit variant est obligatoire',
+            'variant_id.exists' => 'Le produit variant sélectionné n\'existe pas',
+            'quantity.required' => 'La quantité est obligatoire',
+            'quantity.integer' => 'La quantité doit être un nombre entier',
+            'quantity.min' => 'La quantité doit être supérieure à 0',
+            'unused_quantity.required' => 'La quantité non utilisée est obligatoire',
+            'unused_quantity.integer' => 'La quantité non utilisée doit être un nombre entier',
+            'unused_quantity.min' => 'La quantité non utilisée doit être positive ou nulle',
+        ]);
+
+        try {
+            DB::transaction(function () use ($product, $validated) {
+                $variant = Product::findOrFail($validated['variant_id']);
+                
+                // Verify this is a valid parent-child relationship
+                if ($variant->parent_id !== $product->id) {
+                    throw new \Exception('Le produit sélectionné n\'est pas un variant de ce produit');
+                }
+
+                // Calculate total pieces needed
+                $totalPiecesNeeded = $validated['quantity'] * $variant->base_quantity + $validated['unused_quantity'];
+                
+                // Check if parent product has enough stock
+                if ($product->stock < $totalPiecesNeeded) {
+                    throw new \Exception('Stock insuffisant. Stock disponible: ' . $product->stock . ' pièces');
+                }
+
+                // Decrement parent stock
+                $product->decrementStock($totalPiecesNeeded);
+
+                // Increment variant stock
+                // create a new stock entry for the variant
+                StockEntry::create([
+                    'product_id' => $variant->id,
+                    'quantity' => $validated['quantity'],
+                    'quantity_left' => $validated['quantity'],
+                    'unit_price' => ($product->cost_price / $product->base_quantity) * $validated['quantity']
+                ]);
+            });
+
+            return redirect()->back()->with('success', 'Transformation effectuée avec succès');
+        } catch (\Exception $e) {
+            return redirect()->back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
 } 

@@ -29,6 +29,32 @@ const stockEntryForm = useForm({
     stock_entries: []
 });
 
+const transformDialog = ref(false);
+const transformForm = useForm({
+    variant_id: null,
+    quantity: null,
+    unused_quantity: 0,
+});
+const selectedParentProduct = ref(null);
+
+const selectedVariant = computed(() => {
+    if (!transformForm.variant_id) return null;
+    return props.products.find(p => p.id === transformForm.variant_id);
+});
+
+const quantityTransformed = computed(() => {
+    if (!selectedVariant.value || !transformForm.quantity) return 0;
+    // Calculate how many pieces will be used from parent product
+    const totalPiecesNeeded = (transformForm.quantity * selectedParentProduct.value.base_quantity)/selectedVariant.value.base_quantity;
+    return totalPiecesNeeded;
+});
+
+const maxVariantQuantity = computed(() => {
+    if (!selectedVariant.value || !selectedParentProduct.value) return 0;
+    // Calculate maximum number of variants that can be made from parent stock
+    return Math.floor(selectedParentProduct.value.stock_available / selectedParentProduct.value.base_quantity);
+});
+
 const margin = computed(() => {
     const price = Number(form.price) || 0;
     const costPrice = Number(form.cost_price) || 0;
@@ -65,6 +91,12 @@ const openStockEntriesDialog = (product) => {
         created_at: entry.created_at
     })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     stockEntriesDialog.value = true;
+};
+
+const openTransformDialog = (product) => {
+    selectedParentProduct.value = product;
+    transformDialog.value = true;
+    transformForm.value.reset();
 };
 
 const submit = () => {
@@ -108,6 +140,15 @@ const updateStockEntries = () => {
         onSuccess: () => {
             stockEntriesDialog.value = false;
             selectedProduct.value = null;
+        },
+    });
+};
+
+const submitTransform = () => {
+    transformForm.value.post(route('products.transform', selectedParentProduct.value.id), {
+        onSuccess: () => {
+            transformDialog.value = false;
+            selectedParentProduct.value = null;
         },
     });
 };
@@ -195,12 +236,21 @@ const calculateMargin = (price, costPrice) => {
                                         color="primary"
                                         @click="openDialog(product)"
                                     />
+                                    <v-btn
+                                        v-if="!product.parent_id"
+                                        icon="mdi-forward"
+                                        variant="text"
+                                        color="secondary"
+                                        @click="openTransformDialog(product)"
+                                        :title="'Transformer en variants'"
+                                    />
                                     <v-btn 
                                         icon="mdi-delete" 
                                         variant="text" 
                                         color="error"
                                         @click="openDeleteDialog(product)"
                                     />
+                                   
                                 </td>
                             </tr>
                         </tbody>
@@ -363,6 +413,79 @@ const calculateMargin = (price, costPrice) => {
                         :disabled="stockEntryForm.processing"
                     >
                         Mettre à jour
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <v-dialog v-model="transformDialog" max-width="600px">
+            <v-card>
+                <v-card-title>
+                    <span class="text-h5">Transformer en variants</span>
+                </v-card-title>
+
+                <v-card-text>
+                    <v-form @submit.prevent="submitTransform">
+                        <v-select
+                            v-model="transformForm.variant_id"
+                            :items="products.filter(p => p.parent_id === selectedParentProduct?.id)"
+                            item-title="name"
+                            item-value="id"
+                            label="Produit variant"
+                            :error-messages="transformForm.errors.variant_id"
+                            variant="outlined"
+                            class="mb-4"
+                        />
+
+                        <v-text-field
+                            v-model="transformForm.quantity"
+                            type="number"
+                            label="Quantité"
+                            :error-messages="transformForm.errors.quantity"
+                            variant="outlined"
+                            class="mb-4"
+                            :max="maxVariantQuantity"
+                            :hint="selectedVariant ? `Maximum possible: ${maxVariantQuantity} variants` : ''"
+                            persistent-hint
+                        />
+
+                        <v-text-field
+                            :model-value="quantityTransformed"
+                            type="number"
+                            label="Quantité de pièces utilisées"
+                            variant="outlined"
+                            class="mb-4"
+                            disabled
+                            :hint="selectedVariant ? `${transformForm.quantity || 0} cartons ${selectedParentProduct.name} × ${selectedParentProduct.base_quantity}  = ${quantityTransformed} paquets de ${selectedVariant.name}` : ''"
+                            persistent-hint
+                        />
+
+                        <v-text-field
+                            v-model="transformForm.unused_quantity"
+                            type="number"
+                            label="Quantité inutilisée"
+                            :error-messages="transformForm.errors.unused_quantity"
+                            variant="outlined"
+                            class="mb-4"
+                        />
+                    </v-form>
+                </v-card-text>
+
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn
+                        color="grey"
+                        variant="text"
+                        @click="transformDialog = false"
+                    >
+                        Annuler
+                    </v-btn>
+                    <v-btn
+                        color="primary"
+                        @click="submitTransform"
+                        :loading="transformForm.processing"
+                    >
+                        Transformer
                     </v-btn>
                 </v-card-actions>
             </v-card>

@@ -150,6 +150,7 @@ Route::middleware('auth')->group(function () {
     ->name('purchase-invoices.put-in-stock');
     
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
+    Route::post('products/{product}/transform', [ProductController::class, 'transformToVariants'])->name('products.transform');
     
     Route::get('caisses/{caisse}/transactions', [CaisseController::class, 'transactions'])->name('caisses.transactions');
     Route::post('caisses/{caisse}/transactions', [CaisseController::class, 'storeTransaction'])->name('caisses.transactions.store');
