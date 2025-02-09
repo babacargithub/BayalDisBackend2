@@ -33,7 +33,15 @@ class AdminController extends Controller
         $totalSales = Vente::sum(DB::raw('quantity * price'));
 
         // Calculate total profits (sales - (investments + expenses))
-        $totalProfits = Vente::sum("profit");
+        $totalProfitsOfSingleVentes = Vente::where("type","SINGLE")
+            ->where("paid", true)
+            ->sum("profit");
+        $totalProfitsSalesInvoices  = Vente::whereHas('salesInvoice', function($query) {
+            $query->where('paid', true);
+        })
+        ->sum('profit');
+
+        $totalProfits = $totalProfitsOfSingleVentes + $totalProfitsSalesInvoices;
         $totalCaisses = Caisse::all()->sum('balance');
 
         return Inertia::render('Admin/Rapport', [
