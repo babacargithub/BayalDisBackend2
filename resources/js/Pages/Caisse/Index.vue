@@ -5,10 +5,16 @@
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Gestion des Caisses</h2>
-                <v-btn color="primary" @click="openDialog()">
-                    <v-icon start>mdi-plus</v-icon>
-                    Nouvelle Caisse
-                </v-btn>
+                <div class="flex gap-2">
+                    <v-btn color="secondary" @click="openTransferDialog">
+                        <v-icon start>mdi-bank-transfer</v-icon>
+                        Transfert
+                    </v-btn>
+                    <v-btn color="primary" @click="openDialog()">
+                        <v-icon start>mdi-plus</v-icon>
+                        Nouvelle Caisse
+                    </v-btn>
+                </div>
             </div>
         </template>
 
@@ -309,6 +315,113 @@
                 </v-card-text>
             </v-card>
         </v-dialog>
+
+        <!-- Types Dialog -->
+        <v-dialog v-model="typeDialog" max-width="500px">
+            <v-card>
+                <v-card-title class="text-h5 pb-4">
+                    Types de dépenses
+                </v-card-title>
+            </v-card>
+        </v-dialog>
+
+        <!-- Transfer Dialog -->
+        <v-dialog v-model="transferDialog" max-width="500px">
+            <v-card>
+                <v-card-title class="text-h5 pb-4">
+                    Transfert entre caisses
+                </v-card-title>
+                <v-card-text>
+                    <form @submit.prevent="submitTransfer">
+                        <div class="mb-4">
+                            <label for="from_caisse_id" class="block text-sm font-medium text-gray-700">Caisse source</label>
+                            <select
+                                id="from_caisse_id"
+                                v-model="transferForm.from_caisse_id"
+                                class="mt-1 block w-full rounded-md border-gray-300"
+                                required
+                            >
+                                <option value="">Sélectionner une caisse</option>
+                                <option v-for="caisse in caisses" :key="caisse.id" :value="caisse.id">
+                                    {{ caisse.name }} ({{ formatAmount(caisse.balance) }} FCFA)
+                                </option>
+                            </select>
+                            <p v-if="transferForm.errors.from_caisse_id" class="mt-1 text-sm text-red-600">
+                                {{ transferForm.errors.from_caisse_id }}
+                            </p>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="to_caisse_id" class="block text-sm font-medium text-gray-700">Caisse destination</label>
+                            <select
+                                id="to_caisse_id"
+                                v-model="transferForm.to_caisse_id"
+                                class="mt-1 block w-full rounded-md border-gray-300"
+                                required
+                            >
+                                <option value="">Sélectionner une caisse</option>
+                                <option 
+                                    v-for="caisse in caisses" 
+                                    :key="caisse.id" 
+                                    :value="caisse.id"
+                                    :disabled="caisse.id === transferForm.from_caisse_id"
+                                >
+                                    {{ caisse.name }} ({{ formatAmount(caisse.balance) }} FCFA)
+                                </option>
+                            </select>
+                            <p v-if="transferForm.errors.to_caisse_id" class="mt-1 text-sm text-red-600">
+                                {{ transferForm.errors.to_caisse_id }}
+                            </p>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="amount" class="block text-sm font-medium text-gray-700">Montant (FCFA)</label>
+                            <input
+                                id="amount"
+                                v-model="transferForm.amount"
+                                type="number"
+                                min="1"
+                                class="mt-1 block w-full rounded-md border-gray-300"
+                                required
+                            />
+                            <p v-if="transferForm.errors.amount" class="mt-1 text-sm text-red-600">
+                                {{ transferForm.errors.amount }}
+                            </p>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="description" class="block text-sm font-medium text-gray-700">Description (optionnel)</label>
+                            <textarea
+                                id="description"
+                                v-model="transferForm.description"
+                                class="mt-1 block w-full rounded-md border-gray-300"
+                                rows="2"
+                            />
+                            <p v-if="transferForm.errors.description" class="mt-1 text-sm text-red-600">
+                                {{ transferForm.errors.description }}
+                            </p>
+                        </div>
+                    </form>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn
+                        color="error"
+                        variant="text"
+                        @click="transferDialog = false"
+                    >
+                        Annuler
+                    </v-btn>
+                    <v-btn
+                        color="primary"
+                        :loading="transferForm.processing"
+                        @click="submitTransfer"
+                    >
+                        Transférer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
@@ -334,10 +447,19 @@ const editedItem = ref(null);
 const deleteDialog = ref(false);
 const selectedCaisse = ref(null);
 const transactionType = ref(null);
+const typeDialog = ref(false);
+const transferDialog = ref(false);
 
 const transactionForm = useForm({
     amount: null,
     label: ''
+});
+
+const transferForm = useForm({
+    from_caisse_id: '',
+    to_caisse_id: '',
+    amount: '',
+    description: ''
 });
 
 watch(() => flash.value.success, (message) => {
@@ -487,5 +609,20 @@ const deleteCaisse = () => {
             },
         });
     }
+};
+
+const openTransferDialog = () => {
+    transferForm.reset();
+    transferDialog.value = true;
+};
+
+const submitTransfer = () => {
+    transferForm.post(route('caisses.transfer'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            transferDialog.value = false;
+            transferForm.reset();
+        }
+    });
 };
 </script>

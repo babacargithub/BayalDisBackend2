@@ -154,6 +154,7 @@ Route::middleware('auth')->group(function () {
     Route::get('caisses/{caisse}/transactions', [CaisseController::class, 'transactions'])->name('caisses.transactions');
     Route::post('caisses/{caisse}/transactions', [CaisseController::class, 'storeTransaction'])->name('caisses.transactions.store');
     Route::delete('caisses/{caisse}/transactions/{transaction}', [CaisseController::class, 'destroyTransaction'])->name('caisses.transactions.destroy');
+    Route::post('caisses/transfer', [CaisseController::class, 'transfer'])->name('caisses.transfer');
     Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
 });
 Route::middleware(['auth', 'verified'])->group(function () {

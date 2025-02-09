@@ -75,6 +75,55 @@ class CaisseController extends Controller
         }
     }
 
+    public function transfer(Request $request)
+    {
+        $validated = $request->validate([
+            'from_caisse_id' => 'required|exists:caisses,id',
+            'to_caisse_id' => 'required|exists:caisses,id|different:from_caisse_id',
+            'amount' => 'required|integer|min:1',
+            'description' => 'nullable|string'
+        ], [
+            'from_caisse_id.required' => 'La caisse source est obligatoire',
+            'to_caisse_id.required' => 'La caisse destination est obligatoire',
+            'to_caisse_id.different' => 'Les caisses source et destination doivent être différentes',
+            'amount.required' => 'Le montant est obligatoire',
+            'amount.integer' => 'Le montant doit être un nombre entier',
+            'amount.min' => 'Le montant doit être supérieur à 0',
+        ]);
+
+        try {
+            DB::transaction(function () use ($validated) {
+                $fromCaisse = Caisse::findOrFail($validated['from_caisse_id']);
+                $toCaisse = Caisse::findOrFail($validated['to_caisse_id']);
+
+                // Check if source caisse has enough balance
+                if ($fromCaisse->balance < $validated['amount']) {
+                    throw new \Exception('Solde insuffisant dans la caisse source');
+                }
+
+                // Create withdrawal transaction for source caisse
+                $fromCaisse->transactions()->create([
+                    'amount' => -$validated['amount'],
+                    'label' => "Transfert vers " . $toCaisse->name . ($validated['description'] ? " - " . $validated['description'] : ""),
+                    'transaction_type' => 'WITHDRAW'
+                ]);
+                $fromCaisse->decrement('balance', $validated['amount']);
+
+                // Create deposit transaction for destination caisse
+                $toCaisse->transactions()->create([
+                    'amount' => $validated['amount'],
+                    'label' => "Transfert depuis " . $fromCaisse->name . ($validated['description'] ? " - " . $validated['description'] : ""),
+                    'transaction_type' => 'DEPOSIT'
+                ]);
+                $toCaisse->increment('balance', $validated['amount']);
+            });
+
+            return redirect()->back()->with('success', 'Transfert effectué avec succès');
+        } catch (\Exception $e) {
+            return redirect()->back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
     public function transactions(Caisse $caisse)
     {
         $transactions = $caisse->transactions()
