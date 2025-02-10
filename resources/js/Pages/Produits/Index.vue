@@ -49,10 +49,14 @@ const quantityTransformed = computed(() => {
     return totalPiecesNeeded;
 });
 
-const maxVariantQuantity = computed(() => {
-    if (!selectedVariant.value || !selectedParentProduct.value) return 0;
-    // Calculate maximum number of variants that can be made from parent stock
-    return Math.floor(selectedParentProduct.value.stock_available / selectedParentProduct.value.base_quantity);
+const totalPiecesNeeded = computed(() => {
+    if (!selectedVariant.value || !transformForm.quantity) return 0;
+    return (transformForm.quantity * selectedParentProduct.value.base_quantity) + Number(transformForm.unused_quantity || 0);
+});
+
+const hasEnoughStock = computed(() => {
+    if (!selectedParentProduct.value) return false;
+    return transformForm.quantity <= selectedParentProduct.value.stock_available;
 });
 
 const margin = computed(() => {
@@ -145,7 +149,16 @@ const updateStockEntries = () => {
 };
 
 const submitTransform = () => {
-    transformForm.value.post(route('products.transform', selectedParentProduct.value.id), {
+    if (!selectedParentProduct.value || !selectedVariant.value) return;
+
+    // Check if quantity is higher than available stock
+    if (transformForm.quantity > selectedParentProduct.value.stock_available) {
+        transformForm.setError('quantity', `Stock insuffisant. Stock disponible: ${selectedParentProduct.value.stock_available} pièces`);
+        return;
+    }
+
+    transformForm.clearErrors();
+    transformForm.post(route('products.transform', selectedParentProduct.value.id), {
         onSuccess: () => {
             transformDialog.value = false;
             selectedParentProduct.value = null;
@@ -445,7 +458,7 @@ const calculateMargin = (price, costPrice) => {
                             variant="outlined"
                             class="mb-4"
                             :max="maxVariantQuantity"
-                            :hint="selectedVariant ? `Maximum possible: ${maxVariantQuantity} variants` : ''"
+                            :hint="selectedVariant ? `Stock disponible: ${selectedParentProduct.stock_available} pièces` : ''"
                             persistent-hint
                         />
 
@@ -467,7 +480,13 @@ const calculateMargin = (price, costPrice) => {
                             :error-messages="transformForm.errors.unused_quantity"
                             variant="outlined"
                             class="mb-4"
+                            :hint="selectedParentProduct ? `Maximum: ${selectedParentProduct.base_quantity - 1} pièces` : ''"
+                            persistent-hint
                         />
+
+                        <div v-if="!hasEnoughStock" class="text-error mb-4">
+                            Stock insuffisant. Total disponible: {{ selectedParentProduct.stock_available }} pièces
+                        </div>
                     </v-form>
                 </v-card-text>
 

@@ -144,9 +144,10 @@ class ProductController extends Controller
         $validated = $request->validate([
             'variant_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
+            "quantity_transformed" => "required|integer|min:1",
             'unused_quantity' => 'required|integer|min:0',
         ], [
-            'variant_id.required' => 'Le produit variant est obligatoire',
+            'variant_id.required' => 'Le produit à transformer est obligatoire',
             'variant_id.exists' => 'Le produit variant sélectionné n\'existe pas',
             'quantity.required' => 'La quantité est obligatoire',
             'quantity.integer' => 'La quantité doit être un nombre entier',
@@ -155,6 +156,11 @@ class ProductController extends Controller
             'unused_quantity.integer' => 'La quantité non utilisée doit être un nombre entier',
             'unused_quantity.min' => 'La quantité non utilisée doit être positive ou nulle',
         ]);
+
+        // add a check to see if the quantity transformed is less than the quantity
+        if ($validated['unused_quantity'] > $validated['quantity_transformed']) {
+            return redirect()->back()->with('error', 'La quantité non utilisée ne peut pas être supérieure à la quantité transformée');
+        }
 
         try {
             DB::transaction(function () use ($product, $validated) {
