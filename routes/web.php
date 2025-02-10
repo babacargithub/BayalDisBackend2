@@ -165,6 +165,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/sectors/{sector}', [SectorController::class, 'destroy'])->name('sectors.destroy');
     Route::post('/sectors/{sector}/customers', [SectorController::class, 'addCustomers'])->name('sectors.add-customers');
     Route::delete('/sectors/{sector}/customers/{customer}', [SectorController::class, 'removeCustomer'])->name('sectors.remove-customer');
+    Route::get('/sectors/{sector}/visit-batches', [SectorController::class, 'getVisitBatches'])->name('sectors.visit-batches');
+    Route::post('/sectors/{sector}/visit-batches', [SectorController::class, 'createVisitBatch'])->name('sectors.create-visit-batch');
 });
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');
