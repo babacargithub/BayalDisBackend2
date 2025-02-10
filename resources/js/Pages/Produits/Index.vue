@@ -512,7 +512,7 @@ const calculateMargin = (price, costPrice) => {
                             persistent-hint
                         />
 
-                        <div v-if="!hasEnoughStock" class="text-error mb-4">
+                        <div v-if="!hasEnoughStock && selectedParentProduct" class="text-error mb-4">
                             Stock insuffisant. Total disponible: {{ selectedParentProduct.stock_available }} pièces
                         </div>
                     </v-form>

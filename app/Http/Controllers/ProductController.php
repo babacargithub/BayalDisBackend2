@@ -196,8 +196,11 @@ class ProductController extends Controller
                 ]);
             });
 
+            DB::commit();
             return redirect()->back()->with('success', 'Transformation effectuée avec succès');
+
         } catch (\Exception $e) {
+            DB::rollBack();
             return redirect()->back()->withErrors(['error' => $e->getMessage()]);
         }
     }
