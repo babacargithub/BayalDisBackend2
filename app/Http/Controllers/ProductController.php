@@ -175,8 +175,8 @@ class ProductController extends Controller
                 $totalPiecesNeeded = $validated['quantity'] * $variant->base_quantity + $validated['unused_quantity'];
                 
                 // Check if parent product has enough stock
-                if ($product->stock < $totalPiecesNeeded) {
-                    throw new \Exception('Stock insuffisant. Stock disponible: ' . $product->stock . ' pièces');
+                if ($product->stock_available < $totalPiecesNeeded) {
+                    throw new \Exception('Stock insuffisant. Stock disponible: ' . $product->stock_available . ' pièces');
                 }
 
                 // Decrement parent stock

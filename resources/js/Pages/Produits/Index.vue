@@ -33,6 +33,7 @@ const transformDialog = ref(false);
 const transformForm = useForm({
     variant_id: null,
     quantity: null,
+    quantity_transformed: 0,
     unused_quantity: 0,
 });
 const selectedParentProduct = ref(null);
@@ -157,12 +158,14 @@ const submitTransform = () => {
         return;
     }
 
+    transformForm.quantity_transformed = quantityTransformed.value;
     transformForm.clearErrors();
     transformForm.post(route('products.transform', selectedParentProduct.value.id), {
         onSuccess: () => {
             transformDialog.value = false;
             selectedParentProduct.value = null;
         },
+        preserveScroll: true
     });
 };
 
@@ -438,43 +441,52 @@ const calculateMargin = (price, costPrice) => {
                 </v-card-title>
 
                 <v-card-text>
+                    <v-alert
+                        v-if="transformForm.errors.error"
+                        type="error"
+                        class="mb-4"
+                        closable
+                    >
+                        {{ transformForm.errors.error }}
+                    </v-alert>
+
                     <v-form @submit.prevent="submitTransform">
                         <v-select
                             v-model="transformForm.variant_id"
                             :items="products.filter(p => p.parent_id === selectedParentProduct?.id)"
                             item-title="name"
                             item-value="id"
-                            label="Produit variant"
+                            label="Sous produit"
                             :error-messages="transformForm.errors.variant_id"
                             variant="outlined"
                             class="mb-4"
                         />
 
                         <v-text-field
-                            v-model="transformForm.quantity"
+                            v-model.number="transformForm.quantity"
                             type="number"
                             label="Quantité"
                             :error-messages="transformForm.errors.quantity"
                             variant="outlined"
                             class="mb-4"
-                            :max="maxVariantQuantity"
                             :hint="selectedVariant ? `Stock disponible: ${selectedParentProduct.stock_available} pièces` : ''"
                             persistent-hint
                         />
 
                         <v-text-field
-                            :model-value="quantityTransformed"
+                            v-model="transformForm.quantity_transformed"
                             type="number"
-                            label="Quantité de pièces utilisées"
+                            label="Quantité de pièces transformées"
                             variant="outlined"
                             class="mb-4"
                             disabled
+                            :error-messages="transformForm.errors.quantity_transformed"
                             :hint="selectedVariant ? `${transformForm.quantity || 0} cartons ${selectedParentProduct.name} × ${selectedParentProduct.base_quantity}  = ${quantityTransformed} paquets de ${selectedVariant.name}` : ''"
                             persistent-hint
                         />
 
                         <v-text-field
-                            v-model="transformForm.unused_quantity"
+                            v-model.number="transformForm.unused_quantity"
                             type="number"
                             label="Quantité inutilisée"
                             :error-messages="transformForm.errors.unused_quantity"
