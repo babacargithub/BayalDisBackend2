@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Exception;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -99,7 +100,7 @@ class Product extends Model
         $totalAvailableStock = $this->stockEntries()->sum('quantity_left');
 
         if ($totalAvailableStock < $quantity) {
-            throw new \Exception("Stock insuffisant. Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}");
+            throw new Exception("Stock insuffisant. Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}");
         }
         // decrement stock using FIFO method
         $stockEntries = $this->stockEntries()->orderBy('created_at', 'asc')->get();
@@ -137,5 +138,17 @@ class Product extends Model
 
         $this->save();
         return $this;
+    }
+
+    /**
+     * @throws Exception
+     */
+    public function getStockEntry() : StockEntry
+    {
+        $stockEntry = $this->stockEntries()->where('quantity_left', '>', 0)->orderBy('created_at', 'asc')->first();
+        if (!$stockEntry) {
+            throw new Exception("Aucun stock disponible pour le produit {$this->name}");
+        }
+        return $stockEntry;
     }
 }

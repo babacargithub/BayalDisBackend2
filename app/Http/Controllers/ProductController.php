@@ -172,7 +172,7 @@ class ProductController extends Controller
                 }
 
                 // Calculate total pieces needed
-                $totalPiecesNeeded = $validated['quantity'] * $variant->base_quantity + $validated['unused_quantity'];
+                $totalPiecesNeeded = $validated['quantity'];
                 
                 // Check if parent product has enough stock
                 if ($product->stock_available < $totalPiecesNeeded) {
@@ -180,15 +180,19 @@ class ProductController extends Controller
                 }
 
                 // Decrement parent stock
+                $parentStockEntry = $product->getStockEntry();
                 $product->decrementStock($totalPiecesNeeded);
 
                 // Increment variant stock
                 // create a new stock entry for the variant
+                $stockEntryQuantity = ($product->base_quantity / $variant->base_quantity) - $validated['unused_quantity'];
                 StockEntry::create([
                     'product_id' => $variant->id,
-                    'quantity' => $validated['quantity'],
-                    'quantity_left' => $validated['quantity'],
-                    'unit_price' => ($product->cost_price / $product->base_quantity) * $validated['quantity']
+                    'quantity' => $stockEntryQuantity,
+                    'quantity_left' => $stockEntryQuantity,
+                    'unit_price' => ($product->cost_price / $product->base_quantity) * $variant->base_quantity,
+                    "purchase_invoice_item_id" => $parentStockEntry->purchase_invoice_item_id
+
                 ]);
             });
 
