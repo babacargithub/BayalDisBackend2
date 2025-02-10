@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -44,11 +44,26 @@ const selectedVariant = computed(() => {
 });
 
 const quantityTransformed = computed(() => {
-    if (!selectedVariant.value || !transformForm.quantity) return 0;
+    if (!selectedVariant.value  || !selectedParentProduct.value) {
+        throw new Error(`Données invalides pour le calcul de la quantité transformée Variante: ${selectedVariant.value?.name} Quantité: ${transformForm.quantity} Produit de base: ${selectedParentProduct.value?.name}`);
+    }
+    if (!transformForm.quantity) {
+        return 0;
+    }
     // Calculate how many pieces will be used from parent product
     const totalPiecesNeeded = (transformForm.quantity * selectedParentProduct.value.base_quantity)/selectedVariant.value.base_quantity;
     return totalPiecesNeeded;
 });
+
+// Add watchers for variant_id and quantity
+watch([() => transformForm.variant_id, () => transformForm.quantity], () => {
+    try {
+        transformForm.quantity_transformed = quantityTransformed.value;
+    } catch (error) {
+        // Reset transformed quantity if calculation is not possible
+        transformForm.quantity_transformed = 0;
+    }
+}, { immediate: true });
 
 const totalPiecesNeeded = computed(() => {
     if (!selectedVariant.value || !transformForm.quantity) return 0;
@@ -101,7 +116,7 @@ const openStockEntriesDialog = (product) => {
 const openTransformDialog = (product) => {
     selectedParentProduct.value = product;
     transformDialog.value = true;
-    transformForm.value.reset();
+    transformForm.reset();
 };
 
 const submit = () => {
@@ -164,6 +179,7 @@ const submitTransform = () => {
         onSuccess: () => {
             transformDialog.value = false;
             selectedParentProduct.value = null;
+            transformForm.reset();
         },
         preserveScroll: true
     });
