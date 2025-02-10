@@ -21,6 +21,7 @@ use App\Http\Controllers\CustomerCategoryController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\SectorController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -157,6 +158,13 @@ Route::middleware('auth')->group(function () {
     Route::delete('caisses/{caisse}/transactions/{transaction}', [CaisseController::class, 'destroyTransaction'])->name('caisses.transactions.destroy');
     Route::post('caisses/transfer', [CaisseController::class, 'transfer'])->name('caisses.transfer');
     Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
+    
+    // Sector routes
+    Route::post('/sectors', [SectorController::class, 'store'])->name('sectors.store');
+    Route::put('/sectors/{sector}', [SectorController::class, 'update'])->name('sectors.update');
+    Route::delete('/sectors/{sector}', [SectorController::class, 'destroy'])->name('sectors.destroy');
+    Route::post('/sectors/{sector}/customers', [SectorController::class, 'addCustomers'])->name('sectors.add-customers');
+    Route::delete('/sectors/{sector}/customers/{customer}', [SectorController::class, 'removeCustomer'])->name('sectors.remove-customer');
 });
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');

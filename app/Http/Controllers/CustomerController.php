@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Customer;
 use App\Models\Commercial;
+use App\Models\Sector;
+use App\Models\Ligne;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Auth;
 
 class CustomerController extends Controller
 {
@@ -51,7 +54,14 @@ class CustomerController extends Controller
                     'ventes_count' => $customer->ventes->count(),
                 ]),
             'commerciaux' => Commercial::select('id', 'name')->get(),
-            'filters' => $request->only(['prospect_status', 'commercial_id'])
+            'filters' => $request->only(['prospect_status', 'commercial_id']),
+            'sectors' => Sector::with(['ligne', 'customers'])->get(),
+            'lignes' => Ligne::all(),
+            'can' => [
+                'create' => Auth::user()->can('create', Customer::class),
+                'edit' => Auth::user()->can('edit', Customer::class),
+                'delete' => Auth::user()->can('delete', Customer::class),
+            ],
         ]);
     }
 
