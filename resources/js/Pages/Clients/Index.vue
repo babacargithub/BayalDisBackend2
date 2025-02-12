@@ -5,6 +5,9 @@ import { ref, watch, computed } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import CustomerHistoryDialog from '@/Pages/Clients/CustomerHistoryDialog.vue';
 import { Link } from '@inertiajs/vue3';
+import axios from 'axios';
+import Swal from 'sweetalert2/dist/sweetalert2.js';
+import 'sweetalert2/dist/sweetalert2.css';
 
 const props = defineProps({
     clients: {
@@ -193,6 +196,7 @@ const activeTab = ref('clients');
 const sectorDialog = ref(false);
 const sectorCustomersDialog = ref(false);
 const selectedSector = ref(null);
+const loadingMapCustomers = ref(false);
 
 const sectorForm = useForm({
     name: '',
@@ -264,6 +268,10 @@ const removeCustomerFromSector = (sector, customer) => {
             customer: customer.id
         }));
     }
+};
+
+const openCustomersMap = async (sector) => {
+    router.get(route('sectors.map', sector.id));
 };
 </script>
 
@@ -486,9 +494,20 @@ const removeCustomerFromSector = (sector, customer) => {
                                         icon
                                         size="small"
                                         color="info"
+                                        class="mr-2"
                                         @click="openSectorCustomers(item)"
                                     >
                                         <v-icon>mdi-eye</v-icon>
+                                    </v-btn>
+
+                                    <v-btn
+                                        icon
+                                        size="small"
+                                        color="primary"
+                                        :loading="loadingMapCustomers"
+                                        @click="openCustomersMap(item)"
+                                    >
+                                        <v-icon>mdi-map-marker-multiple</v-icon>
                                     </v-btn>
                                 </template>
                             </v-data-table>

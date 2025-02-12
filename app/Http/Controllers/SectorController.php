@@ -125,4 +125,52 @@ class SectorController extends Controller
             return redirect()->back()->with('error', 'Erreur lors de la création du lot de visite');
         }
     }
+
+    public function getCustomersForMap(Sector $sector)
+    {
+        $customers = Customer::whereNotIn('id', function($query) use ($sector) {
+                $query->select('customer_id')
+                    ->from('customer_sectors')
+                    ->where('sector_id', $sector->id);
+            })
+            ->whereNotNull('gps_coordinates')
+            ->where('gps_coordinates', '!=', '')
+            ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
+            ->map(function ($customer) {
+                return array_merge($customer->toArray(), [
+                    'can_be_added' => true
+                ]);
+            });
+
+        // Also get customers already in the sector but with different styling
+        $sectorCustomers = $sector->customers()
+            ->whereNotNull('gps_coordinates')
+            ->where('gps_coordinates', '!=', '')
+            ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
+            ->map(function ($customer) {
+                return array_merge($customer->toArray(), [
+                    'can_be_added' => false
+                ]);
+            });
+
+        return response()->json([
+            'sector' => $sector->load('ligne'),
+            'customers' => $customers,
+            'sector_customers' => $sectorCustomers
+        ]);
+    }
+
+    public function map(Sector $sector)
+    {
+        $googleMapsApiKey = config('services.google.maps_api_key');
+        
+        if (!$googleMapsApiKey) {
+            return redirect()->back()->with('error', 'La clé API Google Maps n\'est pas configurée.');
+        }
+
+        return inertia('Clients/SectorMap', [
+            'sector' => $sector->load('ligne'),
+            'googleMapsApiKey' => $googleMapsApiKey
+        ]);
+    }
 } 
