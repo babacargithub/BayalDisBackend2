@@ -273,6 +273,15 @@ const removeCustomerFromSector = (sector, customer) => {
 const openCustomersMap = async (sector) => {
     router.get(route('sectors.map', sector.id));
 };
+
+function formatPrice(amount) {
+    return new Intl.NumberFormat('fr-FR', {
+        style: 'currency',
+        currency: 'XOF',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount || 0);
+}
 </script>
 
 <template>
@@ -446,69 +455,75 @@ const openCustomersMap = async (sector) => {
                         <v-card>
                             <v-data-table
                                 :headers="[
-                                    { title: 'Nom', key: 'name' },
-                                    { title: 'Description', key: 'description' },
-                                    { title: 'Limites', key: 'boundaries' },
-                                    { title: 'Ligne', key: 'ligne.name' },
-                                    { title: 'Nombre de clients', key: 'customers_count' },
+                                    { title: 'Nom', key: 'name', sortable: true },
+                                    { title: 'Description', key: 'description', sortable: true },
+                                    { title: 'Ligne', key: 'ligne.name', sortable: true },
+                                    { title: 'Nombre de clients', key: 'customers_count', sortable: true },
+                                    { title: 'Nombre de ventes', key: 'total_number_of_ventes', sortable: true },
+                                    { title: 'Montant total', key: 'total_amount_of_ventes', sortable: true },
+                                    { title: 'Dette totale', key: 'total_debt', sortable: true },
                                     { title: 'Actions', key: 'actions', sortable: false },
                                 ]"
                                 :items="sectors"
                                 :loading="false"
+                                class="elevation-1"
                             >
                                 <template v-slot:item.customers_count="{ item }">
                                     {{ item.customers?.length || 0 }}
                                 </template>
 
+                                <template v-slot:item.total_amount_of_ventes="{ item }">
+                                    {{ formatPrice(item.total_amount_of_ventes) }}
+                                </template>
+
+                                <template v-slot:item.total_debt="{ item }">
+                                    <span :class="{ 'text-error': item.total_debt > 0 }">
+                                        {{ formatPrice(item.total_debt) }}
+                                    </span>
+                                </template>
+
                                 <template v-slot:item.actions="{ item }">
-                                    <v-btn
-                                        icon
-                                        size="small"
-                                        class="mr-2"
-                                        @click="openSectorDialog(item)"
-                                    >
-                                        <v-icon>mdi-pencil</v-icon>
-                                    </v-btn>
+                                    <div class="d-flex gap-2">
+                                        <v-btn
+                                            icon
+                                            variant="text"
+                                            density="comfortable"
+                                            color="primary"
+                                            @click="openSectorDialog(item)"
+                                        >
+                                            <v-icon>mdi-pencil</v-icon>
+                                        </v-btn>
 
-                                    <v-btn
-                                        icon
-                                        size="small"
-                                        color="error"
-                                        class="mr-2"
-                                        @click="deleteSector(item)"
-                                    >
-                                        <v-icon>mdi-delete</v-icon>
-                                    </v-btn>
+                                        <v-btn
+                                            icon
+                                            variant="text"
+                                            density="comfortable"
+                                            color="error"
+                                            @click="deleteSector(item)"
+                                        >
+                                            <v-icon>mdi-delete</v-icon>
+                                        </v-btn>
 
-                                    <v-btn
-                                        icon
-                                        size="small"
-                                        color="success"
-                                        class="mr-2"
-                                        @click="openSectorCustomers(item)"
-                                    >
-                                        <v-icon>mdi-account-multiple-plus</v-icon>
-                                    </v-btn>
+                                        <v-btn
+                                            icon
+                                            variant="text"
+                                            density="comfortable"
+                                            color="success"
+                                            @click="openSectorCustomers(item)"
+                                        >
+                                            <v-icon>mdi-account-multiple</v-icon>
+                                        </v-btn>
 
-                                    <v-btn
-                                        icon
-                                        size="small"
-                                        color="info"
-                                        class="mr-2"
-                                        @click="openSectorCustomers(item)"
-                                    >
-                                        <v-icon>mdi-eye</v-icon>
-                                    </v-btn>
-
-                                    <v-btn
-                                        icon
-                                        size="small"
-                                        color="primary"
-                                        :loading="loadingMapCustomers"
-                                        @click="openCustomersMap(item)"
-                                    >
-                                        <v-icon>mdi-map-marker-multiple</v-icon>
-                                    </v-btn>
+                                        <v-btn
+                                            icon
+                                            variant="text"
+                                            density="comfortable"
+                                            color="info"
+                                            @click="openCustomersMap(item)"
+                                        >
+                                            <v-icon>mdi-map-marker-multiple</v-icon>
+                                        </v-btn>
+                                    </div>
                                 </template>
                             </v-data-table>
                         </v-card>
