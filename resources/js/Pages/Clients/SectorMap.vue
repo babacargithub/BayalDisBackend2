@@ -19,7 +19,7 @@
                     </v-btn>
                     <v-btn
                         color="primary"
-                        @click="$router.back()"
+                        @click="router.visit(route('clients.index'))"
                     >
                         <v-icon start>mdi-arrow-left</v-icon>
                         Retour
@@ -78,7 +78,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import Swal from 'sweetalert2/dist/sweetalert2.js';
 import 'sweetalert2/dist/sweetalert2.css';
@@ -168,6 +168,12 @@ const toggleCustomerSelection = (customer, marker) => {
                 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png' : 
                 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' 
         });
+    }
+
+    // Close the current info window if it's open
+    if (currentInfoWindow) {
+        currentInfoWindow.close();
+        currentInfoWindow = null;
     }
 };
 
