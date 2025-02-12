@@ -53,7 +53,7 @@ const menuItems = [
         isDropdown: true,
         ref: ordersDropdownOpen,
         items: [
-            //use shakehande icon
+            { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
         ]
     },

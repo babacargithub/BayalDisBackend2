@@ -65,7 +65,17 @@
                                         icon="mdi-delete"
                                         variant="text"
                                         color="error"
+                                        class="mr-2"
                                         @click="deleteInvoice(invoice)"
+                                    />
+                                    <v-btn
+                                        icon="mdi-package-variant-closed"
+                                        variant="text"
+                                        color="success"
+                                        class="mr-2"
+                                        v-if="!invoice.is_stocked"
+                                        @click="putInStock(invoice)"
+                                        v-tooltip="'Mettre en stock'"
                                     />
                                 </td>
                             </tr>
@@ -299,7 +309,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
@@ -527,4 +537,10 @@ function closeDialog() {
         dialog.value = false;
     }
 }
+
+const putInStock = (invoice) => {
+    if (confirm('Êtes-vous sûr de vouloir mettre les articles de cette facture en stock ?')) {
+        router.post(route('purchase-invoices.put-in-stock', invoice.id));
+    }
+};
 </script> 
