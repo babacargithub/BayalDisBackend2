@@ -9,6 +9,15 @@
                 </h2>
                 <div class="flex gap-2">
                     <v-btn
+                        color="success"
+                        :disabled="selectedCustomers.length === 0"
+                        :loading="loading"
+                        @click="addSelectedCustomers"
+                    >
+                        <v-icon start>mdi-account-multiple-plus</v-icon>
+                        Ajouter les clients sélectionnés ({{ selectedCustomers.length }})
+                    </v-btn>
+                    <v-btn
                         color="primary"
                         @click="$router.back()"
                     >
@@ -37,6 +46,10 @@
                                 <div class="d-flex align-center">
                                     <v-icon color="yellow" class="mr-2">mdi-map-marker</v-icon>
                                     <span>Prospects disponibles</span>
+                                </div>
+                                <div class="d-flex align-center">
+                                    <v-icon color="blue" class="mr-2">mdi-map-marker</v-icon>
+                                    <span>Clients sélectionnés</span>
                                 </div>
                             </div>
                         </div>
@@ -85,31 +98,76 @@ const loading = ref(false);
 let map;
 let markers = [];
 let currentInfoWindow = null;
+const selectedCustomers = ref([]);
+const isGoogleMapsLoaded = ref(false);
 
-const addCustomerToSector = async (customer) => {
+const loadGoogleMapsScript = () => {
+    return new Promise((resolve, reject) => {
+        if (window.google) {
+            isGoogleMapsLoaded.value = true;
+            resolve();
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${props.googleMapsApiKey}`;
+        script.async = true;
+        script.defer = true;
+
+        script.addEventListener('load', () => {
+            isGoogleMapsLoaded.value = true;
+            resolve();
+        });
+
+        script.addEventListener('error', (error) => {
+            reject(new Error('Failed to load Google Maps script'));
+        });
+
+        document.head.appendChild(script);
+    });
+};
+
+const addSelectedCustomers = async () => {
+    if (selectedCustomers.value.length === 0) return;
+
     try {
         loading.value = true;
         await axios.post(route('sectors.add-customers', props.sector.id), {
-            customer_ids: [customer.id]
+            customer_ids: selectedCustomers.value.map(c => c.id)
         });
         
         Swal.fire({
             title: 'Succès',
-            text: 'Client ajouté au secteur avec succès',
+            text: `${selectedCustomers.value.length} client(s) ajouté(s) au secteur avec succès`,
             icon: 'success'
         });
         
-        // Reload the map data
+        selectedCustomers.value = [];
         await loadMapData();
     } catch (error) {
-        console.error('Error adding customer to sector:', error);
+        console.error('Error adding customers to sector:', error);
         Swal.fire({
             title: 'Erreur',
-            text: 'Une erreur est survenue lors de l\'ajout du client au secteur',
+            text: 'Une erreur est survenue lors de l\'ajout des clients au secteur',
             icon: 'error'
         });
     } finally {
         loading.value = false;
+    }
+};
+
+const toggleCustomerSelection = (customer, marker) => {
+    const index = selectedCustomers.value.findIndex(c => c.id === customer.id);
+    if (index === -1) {
+        selectedCustomers.value.push(customer);
+        marker.setIcon({ url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png' });
+    } else {
+        selectedCustomers.value.splice(index, 1);
+        marker.setIcon({ 
+            url: customer.is_prospect ? 
+                'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png' : 
+                'https://maps.google.com/mapfiles/ms/icons/red-dot.png' 
+        });
     }
 };
 
@@ -125,10 +183,10 @@ const createInfoWindowContent = (customer) => {
             </div>
             ${customer.can_be_added ? 
                 `<button 
-                    onclick="window.addCustomerToSector_${customer.id}()"
+                    onclick="window.toggleCustomerSelection_${customer.id}()"
                     class="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark"
                 >
-                    Ajouter au secteur
+                    ${selectedCustomers.value.find(c => c.id === customer.id) ? 'Désélectionner' : 'Sélectionner'}
                 </button>` 
                 : '<div class="text-success">Déjà dans le secteur</div>'
             }
@@ -195,10 +253,11 @@ const loadMapData = async () => {
                         content: createInfoWindowContent(customer)
                     });
 
-                    // Add click handler for the "Add to sector" button
+                    // Add click handler for the selection button
                     if (customer.can_be_added) {
-                        window[`addCustomerToSector_${customer.id}`] = () => {
-                            addCustomerToSector(customer);
+                        window[`toggleCustomerSelection_${customer.id}`] = () => {
+                            toggleCustomerSelection(customer, marker);
+                            infoWindow.setContent(createInfoWindowContent(customer));
                         };
                     }
 
@@ -213,32 +272,27 @@ const loadMapData = async () => {
                     markers.push(marker);
                     console.log('Marker created successfully for:', customer.name);
                 } catch (error) {
-                    console.error(`Error processing coordinates for customer ${customer.name}:`, error);
+                    console.error(`Error creating marker for customer ${customer.name}:`, error);
                 }
-            } else {
-                console.log('No GPS coordinates for customer:', customer.name);
             }
         });
 
-        console.log('Total markers created:', markers.length);
-
-        // Fit bounds to markers if any exist
-        if (markers.length > 0) {
+        // If no markers were created, center the map on a default location
+        if (markers.length === 0) {
+            console.log('No markers created, using default center');
+            map.setCenter({ lat: 14.6937, lng: -17.4441 }); // Default to Dakar
+            map.setZoom(12);
+        } else {
+            // Fit the map bounds to include all markers
             const bounds = new google.maps.LatLngBounds();
             markers.forEach(marker => bounds.extend(marker.getPosition()));
             map.fitBounds(bounds);
-            console.log('Map bounds adjusted to fit all markers');
-        } else {
-            // If no markers, center on Dakar
-            map.setCenter({ lat: 14.7167, lng: -17.4677 });
-            map.setZoom(12);
-            console.log('No markers found, centering map on Dakar');
         }
     } catch (error) {
         console.error('Error loading map data:', error);
         Swal.fire({
             title: 'Erreur',
-            text: 'Une erreur est survenue lors du chargement des données',
+            text: 'Une erreur est survenue lors du chargement des données de la carte',
             icon: 'error'
         });
     } finally {
@@ -246,73 +300,32 @@ const loadMapData = async () => {
     }
 };
 
-function initMap() {
-    console.log('Initializing map...');
-    // Default center (Dakar coordinates)
-    const center = { lat: 14.7167, lng: -17.4677 };
-    
-    map = new google.maps.Map(document.getElementById('map'), {
-        zoom: 12,
-        center: center,
-        mapTypeId: google.maps.MapTypeId.ROADMAP
-    });
+onMounted(async () => {
+    try {
+        loading.value = true;
+        await loadGoogleMapsScript();
+        
+        // Initialize the map
+        map = new google.maps.Map(document.getElementById('map'), {
+            zoom: 12,
+            center: { lat: 14.6937, lng: -17.4441 }, // Default center (Dakar)
+        });
 
-    console.log('Map initialized, loading data...');
-    // Add click listener to the map to close info window when clicking elsewhere
-    map.addListener('click', () => {
-        if (currentInfoWindow) {
-            currentInfoWindow.close();
-            currentInfoWindow = null;
-        }
-    });
-
-    // Load initial data
-    loadMapData();
-}
-
-onMounted(() => {
-    console.log('Component mounted');
-    if (!props.googleMapsApiKey) {
-        console.error('Google Maps API key is missing');
+        // Load the initial data
+        await loadMapData();
+    } catch (error) {
+        console.error('Error initializing map:', error);
         Swal.fire({
             title: 'Erreur',
-            text: 'La clé API Google Maps n\'est pas configurée',
+            text: 'Une erreur est survenue lors du chargement de Google Maps',
             icon: 'error'
         });
-        return;
+    } finally {
+        loading.value = false;
     }
-
-    // Check if Google Maps is already loaded
-    if (window.google && window.google.maps) {
-        console.log('Google Maps already loaded, initializing map...');
-        initMap();
-        return;
-    }
-
-    console.log('Loading Google Maps with API key:', props.googleMapsApiKey);
-    // Load Google Maps API
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${props.googleMapsApiKey}`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-        console.log('Google Maps script loaded successfully');
-        initMap();
-    };
-    script.onerror = (error) => {
-        console.error('Error loading Google Maps script:', error);
-        Swal.fire({
-            title: 'Erreur',
-            text: 'Erreur lors du chargement de Google Maps',
-            icon: 'error'
-        });
-    };
-    document.head.appendChild(script);
 });
 </script>
 
 <style scoped>
-.v-overlay {
-    display: flex;
-}
-</style> 
+/* Add your styles here */
+</style>

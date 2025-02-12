@@ -128,14 +128,13 @@ class SectorController extends Controller
 
     public function getCustomersForMap(Sector $sector)
     {
-        $customers = Customer::whereNotIn('id', function($query) use ($sector) {
+        $customers = Customer::whereNotIn('customers.id', function($query) use ($sector) {
                 $query->select('customer_id')
-                    ->from('customer_sectors')
-                    ->where('sector_id', $sector->id);
+                    ->from('customer_sectors');
             })
             ->whereNotNull('gps_coordinates')
             ->where('gps_coordinates', '!=', '')
-            ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
+            ->get(['customers.id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
             ->map(function ($customer) {
                 return array_merge($customer->toArray(), [
                     'can_be_added' => true
@@ -146,7 +145,8 @@ class SectorController extends Controller
         $sectorCustomers = $sector->customers()
             ->whereNotNull('gps_coordinates')
             ->where('gps_coordinates', '!=', '')
-            ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
+
+            ->get(['customers.id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
             ->map(function ($customer) {
                 return array_merge($customer->toArray(), [
                     'can_be_added' => false
