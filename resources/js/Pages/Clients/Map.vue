@@ -60,6 +60,10 @@
                                         <div class="rounded-circle mr-2" style="width: 20px; height: 20px; background-color: red; border: 2px solid black;"></div>
                                         <span>Prospect</span>
                                     </div>
+                                    <div class="d-flex align-center">
+                                        <div style="width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 20px solid red; margin-right: 8px;"></div>
+                                        <span>Client avec dette</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -130,8 +134,8 @@ function getMarkerOptions(client) {
         markerColor = 'red';
     }
 
-    // Create SVG marker for prospects
-    const createProspectSVG = (color) => {
+    // Create SVG marker for different client types
+    const createCustomSVG = (color, type) => {
         const colors = {
             'red': '#FF0000',
             'blue': '#0000FF',
@@ -148,17 +152,32 @@ function getMarkerOptions(client) {
         };
         const fillColor = colors[color] || colors['red'];
         
+        // Different shapes for different types
+        const shapes = {
+            'prospect': {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8
+            },
+            'debt': {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 6
+            },
+            'regular': {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 8
+            }
+        };
+        
         return {
-            path: google.maps.SymbolPath.CIRCLE,
+            ...shapes[type],
             fillColor: fillColor,
             fillOpacity: 1,
-            strokeWeight: 1,
-            strokeColor: '#000000',
-            scale: 8
+            strokeWeight: 0.5,
+            strokeColor: '#000000'
         };
     };
 
-    // Create regular marker for clients
+    // Create regular marker for standard clients
     const createClientMarker = (color) => {
         return {
             url: `https://maps.google.com/mapfiles/ms/icons/${color}-dot.png`,
@@ -166,16 +185,57 @@ function getMarkerOptions(client) {
         };
     };
 
-    return {
-        position: { 
-            lat: parseFloat(client.gps_coordinates.split(',')[0].trim()),
-            lng: parseFloat(client.gps_coordinates.split(',')[1].trim())
-        },
-        map: map,
-        title: client.name,
-        icon: client.is_prospect ? createProspectSVG(markerColor) : createClientMarker(markerColor)
-    };
+    // Determine marker type based on client status
+    let markerType;
+    if (client.is_prospect) {
+        return {
+            position: { 
+                lat: parseFloat(client.gps_coordinates.split(',')[0].trim()),
+                lng: parseFloat(client.gps_coordinates.split(',')[1].trim())
+            },
+            map: map,
+            title: client.name,
+            icon: createCustomSVG(markerColor, 'prospect')
+        };
+    } else if (client.has_debt) {
+        return {
+            position: { 
+                lat: parseFloat(client.gps_coordinates.split(',')[0].trim()),
+                lng: parseFloat(client.gps_coordinates.split(',')[1].trim())
+            },
+            map: map,
+            title: client.name,
+            icon: createCustomSVG(markerColor, 'debt')
+        };
+    } else {
+        return {
+            position: { 
+                lat: parseFloat(client.gps_coordinates.split(',')[0].trim()),
+                lng: parseFloat(client.gps_coordinates.split(',')[1].trim())
+            },
+            map: map,
+            title: client.name,
+            icon: createClientMarker(markerColor)
+        };
+    }
 }
+
+// Update the infoWindow content to show debt information
+const createInfoWindowContent = (client) => {
+    return `
+        <div class="p-2">
+            <h3 class="font-bold">${client.name}</h3>
+            <ul>
+                <li>${client.address || 'Pas d\'adresse'}</li>
+                <li>Tél: ${client.phone_number}</li>
+                <li>Type: ${client.is_prospect ? 'Prospect' : 'Client'}</li>
+                <li>Secteur: ${client.sector?.name || 'Non assigné'}</li>
+                ${client.has_debt ? `<li class="text-red-600 font-bold">Dette: ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(client.total_debt)}</li>` : ''}
+                ${client.description ? `<li>${client.description}</li>` : ''}
+            </ul>
+        </div>
+    `;
+};
 
 function initMap() {
     const center = { lat: 14.7167, lng: -17.4677 };
@@ -191,18 +251,7 @@ function initMap() {
                 const marker = new google.maps.Marker(getMarkerOptions(client));
 
                 const infoWindow = new google.maps.InfoWindow({
-                    content: `
-                        <div class="p-2">
-                            <h3 class="font-bold">${client.name}</h3>
-                            <ul>
-                                <li>${client.address || 'Pas d\'adresse'}</li>
-                                <li>Tél: ${client.phone_number}</li>
-                                <li>Type: ${client.is_prospect ? 'Prospect' : 'Client'}</li>
-                                <li>Secteur: ${client.sector?.name || 'Non assigné'}</li>
-                                ${client.description ? `<li>${client.description}</li>` : ''}
-                            </ul>
-                        </div>
-                    `
+                    content: createInfoWindowContent(client)
                 });
 
                 marker.addListener('click', () => {

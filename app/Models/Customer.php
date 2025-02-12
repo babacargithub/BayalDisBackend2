@@ -115,4 +115,14 @@ class Customer extends Model
     {
         return $this->belongsTo(Sector::class);
     }
+    public function getHasDebtAttribute(): bool
+    {
+        return $this->ventes()->where('paid', false)->exists();
+    }
+    public function getTotalDebtAttribute(): int
+    {
+        return (int)$this->salesInvoices->sum("total_remaining");
+    }
+    
+
 } 

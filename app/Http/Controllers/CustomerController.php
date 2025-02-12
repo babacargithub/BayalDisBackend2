@@ -139,12 +139,29 @@ class CustomerController extends Controller
     public function map()
     {
         $clients = Customer::query()
-            ->select('id', 'name', 'phone_number', 'address', 'gps_coordinates', 'is_prospect', 'description')
+            ->select('id', 'name', 'phone_number', 'address', 'gps_coordinates', 'is_prospect', 'description', 'sector_id')
+            ->with('sector:id,name')
             ->whereNotNull('gps_coordinates')
             ->get();
 
         return Inertia::render('Clients/Map', [
-            'clients' => $clients,
+            'clients' => $clients->map(function ($client) {
+                return [
+                    'id' => $client->id,
+                    'name' => $client->name,
+                    'phone_number' => $client->phone_number,
+                    'address' => $client->address,
+                    'gps_coordinates' => $client->gps_coordinates,
+                    'is_prospect' => $client->is_prospect,
+                    'description' => $client->description,
+                    "has_debt" => $client->has_debt,
+                    "total_debt" => $client->total_debt,
+                    'sector' => $client->sector ? [
+                        'id' => $client->sector->id,
+                        'name' => $client->sector->name,
+                    ] : null,
+                ];
+            }),
             'googleMapsApiKey' => config('services.google.maps_api_key')
         ]);
     }
