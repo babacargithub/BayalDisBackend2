@@ -54,7 +54,8 @@ class SectorController extends Controller
         try {
             DB::beginTransaction();
             
-            $sector->customers()->syncWithoutDetaching($validated['customer_ids']);
+            // Update customers to belong to this sector
+            Customer::whereIn('id', $validated['customer_ids'])->update(['sector_id' => $sector->id]);
             
             DB::commit();
             return redirect()->back()->with('success', 'Clients ajoutés au secteur avec succès');
@@ -66,7 +67,7 @@ class SectorController extends Controller
 
     public function removeCustomer(Sector $sector, Customer $customer)
     {
-        $sector->customers()->detach($customer->id);
+        $customer->update(['sector_id' => null]);
         return redirect()->back()->with('success', 'Client retiré du secteur avec succès');
     }
 
@@ -128,13 +129,10 @@ class SectorController extends Controller
 
     public function getCustomersForMap(Sector $sector)
     {
-        $customers = Customer::whereNotIn('customers.id', function($query) use ($sector) {
-                $query->select('customer_id')
-                    ->from('customer_sectors');
-            })
+        $customers = Customer::whereNull('sector_id')
             ->whereNotNull('gps_coordinates')
             ->where('gps_coordinates', '!=', '')
-            ->get(['customers.id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
+            ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
             ->map(function ($customer) {
                 return array_merge($customer->toArray(), [
                     'can_be_added' => true
@@ -145,8 +143,7 @@ class SectorController extends Controller
         $sectorCustomers = $sector->customers()
             ->whereNotNull('gps_coordinates')
             ->where('gps_coordinates', '!=', '')
-
-            ->get(['customers.id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
+            ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
             ->map(function ($customer) {
                 return array_merge($customer->toArray(), [
                     'can_be_added' => false

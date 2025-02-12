@@ -21,10 +21,9 @@ class Sector extends Model
         return $this->belongsTo(Ligne::class);
     }
 
-    public function customers(): BelongsToMany
+    public function customers()
     {
-        return $this->belongsToMany(Customer::class, 'customer_sectors')
-            ->withTimestamps();
+        return $this->hasMany(Customer::class);
     }
 
     public function visitBatches(): HasMany

@@ -110,4 +110,9 @@ class Customer extends Model
     {
         return $this->hasMany(SalesInvoice::class);
     }
+
+    public function sector()
+    {
+        return $this->belongsTo(Sector::class);
+    }
 } 
