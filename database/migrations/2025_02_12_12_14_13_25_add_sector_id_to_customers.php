@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::table('customers', function (Blueprint $table) {
             $table->foreignId('sector_id')->nullable()->constrained('sectors')->nullOnDelete();
@@ -32,11 +32,8 @@ return new class extends Migration
 
     }
 
-    public function down()
+    public function down(): void
     {
-
-
-
         if (!Schema::hasTable('customer_sectors')) {
             Schema::create('customer_sectors', function (Blueprint $table) {
                 $table->id();
