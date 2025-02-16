@@ -218,6 +218,11 @@ class SalespersonController extends Controller
             $customer->is_prospect = false;
             $customer->save();
         }
+        $product = Product::findOrFail($validated['product_id']);
+
+        if ($product->stock_available < $validated['quantity']) {
+            return response()->json(['message' => 'Stock insuffisant'], 422);
+        }
         // check if customer has visit planned if yes we mark it as completed
         $visit = $customer->visits()->whereDate('visit_planned_at', '<=', now()->toDateString())->where('status',
             CustomerVisit::STATUS_PLANNED)->first();
@@ -228,8 +233,7 @@ class SalespersonController extends Controller
             $visit->gps_coordinates = $customer->gps_coordinates;
             $visit->save();
         }
-        $product = Product::findOrFail($validated['product_id']);
-    
+
         $product->decrementStock($validated['quantity']);
 
         // Load the relationships
@@ -340,21 +344,71 @@ class SalespersonController extends Controller
 
     public function getVentes(Request $request)
     {
-        $query = Vente::with(['product', 'customer', 'commercial'])
-            ->whereHas('commercial', function ($query) {
-                $query->where('id', auth()->id());
-            })->whereDate("created_at", today()->toDateString())
-            ->latest();
+        $commercial = $request->user()->commercial;
+        $date = $request->query("date", today()->toDateString());
 
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
-        }
+        // Get single ventes
+        $ventesQuery = Vente::with(['product', 'customer'])
+            ->where('commercial_id', $commercial->id)
+            ->where('type', 'SINGLE')
+            ->whereDate("created_at", $date);
 
-        if ($request->filled('paid')) {
-            $query->where('paid', $request->paid === 'true');
-        }
+        // Get sales invoices
+        $invoicesQuery = SalesInvoice::with(['customer', 'items.product'])
+            ->whereDate('created_at', $date)
+            ->whereHas('customer', function ($query) use ($commercial) {
+                $query->where('commercial_id', $commercial->id);
+            });
 
-        return $this->venteResource($query);
+        $ventes = $ventesQuery->get();
+        $invoices = $invoicesQuery->get();
+
+        // Calculate totals
+        $ventesTotal = $ventes->sum(function ($vente) {
+            return $vente->price * $vente->quantity;
+        });
+
+        $invoicesTotal = $invoices->sum(function ($invoice) {
+            return $invoice->items->sum(function ($item) {
+                return $item->quantity * $item->price;
+            });
+        });
+
+        return response()->json([
+            'ventes' => $ventes->map(function (Vente $vente) {
+                return [
+                    'id' => $vente->id,
+                    'product' => $vente->product?->name,
+                    'customer' => $vente->customer?->name,
+                    'customer_phone_number' => $vente->customer?->phone_number,
+                    'quantity' => $vente->quantity,
+                    'price' => $vente->price,
+                    'total' => $vente->price * $vente->quantity,
+                    'paid' => (bool)$vente->paid,
+                    'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
+                    'should_be_paid_at' => $vente->should_be_paid_at,
+                    'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
+                ];
+            }),
+            'invoices' => $invoices->map(function ($invoice) {
+                return [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->created_at->format('Ymd') . '-' . str_pad($invoice->id, 4, '0', STR_PAD_LEFT),
+                    'customer' => [
+                        'name' => $invoice->customer->name,
+                        'phone_number' => $invoice->customer->phone_number,
+                    ],
+                    'items' => [],
+                    'total' => $invoice->items->sum(function ($item) {
+                        return $item->quantity * $item->price;
+                    }),
+                    'paid' => $invoice->paid,
+                    'should_be_paid_at' => $invoice->should_be_paid_at,
+                    'created_at' => $invoice->created_at,
+                ];
+            }),
+            'total' => $ventesTotal + $invoicesTotal,
+        ]);
     }
 
     public function venteResource($query): JsonResponse
@@ -842,12 +896,65 @@ class SalespersonController extends Controller
         ]);
 
 
-            $salesInvoice = $salesInvoiceService->createSalesInvoice($validated);
+             $salesInvoiceService->createSalesInvoice($validated);
             return response()->json([
                 'message' => 'Facture créée avec succès',
-                'data' => $salesInvoice
             ], 201);
         
     
+    }
+
+    /**
+     * Get sales invoices for a specific date
+     */
+    public function getSalesInvoices(Request $request): JsonResponse
+    {
+        $date = $request->get('date', now()->toDateString());
+        $commercial = $request->user()->commercial;
+
+        $query = SalesInvoice::with(['customer', 'items.product'])
+            ->whereDate('created_at', $date)
+            ->whereHas('customer', function ($query) use ($commercial) {
+                $query->where('commercial_id', $commercial->id);
+            });
+
+        $invoices = $query->get();
+        
+        // Calculate total amount for all invoices
+        $total = $invoices->sum(function ($invoice) {
+            return $invoice->items->sum(function ($item) {
+                return $item->quantity * $item->price;
+            });
+        });
+
+        return response()->json([
+            'data' => $invoices->map(function ($invoice) {
+                return [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'customer' => [
+                        'name' => $invoice->customer->name,
+                        'phone_number' => $invoice->customer->phone_number,
+                    ],
+                    'items' => $invoice->items->map(function ($item) {
+                        return [
+                            'product' => [
+                                'name' => $item->product->name,
+                            ],
+                            'quantity' => $item->quantity,
+                            'price' => $item->price,
+                            'total' => $item->quantity * $item->price,
+                        ];
+                    }),
+                    'total' => $invoice->items->sum(function ($item) {
+                        return $item->quantity * $item->price;
+                    }),
+                    'paid' => $invoice->paid,
+                    'should_be_paid_at' => $invoice->should_be_paid_at,
+                    'created_at' => $invoice->created_at,
+                ];
+            }),
+            'total' => $total,
+        ]);
     }
 }

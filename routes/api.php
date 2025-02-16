@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('ventes', [SalespersonController::class, 'createVente']);
         
         // Sales Invoices
+        Route::get('sales-invoices', [SalespersonController::class, 'getSalesInvoices']);
         Route::post('sales-invoices', [SalespersonController::class, 'createSalesInvoice']);
         Route::post('invoices/{invoice}/pay', [SalespersonController::class, 'paySalesInvoice']);
         
