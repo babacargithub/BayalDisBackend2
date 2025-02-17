@@ -22,6 +22,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\SectorController;
+use App\Http\Controllers\CarLoadController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -170,6 +171,23 @@ Route::middleware('auth')->group(function () {
     Route::post('/sectors/{sector}/visit-batches', [SectorController::class, 'createVisitBatch'])->name('sectors.create-visit-batch');
     Route::get('/sectors/{sector}/map-customers', [SectorController::class, 'getCustomersForMap'])->name('sectors.map-customers');
     Route::get('/sectors/{sector}/map', [SectorController::class, 'map'])->name('sectors.map');
+
+    // Car Loads
+    Route::get('/car-loads', [CarLoadController::class, 'index'])->name('car-loads.index');
+    Route::get('/car-loads/{carLoad}', [CarLoadController::class, 'show'])->name('car-loads.show');
+    Route::post('/car-loads', [CarLoadController::class, 'store'])->name('car-loads.store');
+    Route::put('/car-loads/{carLoad}', [CarLoadController::class, 'update'])->name('car-loads.update');
+    Route::delete('/car-loads/{carLoad}', [CarLoadController::class, 'destroy'])->name('car-loads.destroy');
+    
+    // Car Load Items
+    Route::post('/car-loads/{carLoad}/items', [CarLoadController::class, 'addItem'])->name('car-loads.items.store');
+    Route::put('/car-loads/{carLoad}/items/{item}', [CarLoadController::class, 'updateItem'])->name('car-loads.items.update');
+    Route::delete('/car-loads/{carLoad}/items/{item}', [CarLoadController::class, 'deleteItem'])->name('car-loads.items.destroy');
+    
+    // Car Load Actions
+    Route::post('/car-loads/{carLoad}/activate', [CarLoadController::class, 'activate'])->name('car-loads.activate');
+    Route::post('/car-loads/{carLoad}/unload', [CarLoadController::class, 'unload'])->name('car-loads.unload');
+    Route::post('/car-loads/{carLoad}/create-from-previous', [CarLoadController::class, 'createFromPrevious'])->name('car-loads.create-from-previous');
 });
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');

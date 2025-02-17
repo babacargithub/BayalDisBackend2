@@ -54,6 +54,7 @@ const menuItems = [
         ref: ordersDropdownOpen,
         items: [
             { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
+            { name: 'Chargements Véhicule', route: 'car-loads.index', icon: 'mdi-car' },
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
         ]
     },
