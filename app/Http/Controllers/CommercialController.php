@@ -257,4 +257,13 @@ class CommercialController extends Controller
             'payment_method_sales' => $paymentMethodSales
         ]);
     }
+
+    public function getCommercials()
+    {
+        $commercials = Commercial::select('id', 'name', 'phone_number')
+            ->orderBy('name')
+            ->get();
+            
+        return response()->json($commercials);
+    }
 } 

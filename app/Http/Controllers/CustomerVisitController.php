@@ -84,4 +84,42 @@ class CustomerVisitController extends Controller
 
         return back()->with('success', 'Visite supprimée avec succès');
     }
+
+    public function completeFromMobile(Request $request)
+    {
+        $validated = $request->validate([
+            'customer_id' => ['required', 'exists:customers,id'],
+            'notes' => ['nullable', 'string'],
+            'gps_coordinates' => ['required', 'string'],
+        ], [
+            'customer_id.required' => 'L\'identifiant du client est obligatoire',
+            'customer_id.exists' => 'Le client n\'existe pas',
+            'gps_coordinates.required' => 'Les coordonnées GPS sont obligatoires',
+        ]);
+
+        // Find the first planned visit for this customer
+        $visit = CustomerVisit::where('customer_id', $validated['customer_id'])
+            ->where('status', CustomerVisit::STATUS_PLANNED)
+            ->whereDate('visit_planned_at', '>=', now()->startOfDay())
+            ->orderBy('visit_planned_at')
+            ->first();
+
+        if (!$visit) {
+            return response()->json([
+                'message' => 'Aucune visite planifiée pour ce client'
+            ], 422);
+        }
+
+        // Complete the visit
+        $visit->complete([
+            'notes' => $validated['notes'],
+            'resulted_in_sale' => false,
+            'gps_coordinates' => $validated['gps_coordinates'],
+        ]);
+
+        return response()->json([
+            'message' => 'Visite complétée avec succès',
+        
+        ]);
+    }
 } 

@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SalespersonController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\CustomerVisitController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -13,8 +14,14 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     
+    // Get commercials list
+    Route::get('/commercials', [SalespersonController::class, 'getCommercials']);
+    
     // Salesperson routes
     Route::prefix('salesperson/')->group(function () {
+        // Get commercials list
+        Route::get('commercials', [SalespersonController::class, 'getCommercials']);
+        
         // Ventes
         Route::get('ventes', [SalespersonController::class, 'getVentes']);
         Route::post('ventes', [SalespersonController::class, 'createVente']);
@@ -58,6 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('visits/{customerVisit}/complete', [SalespersonController::class, 'completeVisit']);
         Route::post('visits/{customerVisit}/cancel', [SalespersonController::class, 'cancelVisit']);
         Route::put('visits/{customerVisit}', [SalespersonController::class, 'updateVisit']);
+        Route::post('visits/complete-from-mobile', [CustomerVisitController::class, 'completeFromMobile']);
 
         Route::get('customer-categories', [SalespersonController::class, 'getCustomerCategories']);
     });

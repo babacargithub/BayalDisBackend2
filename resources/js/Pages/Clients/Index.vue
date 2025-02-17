@@ -8,6 +8,7 @@ import { Link } from '@inertiajs/vue3';
 import axios from 'axios';
 import Swal from 'sweetalert2/dist/sweetalert2.js';
 import 'sweetalert2/dist/sweetalert2.css';
+import VisitBatchesDialog from './VisitBatchesDialog.vue'
 
 const props = defineProps({
     clients: {
@@ -282,6 +283,13 @@ function formatPrice(amount) {
         maximumFractionDigits: 0
     }).format(amount || 0);
 }
+
+const showVisitBatchesDialog = ref(false);
+
+const showVisitBatches = (sector) => {
+    selectedSector.value = sector;
+    showVisitBatchesDialog.value = true;
+};
 </script>
 
 <template>
@@ -523,6 +531,23 @@ function formatPrice(amount) {
                                         >
                                             <v-icon>mdi-map-marker-multiple</v-icon>
                                         </v-btn>
+
+                                        <v-tooltip bottom>
+                                            <template v-slot:activator="{ on, attrs }">
+                                                <v-btn
+                                                    icon
+                                                    variant="text"
+                                                    class="mr-2"
+                                                    v-bind="attrs"
+                                                    v-on="on"
+                                                    @click="showVisitBatches(item)"
+                                                    color="primary"
+                                                >
+                                                    <v-icon>mdi-calendar-check</v-icon>
+                                                </v-btn>
+                                            </template>
+                                            <span>Visites</span>
+                                        </v-tooltip>
                                     </div>
                                 </template>
                             </v-data-table>
@@ -812,5 +837,11 @@ function formatPrice(amount) {
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <visit-batches-dialog
+            v-model="showVisitBatchesDialog"
+            :sector="selectedSector"
+            v-if="selectedSector"
+        />
     </AuthenticatedLayout>
 </template> 

@@ -957,4 +957,13 @@ class SalespersonController extends Controller
             'total' => $total,
         ]);
     }
+
+    public function getCommercials()
+    {
+        $commercials = Commercial::select('id', 'name', 'phone_number')
+            ->orderBy('name')
+            ->get();
+            
+        return response()->json($commercials);
+    }
 }

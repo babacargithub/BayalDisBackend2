@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Carbon;
 
 class Vente extends Model
 {
@@ -68,7 +69,7 @@ class Vente extends Model
         if ($this->isInvoiceItem()) {
             return $this->salesInvoice?->customer;
         }
-        return $this->customer;
+        return Customer::whereId($this->customer_id)->first();
     }
 
     // Boot method to add validation
@@ -141,7 +142,7 @@ class Vente extends Model
     }
 
     // Override the should_be_paid_at attribute getter
-    public function getShouldBePaidAtAttribute($value)
+    public function getShouldBePaidAtAttribute($value): bool|Carbon|null
     {
         if ($this->sales_invoice_id) {
             $value = $this->salesInvoice->should_be_paid_at;

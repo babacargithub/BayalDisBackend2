@@ -47,6 +47,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::get('commerciaux/{commercial}/activity', [CommercialController::class, 'activity'])->name('commerciaux.activity');
     Route::resource('commerciaux', CommercialController::class);
+    Route::get('/commercials', [CommercialController::class, 'getCommercials'])->name('commercials.list');
     Route::resource('customers', CustomerController::class);
     Route::resource('produits', ProductController::class);
     Route::resource('ventes', VenteController::class);

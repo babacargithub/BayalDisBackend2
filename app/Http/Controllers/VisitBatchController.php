@@ -23,7 +23,7 @@ class VisitBatchController extends Controller
             ->map(function ($batch) {
                 return [
                     'id' => $batch->id,
-                    'name' => $batch->name,
+                    'name' => $batch->sector?->name." ".$batch->name,
                     'visit_date' => $batch->visit_date,
                     'commercial' => [
                         'id' => $batch->commercial->id,

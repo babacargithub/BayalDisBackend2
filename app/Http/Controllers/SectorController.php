@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CustomerVisit;
 use App\Models\Sector;
 use App\Models\Customer;
 use App\Models\VisitBatch;
@@ -74,16 +75,30 @@ class SectorController extends Controller
     public function getVisitBatches(Sector $sector)
     {
         $visitBatches = $sector->visitBatches()
-            ->with(['commercial:id,name'])
+            ->with(['commercial:id,name', 'visits'])
             ->latest()
             ->get()
             ->map(function ($batch) {
+                $totalVisits = $batch->visits->count();
+                $completedVisits = $batch->visits->where('status', CustomerVisit::STATUS_COMPLETED)->count();
+                $cancelledVisits = $batch->visits->where('status', CustomerVisit::STATUS_PLANNED)->count();
+                $pendingVisits = $totalVisits - $completedVisits - $cancelledVisits;
+                
+                $progressPercentage = $totalVisits > 0 
+                    ? round(($completedVisits / $totalVisits) * 100) 
+                    : 0;
+
                 return [
                     'id' => $batch->id,
                     'name' => $batch->name,
                     'visit_date' => $batch->visit_date,
                     'commercial' => $batch->commercial,
-                    'customers_count' => $batch->customerVisits()->count()
+                    'total_visits' => $totalVisits,
+                    'completed_visits' => $completedVisits,
+                    'cancelled_visits' => $cancelledVisits,
+                    'pending_visits' => $pendingVisits,
+                    'progress_percentage' => $progressPercentage,
+                    'created_at' => $batch->created_at->format('Y-m-d H:i:s'),
                 ];
             });
 
@@ -96,9 +111,15 @@ class SectorController extends Controller
             'name' => 'required|string|max:255',
             'visit_date' => 'required|date',
             'commercial_id' => 'required|exists:commercials,id'
+        ], [
+            'name.required' => 'Le nom du lot est obligatoire',
+            'name.max' => 'Le nom ne doit pas dépasser 255 caractères',
+            'visit_date.required' => 'La date de visite est obligatoire',
+            'visit_date.date' => 'La date de visite n\'est pas valide',
+            'commercial_id.required' => 'Le commercial est obligatoire',
+            'commercial_id.exists' => 'Le commercial sélectionné n\'existe pas',
         ]);
 
-        try {
             DB::beginTransaction();
 
             // Create the visit batch
@@ -112,19 +133,35 @@ class SectorController extends Controller
             // Add all customers from the sector to the visit batch
             $customerIds = $sector->customers()->pluck('customers.id');
             foreach ($customerIds as $customerId) {
-                $visitBatch->customerVisits()->create([
+                $visitBatch->visits()->create([
                     'customer_id' => $customerId,
                     'visit_planned_at' => $validated['visit_date'],
-                    'status' => 'PENDING'
+                    'status' => CustomerVisit::STATUS_PLANNED
                 ]);
             }
 
             DB::commit();
-            return redirect()->back()->with('success', 'Lot de visite créé avec succès');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return redirect()->back()->with('error', 'Erreur lors de la création du lot de visite');
-        }
+            
+            // Return the newly created batch with its details
+            $batch = $visitBatch->load(['commercial:id,name', 'visits']);
+            $totalVisits = $batch->visits->count();
+            
+            return response()->json([
+                'message' => 'Visites créées avec succès !',
+                'data' => [
+                    'id' => $batch->id,
+                    'name' => $batch->name,
+                    'visit_date' => $batch->visit_date,
+                    'commercial' => $batch->commercial,
+                    'total_visits' => $totalVisits,
+                    'completed_visits' => 0,
+                    'cancelled_visits' => 0,
+                    'pending_visits' => $totalVisits,
+                    'progress_percentage' => 0,
+                    'created_at' => $batch->created_at->format('Y-m-d H:i:s'),
+                ]
+            ]);
+
     }
 
     public function getCustomersForMap(Sector $sector)
