@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use JetBrains\PhpStorm\ArrayShape;
 
 class CustomerVisit extends Model
 {
@@ -38,7 +39,17 @@ class CustomerVisit extends Model
         return $this->belongsTo(VisitBatch::class);
     }
 
-    public function complete(array $data): void
+    /**
+     * @param array $data
+     * @return void
+     */
+
+    public function complete( #[ArrayShape([
+        'notes' => 'string|null',
+        'resulted_in_sale' => 'bool|null',
+        'gps_coordinates' => 'string|null'
+    ])] 
+    array $data): void
     {
         $this->update([
             'visited_at' => now(),

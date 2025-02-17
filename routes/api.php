@@ -28,6 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // Sales Invoices
         Route::get('sales-invoices', [SalespersonController::class, 'getSalesInvoices']);
+        Route::get('sales-invoices/debts', [SalespersonController::class, 'getDebts']);
         Route::post('sales-invoices', [SalespersonController::class, 'createSalesInvoice']);
         Route::post('invoices/{invoice}/pay', [SalespersonController::class, 'paySalesInvoice']);
         
@@ -40,6 +41,7 @@ Route::middleware('auth:sanctum')->group(function () {
         
         // Customers
         Route::get('customers', [SalespersonController::class, 'getCustomers']);
+        Route::get('customers-with-visits', [SalespersonController::class, 'getCustomersWithVisits']);
         Route::get('customers/today-count', [SalespersonController::class, 'getTodayCustomersCount']);
         Route::post('customers', [SalespersonController::class, 'createCustomer']);
         Route::put('customers/{customer}', [SalespersonController::class, 'updateCustomer']);

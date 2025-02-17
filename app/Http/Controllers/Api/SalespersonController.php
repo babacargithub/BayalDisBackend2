@@ -359,6 +359,8 @@ class SalespersonController extends Controller
             ->whereHas('customer', function ($query) use ($commercial) {
                 $query->where('commercial_id', $commercial->id);
             });
+        $paymentsQuery = Payment::whereDate('created_at', $date)
+            ->where('user_id', $request->user()->id);
 
         $ventes = $ventesQuery->get();
         $invoices = $invoicesQuery->get();
@@ -368,11 +370,11 @@ class SalespersonController extends Controller
             return $vente->price * $vente->quantity;
         });
 
-        $invoicesTotal = $invoices->sum(function ($invoice) {
-            return $invoice->items->sum(function ($item) {
-                return $item->quantity * $item->price;
-            });
-        });
+//        $invoicesTotal = $invoices->sum(function ($invoice) {
+//            return $invoice->items->sum(function ($item) {
+//                return $item->quantity * $item->price;
+//            });
+//        });
 
         return response()->json([
             'ventes' => $ventes->map(function (Vente $vente) {
@@ -387,7 +389,7 @@ class SalespersonController extends Controller
                     'paid' => (bool)$vente->paid,
                     'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
                     'should_be_paid_at' => $vente->should_be_paid_at,
-                    'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
+                    'created_at' => $vente->created_at,
                 ];
             }),
             'invoices' => $invoices->map(function ($invoice) {
@@ -407,7 +409,16 @@ class SalespersonController extends Controller
                     'created_at' => $invoice->created_at,
                 ];
             }),
-            'total' => $ventesTotal + $invoicesTotal,
+            "payments" => $paymentsQuery->get()->map(function ($payment) {
+                return [
+                    "id" => $payment->id,
+                    "amount" => $payment->amount,
+                    "payment_method" => $payment->payment_method,
+                    "created_at" => $payment->created_at,
+                    "label"=>"Paiement : ".$payment->salesInvoice?->customer?->name
+                ];
+            }),
+            'total' => $ventesTotal  + $paymentsQuery->sum('amount'),
         ]);
     }
 
@@ -965,5 +976,70 @@ class SalespersonController extends Controller
             ->get();
             
         return response()->json($commercials);
+    }
+
+    public function getCustomersWithVisits()
+    {
+        $customers = Customer::whereHas('visits', function ($query) {
+            $query->whereDate('visit_planned_at', '>=', now()->startOfDay());
+        })->get()->map(function ($customer) {
+            return [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'phone_number' => $customer->phone_number,
+                'address' => $customer->address,
+                'gps_coordinates' => $customer->gps_coordinates,
+                "owner_number" => $customer->owner_number,
+                'debt' => $customer->total_debt,
+                "is_prospect"=>$customer->is_prospect
+            ];
+        });
+
+        return response()->json(["customers" => $customers]);
+    }
+
+    public function getDebts(): JsonResponse
+    {
+        $commercial = auth()->user()->commercial;
+
+        $invoices = SalesInvoice::with(['customer', 'items.product', 'payments'])
+            ->where('paid', false)
+            ->whereHas('customer', function ($query) use ($commercial) {
+                $query->where('commercial_id', $commercial->id);
+            })
+            ->latest()
+            ->get()
+            ->map(function ($invoice) {
+                return [
+                    'id' => $invoice->id,
+                    'customer' => [
+                        'name' => $invoice->customer->name,
+                        'phone_number' => $invoice->customer->phone_number,
+                    ],
+                    'total' => $invoice->total,
+                    'paid' => $invoice->paid,
+                    'should_be_paid_at' => $invoice->should_be_paid_at,
+                    'created_at' => $invoice->created_at,
+                    'items' => $invoice->items->map(function ($item) {
+                        return [
+                            'product' => [
+                                'name' => $item->product->name,
+                            ],
+                            'quantity' => $item->quantity,
+                            'price' => $item->price,
+                        ];
+                    }),
+                    'payments' => $invoice->payments->map(function ($payment) {
+                        return [
+                            'amount' => $payment->amount,
+                            'payment_method' => $payment->payment_method,
+                            'comment' => $payment->comment,
+                            'created_at' => $payment->created_at,
+                        ];
+                    }),
+                ];
+            });
+
+        return response()->json($invoices);
     }
 }

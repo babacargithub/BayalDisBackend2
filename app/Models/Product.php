@@ -100,7 +100,7 @@ class Product extends Model
         $totalAvailableStock = $this->stockEntries()->sum('quantity_left');
 
         if ($totalAvailableStock < $quantity) {
-            throw new Exception("Stock insuffisant. Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}");
+            throw new Exception("Stock insuffisant pour ".$this->name." . Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}");
         }
         // decrement stock using FIFO method
         $stockEntries = $this->stockEntries()->orderBy('created_at', 'asc')->get();

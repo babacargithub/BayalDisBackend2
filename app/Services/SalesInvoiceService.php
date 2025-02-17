@@ -56,6 +56,18 @@ class SalesInvoiceService
                     'user_id' => request()->user()->id,
                 ]);
             }
+            //check customer has current visite also check if it is a prospect
+            $customer = Customer::findOrFail($data['customer_id']);
+            $customerVisit = $customer->visits()->where('status', 'completed')->orderBy('created_at','asc')->first();
+            $customerVisit?->complete([
+                "notes" => "Visite complété après enregistrement facture",
+                "gps_coordinates" =>  $customer->gps_coordinates,
+                "resulted_in_sale" => true
+            ]);
+            if ($customer->is_prospect){
+                $customer->is_prospect = false;
+                $customer->save();
+            }
 
             return $salesInvoice;
         });
