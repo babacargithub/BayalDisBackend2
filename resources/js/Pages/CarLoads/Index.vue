@@ -58,7 +58,7 @@ const deleteCarLoad = async (id) => {
         text: "Cette action est irréversible!",
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#3085d6',
+        confirmButtonColor: '#030ccc',
         cancelButtonColor: '#d33',
         confirmButtonText: 'Oui, supprimer!',
         cancelButtonText: 'Annuler'
@@ -159,6 +159,25 @@ const editItemForm = useForm({
 const deleteItem = (id) => {
     itemToDelete.value = id;
     showConfirmDialog.value = true;
+};
+
+const confirmDelete = () => {
+    form.delete(route('car-loads.items.destroy', { 
+        carLoad: selectedCarLoad.value.id,
+        item: itemToDelete.value 
+    }), {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            showConfirmDialog.value = false;
+            itemToDelete.value = null;
+            successMessage.value = 'L\'article a été supprimé avec succès';
+            showSuccessSnackbar.value = true;
+            // Update the selected car load with the fresh data
+            selectedCarLoad.value = page.props.carLoads.data.find(
+                carLoad => carLoad.id === selectedCarLoad.value.id
+            );
+        }
+    });
 };
 
 const startEditing = (item) => {
