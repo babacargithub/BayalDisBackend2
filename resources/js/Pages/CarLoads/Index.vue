@@ -147,6 +147,13 @@ const showConfirmDialog = ref(false);
 const itemToDelete = ref(null);
 const showSuccessSnackbar = ref(false);
 const successMessage = ref('');
+const editingItemId = ref(null);
+const editingQuantity = ref(null);
+
+// Create a separate form for editing items
+const editItemForm = useForm({
+    quantity_loaded: null
+});
 
 // Replace deleteItem function
 const deleteItem = (id) => {
@@ -154,16 +161,29 @@ const deleteItem = (id) => {
     showConfirmDialog.value = true;
 };
 
-const confirmDelete = () => {
-    form.delete(route('car-loads.items.destroy', { 
+const startEditing = (item) => {
+    editingItemId.value = item.id;
+    editingQuantity.value = item.quantity_loaded;
+    editItemForm.quantity_loaded = item.quantity_loaded;
+};
+
+const cancelEditing = () => {
+    editingItemId.value = null;
+    editingQuantity.value = null;
+    editItemForm.reset();
+};
+
+const saveEditing = (item) => {
+    editItemForm.quantity_loaded = editingQuantity.value;
+    editItemForm.put(route('car-loads.items.update', { 
         carLoad: selectedCarLoad.value.id,
-        item: itemToDelete.value 
+        item: item.id 
     }), {
         preserveScroll: true,
         onSuccess: (page) => {
-            showConfirmDialog.value = false;
-            itemToDelete.value = null;
-            successMessage.value = 'L\'article a été supprimé avec succès';
+            editingItemId.value = null;
+            editingQuantity.value = null;
+            successMessage.value = 'La quantité a été mise à jour avec succès';
             showSuccessSnackbar.value = true;
             // Update the selected car load with the fresh data
             selectedCarLoad.value = page.props.carLoads.data.find(
@@ -331,7 +351,9 @@ const confirmDelete = () => {
                         <v-dialog v-model="showItemsDialog" max-width="800px">
                             <v-card>
                                 <v-card-title class="text-h5">
-                                    Articles du chargement {{ selectedCarLoad?.name }}
+                                    <div>
+                                     {{ selectedCarLoad?.name }}
+                                    </div>
                                 </v-card-title>
 
                                 <v-card-text>
@@ -339,16 +361,32 @@ const confirmDelete = () => {
                                     <v-data-table
                                         v-if="selectedCarLoad?.items?.length"
                                         :headers="[
-                                            { text: 'Produit', value: 'product.name' },
-                                            { text: 'Quantité', value: 'quantity_loaded' },
-                                            { text: 'Commentaire', value: 'comment' },
-                                            { text: 'Chargé le', value: 'created_at' },
-                                            { text: 'Actions', value: 'actions', sortable: false }
+                                            { title: 'Produit', key: 'product.name' },
+                                            { title: 'Quantité', key: 'quantity_loaded' },
+                                            { title: 'Commentaire', key: 'comment' },
+                                            { title: 'Chargé le', key: 'created_at' },
+                                            { title: 'Actions', key: 'actions', sortable: false }
                                         ]"
                                         :items="selectedCarLoad.items"
                                         hide-default-footer
                                         class="elevation-1 mb-4"
                                     >
+                                        <template v-slot:item.quantity_loaded="{ item }">
+                                            <template v-if="editingItemId === item.id">
+                                                <v-text-field
+                                                    v-model="editingQuantity"
+                                                    type="number"
+                                                    dense
+                                                    hide-details
+                                                    class="mt-0 pt-0"
+                                                    @keyup.enter="saveEditing(item)"
+                                                    @keyup.esc="cancelEditing"
+                                                ></v-text-field>
+                                            </template>
+                                            <template v-else>
+                                                {{ item.quantity_loaded }}
+                                            </template>
+                                        </template>
                                         <template v-slot:item.created_at="{ item }">
                                             {{ new Date(item.created_at).toLocaleDateString('fr-FR', { 
                                                 day: '2-digit',
@@ -357,18 +395,53 @@ const confirmDelete = () => {
                                                 hour: '2-digit',
                                                 minute: '2-digit'
                                             }) }}
-                                        </template>
+                                            </template>
                                         <template v-slot:item.actions="{ item }">
-                                            <v-btn 
-                                                icon 
-                                                small 
-                                                density="comfortable"
-                                                variant="text"
-                                                color="error" 
-                                                @click="deleteItem(item.id)"
-                                            >
-                                                <v-icon>mdi-delete</v-icon>
-                                            </v-btn>
+                                            <template v-if="editingItemId === item.id">
+                                                <v-btn 
+                                                    icon 
+                                                    small 
+                                                    density="comfortable"
+                                                    variant="text"
+                                                    color="success"
+                                                    class="mr-2"
+                                                    @click="saveEditing(item)"
+                                                >
+                                                    <v-icon>mdi-check</v-icon>
+                                                </v-btn>
+                                                <v-btn 
+                                                    icon 
+                                                    small 
+                                                    density="comfortable"
+                                                    variant="text"
+                                                    color="grey"
+                                                    @click="cancelEditing"
+                                                >
+                                                    <v-icon>mdi-close</v-icon>
+                                                </v-btn>
+                                            </template>
+                                            <template v-else>
+                                                <v-btn 
+                                                    icon 
+                                                    small 
+                                                    density="comfortable"
+                                                    variant="text"
+                                                    class="mr-2"
+                                                    @click="startEditing(item)"
+                                                >
+                                                    <v-icon>mdi-pencil</v-icon>
+                                                </v-btn>
+                                                <v-btn 
+                                                    icon 
+                                                    small 
+                                                    density="comfortable"
+                                                    variant="text"
+                                                    color="error" 
+                                                    @click="deleteItem(item.id)"
+                                                >
+                                                    <v-icon>mdi-delete</v-icon>
+                                                </v-btn>
+                                            </template>
                                         </template>
                                     </v-data-table>
 
