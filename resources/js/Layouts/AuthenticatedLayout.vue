@@ -1,13 +1,32 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import { Link } from '@inertiajs/vue3';
 
-const showSidebar = ref(false);
+const drawer = ref(true);
+const rail = ref(false);
 const clientsDropdownOpen = ref(false);
 const ordersDropdownOpen = ref(false);
 const ventesDropdownOpen = ref(false);
 const adminDropdownOpen = ref(false);
+
+// Add mobile detection
+const isMobile = ref(false);
+
+// Watch for screen size changes
+onMounted(() => {
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', checkMobile);
+});
+
+const checkMobile = () => {
+    isMobile.value = window.innerWidth < 960; // Vuetify's md breakpoint
+    drawer.value = !isMobile.value;
+};
 
 const menuItems = [
     { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
@@ -24,36 +43,37 @@ const menuItems = [
         ]
     },
     { 
-        name: 'Clients & Zones',
+        name: 'Clients',
         icon: 'mdi-account-group',
         isDropdown: true,
         ref: clientsDropdownOpen,
         items: [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
-            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' },
+            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' }, { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
+          { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
             { name: 'Catégories client', route: 'customer-categories.index', icon: 'mdi-folder-account' },
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
         ]
     },
-    { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
     { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
     { name: 'Caisses', route: 'caisses.index', icon: 'mdi-cash-register' },
+    // {
+    //     name: 'Commandes & Livraisons',
+    //     icon: 'mdi-truck-delivery',
+    //     isDropdown: true,
+    //     ref: ordersDropdownOpen,
+    //     items: [
+    //
+    //     ]
+    // },
     {
-        name: 'Commandes & Livraisons',
-        icon: 'mdi-truck-delivery',
-        isDropdown: true,
-        ref: ordersDropdownOpen,
-        items: [
-            { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
-            { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
-        ]
-    },{
         name: 'Stock',
-        icon: 'mdi-truck-delivery',
+        icon: 'mdi-warehouse',
         isDropdown: true,
         ref: ordersDropdownOpen,
         items: [
-            { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
+          { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
+          { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
             { name: 'Chargements Véhicule', route: 'car-loads.index', icon: 'mdi-car' },
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
         ]
@@ -72,118 +92,108 @@ const menuItems = [
 </script>
 
 <template>
-    <div>
-        <div class="min-h-screen bg-gray-100 flex">
-            <!-- Sidebar -->
-            <div 
-                class="fixed inset-y-0 left-0 z-30 transform transition-transform duration-300"
-                :class="[
-                    showSidebar ? 'translate-x-0' : '-translate-x-full',
-                    'md:translate-x-0 md:static'
-                ]"
-            >
-                <div class="w-64 bg-blue-600 text-white min-h-screen">
-                    <!-- Logo -->
-                    <div class="p-4">
-                        <Link :href="route('dashboard')">
-                            <img src="/logo.jpg" alt="Logo" class="h-12 w-auto" />
-                        </Link>
-                    </div>
-
-                    <!-- Navigation -->
-                    <nav class="mt-4">
-                        <div v-for="item in menuItems" :key="item.name" class="px-2">
-                            <!-- Regular menu item -->
-                            <Link
-                                v-if="!item.isDropdown"
-                                :href="route(item.route)"
-                                :class="[
-                                    'flex items-center px-4 py-2 text-sm rounded-lg mb-1 transition-colors',
-                                    route().current(item.route)
-                                        ? 'bg-blue-700 text-white'
-                                        : 'text-white hover:bg-blue-700'
-                                ]"
-                            >
-                                <v-icon size="small" :icon="item.icon" class="mr-3" />
-                                {{ item.name }}
-                            </Link>
-
-                            <!-- Dropdown menu item -->
-                            <div v-else class="mb-1">
-                                <button
-                                    @click="item.ref = !item.ref"
-                                    class="w-full flex items-center justify-between px-4 py-2 text-sm text-white hover:bg-blue-700 rounded-lg transition-colors"
-                                >
-                                    <div class="flex items-center">
-                                        <v-icon size="small" :icon="item.icon" class="mr-3" />
-                                        {{ item.name }}
-                                    </div>
-                                    <v-icon
-                                        size="small"
-                                        :icon="item.ref ? 'mdi-chevron-up' : 'mdi-chevron-down'"
-                                    />
-                                </button>
-                                <div v-show="item.ref" class="ml-4 mt-1">
-                                    <Link
-                                        v-for="subItem in item.items"
-                                        :key="subItem.route"
-                                        :href="route(subItem.route)"
-                                        :class="[
-                                            'flex items-center px-4 py-2 text-sm rounded-lg mb-1 transition-colors',
-                                            route().current(subItem.route)
-                                                ? 'bg-blue-700 text-white'
-                                                : 'text-white hover:bg-blue-700'
-                                        ]"
-                                    >
-                                        <v-icon size="small" :icon="subItem.icon" class="mr-3" />
-                                        {{ subItem.name }}
-                                    </Link>
-                                </div>
-                            </div>
-                        </div>
-                    </nav>
-                </div>
+    <v-app>
+        <!-- Navigation Drawer -->
+        <v-navigation-drawer
+            v-model="drawer"
+            :rail="rail"
+            :permanent="!isMobile"
+            :temporary="isMobile"
+            class="bg-blue-darken-4"
+            theme="dark"
+        >
+            <!-- Logo -->
+            <div class="px-4 py-3">
+                <Link :href="route('dashboard')" class="d-flex align-center">
+                    <img src="/logo.jpg" alt="Logo" height="40" />
+                </Link>
             </div>
 
-            <!-- Overlay for mobile -->
-            <div 
-                v-show="showSidebar" 
-                class="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
-                @click="showSidebar = false"
-            ></div>
+            <v-divider class="mb-2"></v-divider>
 
-            <!-- Main Content -->
-            <div class="flex-1">
-                <nav class="bg-white border-b border-gray-100">
-                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div class="flex justify-between h-16">
-                            <!-- Menu button -->
-                            <button
-                                @click="showSidebar = !showSidebar"
-                                class="px-4 py-2 text-gray-500 focus:outline-none"
-                            >
-                                <v-icon size="24">{{ showSidebar ? 'mdi-close' : 'mdi-menu' }}</v-icon>
-                            </button>
-
-                            <!-- Settings Dropdown -->
-                            <div class="flex items-center">
-                                <slot name="header" />
-                            </div>
-                        </div>
-                    </div>
-                </nav>
-
-                <!-- Page Content -->
-                <main class="py-12">
-                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                        <slot />
-                    </div>
-                </main>
+            <!-- Toggle Button -->
+            <div class="">
+                <v-btn
+                    variant="text"
+                    icon
+                    @click.stop="rail = !rail"
+                >
+                    <v-icon>{{ rail ? 'mdi-chevron-right' : 'mdi-chevron-left' }}</v-icon>
+                </v-btn>
             </div>
-        </div>
-    </div>
+
+            <!-- Navigation List -->
+            <v-list nav>
+                <template v-for="item in menuItems" :key="item.name">
+                    <!-- Regular menu item -->
+                    <v-list-item
+                        v-if="!item.isDropdown"
+                        :href="route(item.route)"
+                        :active="route().current(item.route)"
+                        :prepend-icon="item.icon"
+                        :title="item.name"
+                        class=""
+                    />
+
+                    <!-- Dropdown menu item -->
+                    <v-list-group
+                        v-else
+                        fluid
+                        active-class="bg-red text-white"
+
+
+                    >
+                        <template v-slot:activator="{ props }">
+                            <v-list-item
+                                v-bind="props"
+                                :prepend-icon="item.icon"
+                                :title="item.name"
+                            />
+                        </template>
+
+                        <v-list-item
+                            v-for="subItem in item.items"
+                            :key="subItem.route"
+                            :href="route(subItem.route)"
+                            :active="route().current(subItem.route)"
+                            :prepend-icon="subItem.icon"
+                            :title="subItem.name"
+                            class=""
+                        />
+                    </v-list-group>
+                </template>
+            </v-list>
+        </v-navigation-drawer>
+
+        <!-- App Bar -->
+        <v-app-bar color="surface">
+            <template v-slot:prepend>
+                <v-app-bar-nav-icon
+                    @click.stop="drawer = !drawer"
+                    class="d-md-none"
+                ></v-app-bar-nav-icon>
+            </template>
+
+            <v-app-bar-title>
+                <slot name="header"></slot>
+            </v-app-bar-title>
+        </v-app-bar>
+
+        <!-- Main Content -->
+        <v-main>
+            <v-container fluid>
+                <slot></slot>
+            </v-container>
+        </v-main>
+    </v-app>
 </template>
 
 <style scoped>
-/* Add any additional styles here */
+.v-list-item--active {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.v-list-group__items .v-list-item {
+    padding-left: 16px;
+}
 </style>
