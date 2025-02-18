@@ -160,8 +160,8 @@ class CarLoadService
 
     public function getAllCarLoads()
     {
-        return CarLoad::with(['items.product', 'commercial'])
+        return CarLoad::with(['items.product', 'commercial','inventory'])
             ->orderBy('created_at', 'desc')
-            ->paginate(10);
+            ->paginate(100);
     }
 } 

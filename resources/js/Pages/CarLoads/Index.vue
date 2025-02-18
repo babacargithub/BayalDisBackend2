@@ -5,6 +5,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { useForm } from '@inertiajs/vue3';
 import Swal from 'sweetalert2';
 import { formatAmount } from '@/helpers';
+import TableWithInlineEdit from '@/Components/TableWithInlineEditTemplate.vue';
 
 const props = defineProps({
     carLoads: {
@@ -26,6 +27,8 @@ const showEditDialog = ref(false);
 const editingCarLoad = ref(null);
 const showItemsDialog = ref(false);
 const selectedCarLoad = ref(null);
+const showInventoryDialog = ref(false);
+const selectedInventory = ref(null);
 
 const form = useForm({
     name: '',
@@ -43,6 +46,10 @@ const itemForm = useForm({
     ]
 });
 
+const inventoryForm = useForm({
+    name: ''
+});
+
 const headers = [
     { text: 'Nom', value: 'name' },
     { text: 'Commercial', value: 'commercial.name' },
@@ -50,6 +57,13 @@ const headers = [
     { text: 'Date de déchargement', value: 'unload_date' },
     { text: 'Statut', value: 'status' },
     { text: 'Actions', value: 'actions', sortable: false },
+];
+
+const inventoryHeaders = [
+    { title: 'Produit', key: 'product.name' },
+    { title: 'Quantité comptée', key: 'quantity_counted', type: 'number' },
+    { title: 'Commentaire', key: 'comment' },
+    { title: 'Actions', key: 'actions', sortable: false }
 ];
 
 const deleteCarLoad = async (id) => {
@@ -211,6 +225,20 @@ const saveEditing = (item) => {
         }
     });
 };
+
+const openInventoryDialog = (carLoad) => {
+    selectedCarLoad.value = carLoad;
+    showInventoryDialog.value = true;
+};
+
+const createInventory = () => {
+    inventoryForm.post(route('car-loads.inventories.store', { carLoad: selectedCarLoad.value.id }), {
+        onSuccess: () => {
+            inventoryForm.reset();
+            showInventoryDialog.value = false;
+        }
+    });
+};
 </script>
 
 <template>
@@ -305,6 +333,24 @@ const saveEditing = (item) => {
                                         </v-btn>
                                     </template>
                                     <span>Supprimer</span>
+                                </v-tooltip>
+
+                                <v-tooltip bottom>
+                                    <template v-slot:activator="{ on, attrs }">
+                                        <v-btn
+                                            icon
+                                            small
+                                            density="comfortable"
+                                            variant="text"
+                                            class="mr-2"
+                                            v-bind="attrs"
+                                            v-on="on"
+                                            @click="openInventoryDialog(item)"
+                                        >
+                                            <v-icon>mdi-clipboard-check</v-icon>
+                                        </v-btn>
+                                    </template>
+                                    <span>Inventaire</span>
                                 </v-tooltip>
                             </template>
                         </v-data-table>
@@ -561,6 +607,108 @@ const saveEditing = (item) => {
                                         :loading="itemForm.processing"
                                     >
                                         Enregistrer
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+
+                        <!-- Inventory Dialog -->
+                        <v-dialog v-model="showInventoryDialog" max-width="800">
+                            <v-card>
+                                <v-card-title class="text-h5">
+                                    Inventaire - {{ selectedCarLoad?.name }}
+                                </v-card-title>
+
+                                <v-card-text>
+                                    <template v-if="selectedCarLoad?.inventory">
+                                      {{ selectedCarLoad?.inventory.name }}
+
+
+                                        <v-window v-model="selectedCarLoad.inventory">
+                                            <v-window-item
+                                                v-for="inventory in [selectedCarLoad.inventory]"
+                                                :key="inventory.id"
+                                                :value="inventory"
+                                            >
+                                                <table-with-inline-edit
+                                                    :items="inventory.items"
+                                                    :headers="inventoryHeaders"
+                                                    :routes="{
+                                                        update: 'car-loads.inventories.items.update',
+                                                        delete: 'car-loads.inventories.items.destroy',
+                                                        store: 'car-loads.inventories.items.store'
+                                                    }"
+                                                    :parent-id="inventory.id"
+                                                    :additional-route-params="{ carLoad: selectedCarLoad.id }"
+                                                    editable-field="total_returned"
+                                                >
+                                                    <template #add-form-fields="{ item, index, errors }">
+                                                        <v-select
+                                                            v-model="item.product_id"
+                                                            :items="products"
+                                                            item-title="name"
+                                                            item-value="id"
+                                                            label="Produit"
+                                                            class="mr-2"
+                                                            :error-messages="errors[`items.${index}.product_id`]"
+                                                        ></v-select>
+                                                        <v-text-field
+                                                            v-model="item.total_returned"
+                                                            type="number"
+                                                            label="Quantité"
+                                                            class="mr-2"
+                                                            :error-messages="errors[`items.${index}.total_returned`]"
+                                                        ></v-text-field>
+                                                        <v-text-field
+                                                            v-model="item.comment"
+                                                            label="Commentaire"
+                                                            class="mr-2"
+                                                            :error-messages="errors[`items.${index}.comment`]"
+                                                        ></v-text-field>
+                                                    </template>
+                                                </table-with-inline-edit>
+
+                                                <div class="d-flex justify-end mt-4">
+                                                    <v-btn
+                                                        color="primary"
+                                                        :disabled="inventory.closed"
+                                                        @click="() => closeInventory(inventory)"
+                                                    >
+                                                        Clôturer l'inventaire
+                                                    </v-btn>
+                                                </div>
+                                            </v-window-item>
+                                        </v-window>
+                                    </template>
+                                    <template v-else>
+                                        <v-form @submit.prevent="createInventory" class="mt-4">
+                                            <v-text-field
+                                                v-model="inventoryForm.name"
+                                                label="Nom de l'inventaire"
+                                                :error-messages="inventoryForm.errors.name"
+                                            ></v-text-field>
+
+                                            <div class="d-flex justify-end mt-4">
+                                                <v-btn
+                                                    color="primary"
+                                                    type="submit"
+                                                    :loading="inventoryForm.processing"
+                                                >
+                                                    Créer l'inventaire
+                                                </v-btn>
+                                            </div>
+                                        </v-form>
+                                    </template>
+                                </v-card-text>
+
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn
+                                        color="grey darken-1"
+                                        text
+                                        @click="showInventoryDialog = false"
+                                    >
+                                        Fermer
                                     </v-btn>
                                 </v-card-actions>
                             </v-card>

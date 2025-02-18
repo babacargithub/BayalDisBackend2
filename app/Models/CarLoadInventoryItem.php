@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class CarLoadInventoryItem extends Model
 {
     protected $fillable = [
-        'car_load_id',
+        'car_load_inventory_id',
         'product_id',
         'total_loaded',
         'total_sold',
@@ -22,9 +22,9 @@ class CarLoadInventoryItem extends Model
         'total_returned' => 'integer',
     ];
 
-    public function carLoad(): BelongsTo
+    public function carLoadInventory(): BelongsTo
     {
-        return $this->belongsTo(CarLoad::class);
+        return $this->belongsTo(CarLoadInventory::class, 'car_load_inventory_id');
     }
 
     public function product(): BelongsTo

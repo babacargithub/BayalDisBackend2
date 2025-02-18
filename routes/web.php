@@ -188,6 +188,18 @@ Route::middleware('auth')->group(function () {
     Route::post('/car-loads/{carLoad}/activate', [CarLoadController::class, 'activate'])->name('car-loads.activate');
     Route::post('/car-loads/{carLoad}/unload', [CarLoadController::class, 'unload'])->name('car-loads.unload');
     Route::post('/car-loads/{carLoad}/create-from-previous', [CarLoadController::class, 'createFromPrevious'])->name('car-loads.create-from-previous');
+
+    // Car Load Inventory Routes
+    Route::post('/car-loads/{carLoad}/inventories', [CarLoadController::class, 'createInventory'])
+        ->name('car-loads.inventories.store');
+    Route::post('/car-loads/{carLoad}/inventories/{inventory}/items', [CarLoadController::class, 'addInventoryItems'])
+        ->name('car-loads.inventories.items.store');
+    Route::put('/car-loads/{carLoad}/inventories/{inventory}/items/{item}', [CarLoadController::class, 'updateInventoryItem'])
+        ->name('car-loads.inventories.items.update');
+    Route::delete('/car-loads/{carLoad}/inventories/{inventory}/items/{item}', [CarLoadController::class, 'deleteInventoryItem'])
+        ->name('car-loads.inventories.items.destroy');
+    Route::put('/car-loads/{carLoad}/inventories/{inventory}/close', [CarLoadController::class, 'closeInventory'])
+        ->name('car-loads.inventories.close');
 });
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class CarLoad extends Model
 {
@@ -31,9 +32,11 @@ class CarLoad extends Model
     public function items(): HasMany
     {
         return $this->hasMany(CarLoadItem::class);
-    }public function inventoryItems(): HasMany
+    }
+
+    public function inventory(): HasOne
     {
-        return $this->hasMany(CarLoadInventoryItem::class);
+        return $this->hasOne(CarLoadInventory::class);
     }
 
     public function previousCarLoad(): BelongsTo

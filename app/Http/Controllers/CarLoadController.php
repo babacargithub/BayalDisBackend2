@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Product;
+use App\Models\CarLoadInventory;
+use App\Models\CarLoadInventoryItem;
 use App\Services\CarLoadService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -170,5 +173,75 @@ class CarLoadController extends Controller
             return redirect()->back()
                 ->with('error', $e->getMessage());
         }
+    }
+
+    public function createInventory(Request $request, CarLoad $carLoad): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            "comment" => "nullable|string",
+            "items" => "nullable|array",
+            "items.*.product_id" => "nullable|exists:products,id",
+            "items.*.total_sold" => "nullable|int",
+            "items.*.total_loaded" => "nullable|int",
+            "items.*.total_returned" => "nullable|int",
+        ]);
+        $carLoad->inventory()->create([
+            'name' => $validated['name'],
+            'user_id' => auth()->id(),
+            'comment' => $validated['comment'] ?? null  ,
+        ]);
+
+        $inventory = $carLoad->inventory;
+        $inventory->items()->createMany($validated["items"]);
+
+
+
+        return redirect()->back()
+            ->with('success', 'Inventaire créé avec succès');
+    }
+
+    public function addInventoryItems(Request $request, CarLoad $carLoad, CarLoadInventory $inventory)
+    {
+        $validated = $request->validate([
+            'items' => 'array',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity_counted' => 'required|integer|min:0',
+            'items.*.comment' => 'nullable|string',
+        ]);
+
+        $inventory->items()->createMany($validated['items']);
+
+        return redirect()->back()
+            ->with('success', 'Articles ajoutés avec succès');
+    }
+
+    public function updateInventoryItem(Request $request, CarLoad $carLoad, CarLoadInventory $inventory, CarLoadInventoryItem $item)
+    {
+        $validated = $request->validate([
+            'quantity_counted' => 'required|integer|min:0',
+            'comment' => 'nullable|string',
+        ]);
+
+        $item->update($validated);
+
+        return redirect()->back()
+            ->with('success', 'Article mis à jour avec succès');
+    }
+
+    public function deleteInventoryItem(CarLoad $carLoad, CarLoadInventory $inventory, CarLoadInventoryItem $item)
+    {
+        $item->delete();
+
+        return redirect()->back()
+            ->with('success', 'Article supprimé avec succès');
+    }
+
+    public function closeInventory(CarLoad $carLoad, CarLoadInventory $inventory)
+    {
+        $inventory->update(['closed' => true]);
+
+        return redirect()->back()
+            ->with('success', 'Inventaire clôturé avec succès');
     }
 } 
