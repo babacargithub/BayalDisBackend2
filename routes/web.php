@@ -180,7 +180,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/car-loads/{carLoad}', [CarLoadController::class, 'destroy'])->name('car-loads.destroy');
     
     // Car Load Items
-    Route::post('/car-loads/{carLoad}/items', [CarLoadController::class, 'addItem'])->name('car-loads.items.store');
+    Route::post('/car-loads/{carLoad}/items', [CarLoadController::class, 'addItems'])->name('car-loads.items.store');
     Route::put('/car-loads/{carLoad}/items/{item}', [CarLoadController::class, 'updateItem'])->name('car-loads.items.update');
     Route::delete('/car-loads/{carLoad}/items/{item}', [CarLoadController::class, 'deleteItem'])->name('car-loads.items.destroy');
     

@@ -30,6 +30,9 @@ class CarLoad extends Model
 
     public function items(): HasMany
     {
+        return $this->hasMany(CarLoadItem::class);
+    }public function inventoryItems(): HasMany
+    {
         return $this->hasMany(CarLoadInventoryItem::class);
     }
 

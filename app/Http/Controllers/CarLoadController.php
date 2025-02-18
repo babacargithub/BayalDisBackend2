@@ -24,10 +24,14 @@ class CarLoadController extends Controller
         $commercials = \App\Models\Commercial::select('id', 'name')
             ->orderBy('name')
             ->get();
+        $products = Product::select('id', 'name')
+            ->orderBy('name')
+            ->get();
 
         return Inertia::render('CarLoads/Index', [
             'carLoads' => $carLoads,
-            'commercials' => $commercials
+            'commercials' => $commercials,
+            'products' => $products
         ]);
     }
 
@@ -87,22 +91,20 @@ class CarLoadController extends Controller
             ->with('success', 'Chargement supprimé avec succès');
     }
 
-    public function addItem(Request $request, CarLoad $carLoad)
+    public function addItems(Request $request, CarLoad $carLoad)
     {
         $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'quantity_loaded' => 'required|integer|min:1',
-            'comment' => 'nullable|string',
+            'items' => 'array',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity_loaded' => 'required|integer|min:1',
+            'items.*.comment' => 'nullable|string',
         ]);
 
-        try {
-            $this->carLoadService->addItem($carLoad, $validated);
+
+           $carLoad->items()->createMany($validated['items']);
             return redirect()->back()
                 ->with('success', 'Produit ajouté avec succès');
-        } catch (\Exception $e) {
-            return redirect()->back()
-                ->with('error', $e->getMessage());
-        }
+
     }
 
     public function updateItem(Request $request, CarLoad $carLoad, CarLoadItem $item)
