@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
     <meta charset="utf-8">
-    <title>Stock Chargement - {{ $carLoad->name }}</title>
+    <title>Stock Véhicule:  - {{ $carLoad->name }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;

@@ -66,7 +66,7 @@ const inventoryHeaders = [
     { title: 'Qté retournée', key: 'total_returned', type: 'number' },
     { title: 'Résultat', key: 'result', align: 'center' },
     { title: 'Commentaire', key: 'comment' },
-    { title: 'Actions', key: 'actions', sortable: false }
+    { title: 'Actions', key: 'actions', sortable: false, align: 'right' }
 ];
 
 const deleteCarLoad = async (id) => {
@@ -139,16 +139,19 @@ const removeItemRow = (index) => {
 };
 
 const submitItems = () => {
-    formError.value = ''; // Clear previous error
-    itemForm.post(route('car-loads.items.store', selectedCarLoad.value.id), {
+    itemForm.post(route('car-loads.inventories.items.store', {
+        carLoad: selectedCarLoad.value.id,
+        inventory: selectedCarLoad.value.inventory.id
+    }), {
         onSuccess: () => {
-            showItemsDialog.value = false;
+            showAddItemsForm.value = false;
             itemForm.reset();
+            successMessage.value = 'Articles ajoutés avec succès';
+            showSuccessSnackbar.value = true;
         },
         onError: (errors) => {
-            // Get all error messages and join them
-            const errorMessages = Object.values(errors).flat();
-            formError.value = errorMessages.join(', ');
+            errorMessage.value = Object.values(errors).flat().join(', ');
+            showErrorSnackbar.value = true;
         }
     });
 };
@@ -163,13 +166,24 @@ const showAddItemsForm = ref(false);
 const showConfirmDialog = ref(false);
 const itemToDelete = ref(null);
 const showSuccessSnackbar = ref(false);
+const showErrorSnackbar = ref(false);
 const successMessage = ref('');
+const errorMessage = ref('');
 const editingItemId = ref(null);
 const editingQuantity = ref(null);
+const editingInventoryItemId = ref(null);
+const editingReturnedQuantity = ref(null);
+const showInventoryItemDeleteDialog = ref(false);
+const inventoryItemToDelete = ref(null);
 
 // Create a separate form for editing items
 const editItemForm = useForm({
     quantity_loaded: null
+});
+
+// Create a separate form for editing inventory items
+const editInventoryItemForm = useForm({
+    total_returned: null
 });
 
 // Replace deleteItem function
@@ -250,6 +264,74 @@ const exportInventoryPdf = (carLoadId, inventoryId) => {
 const exportCarLoadItemsPdf = (carLoadId) => {
     // () => window.open(route('car-loads.items.export-pdf', { carLoad: selectedCarLoad.id }))
     window.open(route('car-loads.items.export-pdf', { carLoad: carLoadId }));
+};
+
+const deleteInventoryItem = async (item) => {
+    inventoryItemToDelete.value = item;
+    showInventoryItemDeleteDialog.value = true;
+};
+
+const confirmInventoryItemDelete = () => {
+    form.delete(route('car-loads.inventories.items.destroy', {
+        carLoad: selectedCarLoad.value.id,
+        inventory: selectedCarLoad.value.inventory.id,
+        item: inventoryItemToDelete.value.id
+    }), {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            showInventoryItemDeleteDialog.value = false;
+            inventoryItemToDelete.value = null;
+            successMessage.value = 'L\'article a été supprimé avec succès';
+            showSuccessSnackbar.value = true;
+            selectedCarLoad.value = page.props.carLoads.data.find(
+                carLoad => carLoad.id === selectedCarLoad.value.id
+            );
+        },
+        onError: (errors) => {
+            errorMessage.value = Object.values(errors).flat().join(', ');
+            showErrorSnackbar.value = true;
+            showInventoryItemDeleteDialog.value = false;
+            inventoryItemToDelete.value = null;
+        }
+    });
+};
+
+const startEditingInventoryItem = (item) => {
+    editingInventoryItemId.value = item.id;
+    editingReturnedQuantity.value = item.total_returned;
+    editInventoryItemForm.total_returned = item.total_returned;
+};
+
+const cancelEditingInventoryItem = () => {
+    editingInventoryItemId.value = null;
+    editingReturnedQuantity.value = null;
+    editInventoryItemForm.reset();
+};
+
+const saveEditingInventoryItem = (item) => {
+    editInventoryItemForm.total_returned = editingReturnedQuantity.value;
+    editInventoryItemForm.put(route('car-loads.inventories.items.update', {
+        carLoad: selectedCarLoad.value.id,
+        inventory: selectedCarLoad.value.inventory.id,
+        item: item.id
+    }), {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            editingInventoryItemId.value = null;
+            editingReturnedQuantity.value = null;
+            successMessage.value = 'La quantité a été mise à jour avec succès';
+            showSuccessSnackbar.value = true;
+            selectedCarLoad.value = page.props.carLoads.data.find(
+                carLoad => carLoad.id === selectedCarLoad.value.id
+            );
+        },
+        onError: (errors) => {
+            errorMessage.value = Object.values(errors).flat().join(', ');
+            showErrorSnackbar.value = true;
+            editingInventoryItemId.value = null;
+            editingReturnedQuantity.value = null;
+        }
+    });
 };
 </script>
 
@@ -686,6 +768,7 @@ const exportCarLoadItemsPdf = (carLoadId) => {
                                                     :additional-route-params="{ carLoad: selectedCarLoad.id, inventory: inventory.id }"
                                                     editable-field="total_returned"
                                                     class="inventory-table"
+                                                    show-actions
                                                 >
                                                     <template #item.result="{ item }">
                                                         <div class="d-flex align-center justify-center">
@@ -706,31 +789,104 @@ const exportCarLoadItemsPdf = (carLoadId) => {
                                                         </div>
                                                     </template>
 
-                                                    <template #add-form-fields="{ item, index, errors }">
-                                                        <v-select
-                                                            v-model="item.product_id"
-                                                            :items="products"
-                                                            item-title="name"
-                                                            item-value="id"
-                                                            label="Produit"
-                                                            class="mr-2"
-                                                            :error-messages="errors[`items.${index}.product_id`]"
-                                                        ></v-select>
-                                                        <v-text-field
-                                                            v-model="item.total_returned"
-                                                            type="number"
-                                                            label="Quantité retournée"
-                                                            class="mr-2"
-                                                            :error-messages="errors[`items.${index}.total_returned`]"
-                                                        ></v-text-field>
-                                                        <v-text-field
-                                                            v-model="item.comment"
-                                                            label="Commentaire"
-                                                            class="mr-2"
-                                                            :error-messages="errors[`items.${index}.comment`]"
-                                                        ></v-text-field>
+                                                    <template #item.total_returned="{ item }">
+                                                        <template v-if="editingInventoryItemId === item.id">
+                                                            <v-text-field
+                                                                v-model="editingReturnedQuantity"
+                                                                type="number"
+                                                                dense
+                                                                hide-details
+                                                                class="mt-0 pt-0"
+                                                                @keyup.enter="saveEditingInventoryItem(item)"
+                                                                @keyup.esc="cancelEditingInventoryItem"
+                                                            ></v-text-field>
+                                                        </template>
+                                                        <template v-else>
+                                                            {{ item.total_returned }}
+                                                        </template>
+                                                    </template>
+
+                                                    <template #item.actions="{ item }">
+                                                        <div class="d-flex justify-center">
+                                                            <template v-if="editingInventoryItemId === item.id">
+                                                                <v-btn 
+                                                                    icon 
+                                                                    small 
+                                                                    density="comfortable"
+                                                                    variant="text"
+                                                                    color="success"
+                                                                    class="mr-2"
+                                                                    @click="saveEditingInventoryItem(item)"
+                                                                >
+                                                                    <v-icon>mdi-check</v-icon>
+                                                                </v-btn>
+                                                                <v-btn 
+                                                                    icon 
+                                                                    small 
+                                                                    density="comfortable"
+                                                                    variant="text"
+                                                                    color="grey"
+                                                                    @click="cancelEditingInventoryItem"
+                                                                >
+                                                                    <v-icon>mdi-close</v-icon>
+                                                                </v-btn>
+                                                            </template>
+                                                            <template v-else>
+                                                                <v-btn
+                                                                    icon
+                                                                    small
+                                                                    density="comfortable"
+                                                                    variant="text"
+                                                                    class="mr-2"
+                                                                    @click="startEditingInventoryItem(item)"
+                                                                >
+                                                                    <v-icon>mdi-pencil</v-icon>
+                                                                </v-btn>
+                                                                <v-btn
+                                                                    icon
+                                                                    small
+                                                                    density="comfortable"
+                                                                    variant="text"
+                                                                    color="error"
+                                                                    @click="deleteInventoryItem(item)"
+                                                                >
+                                                                    <v-icon>mdi-delete</v-icon>
+                                                                </v-btn>
+                                                            </template>
+                                                        </div>
                                                     </template>
                                                 </table-with-inline-edit>
+
+                                                <!-- Inventory Item Delete Confirmation Dialog -->
+                                                <v-dialog v-model="showInventoryItemDeleteDialog" max-width="400px">
+                                                    <v-card>
+                                                        <v-card-title class="text-h5">
+                                                            Confirmation
+                                                        </v-card-title>
+
+                                                        <v-card-text>
+                                                            Êtes-vous sûr de vouloir supprimer cet article? Cette action est irréversible!
+                                                        </v-card-text>
+
+                                                        <v-card-actions>
+                                                            <v-spacer></v-spacer>
+                                                            <v-btn
+                                                                color="grey darken-1"
+                                                                text
+                                                                @click="showInventoryItemDeleteDialog = false"
+                                                            >
+                                                                Annuler
+                                                            </v-btn>
+                                                            <v-btn
+                                                                color="error"
+                                                                @click="confirmInventoryItemDelete"
+                                                                :loading="form.processing"
+                                                            >
+                                                                Supprimer
+                                                            </v-btn>
+                                                        </v-card-actions>
+                                                    </v-card>
+                                                </v-dialog>
 
                                                 <div class="d-flex justify-space-between mt-6">
                                                     <v-btn
@@ -826,6 +982,15 @@ const exportCarLoadItemsPdf = (carLoadId) => {
                             timeout="3000"
                         >
                             {{ successMessage }}
+                        </v-snackbar>
+
+                        <!-- Error Snackbar -->
+                        <v-snackbar
+                            v-model="showErrorSnackbar"
+                            color="error"
+                            timeout="5000"
+                        >
+                            {{ errorMessage }}
                         </v-snackbar>
 
                         <!-- Debug section -->

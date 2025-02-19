@@ -258,9 +258,15 @@ class CarLoadController extends Controller
     public function updateInventoryItem(Request $request, CarLoad $carLoad, CarLoadInventory $inventory, CarLoadInventoryItem $item)
     {
         $validated = $request->validate([
-            'quantity_counted' => 'required|integer|min:0',
+            'total_returned' => 'required|integer|min:0',
             'comment' => 'nullable|string',
         ]);
+        // check if entry is closed
+        if ($inventory->closed) {
+            //throw a validation error
+            return redirect()->back()
+                ->with('error', 'L\'inventaire est clôturé');
+        }
 
         $item->update($validated);
 
