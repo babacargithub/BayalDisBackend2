@@ -13,6 +13,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use PDF;
+use Illuminate\Support\Facades\DB;
 
 class CarLoadController extends Controller
 {
@@ -33,11 +34,36 @@ class CarLoadController extends Controller
             ->orderBy('name')
             ->get();
 
+        // For each car load with inventory, get missing products
+        $carLoads->through(function ($carLoad) {
+            if ($carLoad->inventory) {
+                $carLoad->missing_products = $this->getMissingInventoryProducts($carLoad);
+            }
+            return $carLoad;
+        });
+
         return Inertia::render('CarLoads/Index', [
             'carLoads' => $carLoads,
             'commercials' => $commercials,
             'products' => $products
         ]);
+    }
+
+    protected function getMissingInventoryProducts(CarLoad $carLoad)
+    {
+        // Get products and their total quantity loaded that are not in inventory
+        return DB::table('car_load_items as cli')
+            ->join('products as p', 'p.id', '=', 'cli.product_id')
+            ->select('p.id', 'p.name', DB::raw('SUM(cli.quantity_loaded) as quantity_loaded'))
+            ->where('cli.car_load_id', $carLoad->id)
+            ->whereNotExists(function ($query) use ($carLoad) {
+                $query->select(DB::raw(1))
+                    ->from('car_load_inventory_items as clii')
+                    ->whereRaw('clii.product_id = cli.product_id')
+                    ->where('clii.car_load_inventory_id', $carLoad->inventory->id);
+            })
+            ->groupBy('p.id', 'p.name')
+            ->get();
     }
 
     public function show(CarLoad $carLoad)

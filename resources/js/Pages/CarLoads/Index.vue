@@ -333,6 +333,56 @@ const saveEditingInventoryItem = (item) => {
         }
     });
 };
+
+const closeInventory = (inventory) => {
+    form.put(route('car-loads.inventories.close', {
+        carLoad: selectedCarLoad.value.id,
+        inventory: inventory.id
+    }), {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            successMessage.value = 'L\'inventaire a été clôturé avec succès';
+            showSuccessSnackbar.value = true;
+            selectedCarLoad.value = page.props.carLoads.data.find(
+                carLoad => carLoad.id === selectedCarLoad.value.id
+            );
+        },
+        onError: (errors) => {
+            errorMessage.value = Object.values(errors).flat().join(', ');
+            showErrorSnackbar.value = true;
+        }
+    });
+};
+
+const addMissingProduct = (product) => {
+    // Create a form with a single item
+    const singleItemForm = useForm({
+        items: [{
+            product_id: product.id,
+            total_returned: null,
+            comment: ''
+        }]
+    });
+
+    // Submit the form
+    singleItemForm.post(route('car-loads.inventories.items.store', {
+        carLoad: selectedCarLoad.value.id,
+        inventory: selectedCarLoad.value.inventory.id
+    }), {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            successMessage.value = 'Produit ajouté à l\'inventaire avec succès';
+            showSuccessSnackbar.value = true;
+            selectedCarLoad.value = page.props.carLoads.data.find(
+                carLoad => carLoad.id === selectedCarLoad.value.id
+            );
+        },
+        onError: (errors) => {
+            errorMessage.value = Object.values(errors).flat().join(', ');
+            showErrorSnackbar.value = true;
+        }
+    });
+};
 </script>
 
 <template>
@@ -403,6 +453,7 @@ const saveEditingInventoryItem = (item) => {
                                     <span>Voir les articles</span>
                                 </v-tooltip>
 
+                               <template v-if="!item.inventory?.closed">
                                 <v-tooltip bottom>
                                     <template v-slot:activator="{ on, attrs }">
                                         <v-btn
@@ -438,6 +489,7 @@ const saveEditingInventoryItem = (item) => {
                                     </template>
                                     <span>Supprimer</span>
                                 </v-tooltip>
+                               </template>
 
                                 <v-tooltip bottom>
                                     <template v-slot:activator="{ on, attrs }">
@@ -549,7 +601,7 @@ const saveEditingInventoryItem = (item) => {
                                         class="elevation-1 mb-4"
                                     >
                                         <template v-slot:item.quantity_loaded="{ item }">
-                                            <template v-if="editingItemId === item.id">
+                                            <template v-if="editingItemId === item.id && !selectedCarLoad?.inventory?.closed">
                                                 <v-text-field
                                                     v-model="editingQuantity"
                                                     type="number"
@@ -574,50 +626,52 @@ const saveEditingInventoryItem = (item) => {
                                             }) }}
                                             </template>
                                         <template v-slot:item.actions="{ item }">
-                                            <template v-if="editingItemId === item.id">
-                                                <v-btn 
-                                                    icon 
-                                                    small 
-                                                    density="comfortable"
-                                                    variant="text"
-                                                    color="success"
-                                                    class="mr-2"
-                                                    @click="saveEditing(item)"
-                                                >
-                                                    <v-icon>mdi-check</v-icon>
-                                                </v-btn>
-                                                <v-btn 
-                                                    icon 
-                                                    small 
-                                                    density="comfortable"
-                                                    variant="text"
-                                                    color="grey"
-                                                    @click="cancelEditing"
-                                                >
-                                                    <v-icon>mdi-close</v-icon>
-                                                </v-btn>
-                                            </template>
-                                            <template v-else>
-                                                <v-btn 
-                                                    icon 
-                                                    small 
-                                                    density="comfortable"
-                                                    variant="text"
-                                                    class="mr-2"
-                                                    @click="startEditing(item)"
-                                                >
-                                                    <v-icon>mdi-pencil</v-icon>
-                                                </v-btn>
-                                                <v-btn 
-                                                    icon 
-                                                    small 
-                                                    density="comfortable"
-                                                    variant="text"
-                                                    color="error" 
-                                                    @click="deleteItem(item.id)"
-                                                >
-                                                    <v-icon>mdi-delete</v-icon>
-                                                </v-btn>
+                                            <template v-if="!selectedCarLoad?.inventory?.closed">
+                                                <template v-if="editingItemId === item.id">
+                                                    <v-btn 
+                                                        icon 
+                                                        small 
+                                                        density="comfortable"
+                                                        variant="text"
+                                                        color="success"
+                                                        class="mr-2"
+                                                        @click="saveEditing(item)"
+                                                    >
+                                                        <v-icon>mdi-check</v-icon>
+                                                    </v-btn>
+                                                    <v-btn 
+                                                        icon 
+                                                        small 
+                                                        density="comfortable"
+                                                        variant="text"
+                                                        color="grey"
+                                                        @click="cancelEditing"
+                                                    >
+                                                        <v-icon>mdi-close</v-icon>
+                                                    </v-btn>
+                                                </template>
+                                                <template v-else>
+                                                    <v-btn 
+                                                        icon 
+                                                        small 
+                                                        density="comfortable"
+                                                        variant="text"
+                                                        class="mr-2"
+                                                        @click="startEditing(item)"
+                                                    >
+                                                        <v-icon>mdi-pencil</v-icon>
+                                                    </v-btn>
+                                                    <v-btn 
+                                                        icon 
+                                                        small 
+                                                        density="comfortable"
+                                                        variant="text"
+                                                        color="error" 
+                                                        @click="deleteItem(item.id)"
+                                                    >
+                                                        <v-icon>mdi-delete</v-icon>
+                                                    </v-btn>
+                                                </template>
                                             </template>
                                         </template>
                                     </v-data-table>
@@ -647,7 +701,7 @@ const saveEditingInventoryItem = (item) => {
                                     <v-divider class="my-4"></v-divider>
 
                                     <!-- Toggle button for add items form -->
-                                    <div v-if="selectedCarLoad?.items?.length" class="d-flex justify-center mb-4">
+                                    <div v-if="selectedCarLoad?.items?.length && !selectedCarLoad?.inventory?.closed" class="d-flex justify-center mb-4">
                                         <v-btn
                                             color="primary"
                                             variant="text"
@@ -659,7 +713,7 @@ const saveEditingInventoryItem = (item) => {
                                     </div>
 
                                     <!-- Add New Items Form -->
-                                    <div v-if="!selectedCarLoad?.items?.length || showAddItemsForm">
+                                    <div v-if="(!selectedCarLoad?.items?.length || showAddItemsForm) && !selectedCarLoad?.inventory?.closed">
                                         <div class="text-h6 mb-4">Ajouter des articles</div>
                                         <v-form @submit.prevent="submitItems">
                                             <div v-for="(item, index) in itemForm.items" :key="index" class="d-flex align-center mb-4">
@@ -729,6 +783,7 @@ const saveEditingInventoryItem = (item) => {
                                     <v-btn
                                         color="primary"
                                         @click="submitItems"
+                                        v-if="!selectedCarLoad?.inventory?.closed"
                                         :loading="itemForm.processing"
                                     >
                                         Enregistrer
@@ -770,6 +825,7 @@ const saveEditingInventoryItem = (item) => {
                                                     editable-field="total_returned"
                                                     class="inventory-table"
                                                     show-actions
+                                                    :allow-add="!inventory?.closed"
                                                 >
                                                     <template #add-form-fields="{ item, index, errors }">
                                                         <v-select
@@ -819,7 +875,7 @@ const saveEditingInventoryItem = (item) => {
                                                     </template>
 
                                                     <template #item.total_returned="{ item }">
-                                                        <template v-if="editingInventoryItemId === item.id">
+                                                        <template v-if="editingInventoryItemId === item.id && !selectedCarLoad.inventory.closed">
                                                             <v-text-field
                                                                 v-model="editingReturnedQuantity"
                                                                 type="number"
@@ -837,50 +893,52 @@ const saveEditingInventoryItem = (item) => {
 
                                                     <template #item.actions="{ item }">
                                                         <div class="d-flex justify-center">
-                                                            <template v-if="editingInventoryItemId === item.id">
-                                                                <v-btn 
-                                                                    icon 
-                                                                    small 
-                                                                    density="comfortable"
-                                                                    variant="text"
-                                                                    color="success"
-                                                                    class="mr-2"
-                                                                    @click="saveEditingInventoryItem(item)"
-                                                                >
-                                                                    <v-icon>mdi-check</v-icon>
-                                                                </v-btn>
-                                                                <v-btn 
-                                                                    icon 
-                                                                    small 
-                                                                    density="comfortable"
-                                                                    variant="text"
-                                                                    color="grey"
-                                                                    @click="cancelEditingInventoryItem"
-                                                                >
-                                                                    <v-icon>mdi-close</v-icon>
-                                                                </v-btn>
-                                                            </template>
-                                                            <template v-else>
-                                                                <v-btn
-                                                                    icon
-                                                                    small
-                                                                    density="comfortable"
-                                                                    variant="text"
-                                                                    class="mr-2"
-                                                                    @click="startEditingInventoryItem(item)"
-                                                                >
-                                                                    <v-icon>mdi-pencil</v-icon>
-                                                                </v-btn>
-                                                                <v-btn
-                                                                    icon
-                                                                    small
-                                                                    density="comfortable"
-                                                                    variant="text"
-                                                                    color="error"
-                                                                    @click="deleteInventoryItem(item)"
-                                                                >
-                                                                    <v-icon>mdi-delete</v-icon>
-                                                                </v-btn>
+                                                            <template v-if="!selectedCarLoad.inventory?.closed">
+                                                                <template v-if="editingInventoryItemId === item.id">
+                                                                    <v-btn 
+                                                                        icon 
+                                                                        small 
+                                                                        density="comfortable"
+                                                                        variant="text"
+                                                                        color="success"
+                                                                        class="mr-2"
+                                                                        @click="saveEditingInventoryItem(item)"
+                                                                    >
+                                                                        <v-icon>mdi-check</v-icon>
+                                                                    </v-btn>
+                                                                    <v-btn 
+                                                                        icon 
+                                                                        small 
+                                                                        density="comfortable"
+                                                                        variant="text"
+                                                                        color="grey"
+                                                                        @click="cancelEditingInventoryItem"
+                                                                    >
+                                                                        <v-icon>mdi-close</v-icon>
+                                                                    </v-btn>
+                                                                </template>
+                                                                <template v-else>
+                                                                    <v-btn
+                                                                        icon
+                                                                        small
+                                                                        density="comfortable"
+                                                                        variant="text"
+                                                                        class="mr-2"
+                                                                        @click="startEditingInventoryItem(item)"
+                                                                    >
+                                                                        <v-icon>mdi-pencil</v-icon>
+                                                                    </v-btn>
+                                                                    <v-btn
+                                                                        icon
+                                                                        small
+                                                                        density="comfortable"
+                                                                        variant="text"
+                                                                        color="error"
+                                                                        @click="deleteInventoryItem(item)"
+                                                                    >
+                                                                        <v-icon>mdi-delete</v-icon>
+                                                                    </v-btn>
+                                                                </template>
                                                             </template>
                                                         </div>
                                                     </template>
@@ -930,13 +988,64 @@ const saveEditingInventoryItem = (item) => {
                                                     </v-btn>
                                                     <v-btn
                                                         color="primary"
-                                                        :disabled="inventory.closed"
+                                                        :disabled="inventory?.closed"
                                                         @click="() => closeInventory(inventory)"
                                                         class="px-6"
                                                     >
                                                         <v-icon left>mdi-lock</v-icon>
                                                         Clôturer l'inventaire
                                                     </v-btn>
+                                                </div>
+
+                                                <!-- Missing Products Section -->
+                                                <div v-if="selectedCarLoad.missing_products?.length" class="mt-6">
+                                                    <v-expansion-panels>
+                                                        <v-expansion-panel>
+                                                            <v-expansion-panel-title>
+                                                                <div class="d-flex align-center">
+                                                                    <v-icon color="warning" class="mr-2">
+                                                                        mdi-alert-circle
+                                                                    </v-icon>
+                                                                    Produits non inventoriés ({{ selectedCarLoad.missing_products.length }})
+                                                                </div>
+                                                            </v-expansion-panel-title>
+                                                            <v-expansion-panel-text>
+                                                                <v-list>
+                                                                    <v-list-item
+                                                                        v-for="product in selectedCarLoad.missing_products"
+                                                                        :key="product.id"
+                                                                        class="mb-2"
+                                                                    >
+                                                                        <template v-slot:prepend>
+                                                                            <v-icon color="warning">mdi-package-variant</v-icon>
+                                                                        </template>
+                                                                        <v-list-item-title class="d-flex align-center">
+                                                                            {{ product.name }}
+                                                                            <v-chip
+                                                                                color="warning"
+                                                                                size="small"
+                                                                                class="ml-4"
+                                                                            >
+                                                                                Qté chargée: {{ product.quantity_loaded }}
+                                                                            </v-chip>
+                                                                        </v-list-item-title>
+                                                                        <template v-slot:append>
+                                                                            <v-btn
+                                                                                v-if="!inventory.closed"
+                                                                                color="primary"
+                                                                                variant="text"
+                                                                                size="small"
+                                                                                @click="addMissingProduct(product)"
+                                                                            >
+                                                                                <v-icon>mdi-plus</v-icon>
+                                                                                Ajouter à l'inventaire
+                                                                            </v-btn>
+                                                                        </template>
+                                                                    </v-list-item>
+                                                                </v-list>
+                                                            </v-expansion-panel-text>
+                                                        </v-expansion-panel>
+                                                    </v-expansion-panels>
                                                 </div>
                                             </v-window-item>
                                         </v-window>

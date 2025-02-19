@@ -64,6 +64,11 @@ const props = defineProps({
     additionalRouteParams: {
         type: Object,
         default: () => ({})
+    },
+    // Whether adding new items is allowed
+    allowAdd: {
+        type: Boolean,
+        default: true
     }
 });
 
@@ -277,7 +282,7 @@ const getNestedValue = (obj, path) => {
         </v-data-table>
 
         <!-- Add Items Section -->
-        <div class="d-flex justify-center mb-4">
+        <div v-if="allowAdd" class="d-flex justify-center mb-4">
             <v-btn
                 color="primary"
                 variant="text"
