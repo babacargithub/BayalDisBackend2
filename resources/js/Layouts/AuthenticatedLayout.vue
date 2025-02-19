@@ -99,7 +99,7 @@ const menuItems = [
             :rail="rail"
             :permanent="!isMobile"
             :temporary="isMobile"
-            class="bg-blue-darken-4"
+            style="background: darkblue"
             theme="dark"
         >
             <!-- Logo -->

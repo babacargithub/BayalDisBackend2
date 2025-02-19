@@ -34,6 +34,7 @@ const form = useForm({
     name: '',
     commercial_id: null,
     comment: '',
+    return_date: null,
 });
 
 const itemForm = useForm({
@@ -53,9 +54,8 @@ const inventoryForm = useForm({
 const headers = [
     { text: 'Nom', value: 'name' },
     { text: 'Commercial', value: 'commercial.name' },
-    { text: 'Date de chargement', value: 'load_date' },
-    { text: 'Date de déchargement', value: 'unload_date' },
-    { text: 'Statut', value: 'status' },
+    { text: 'Chargement', value: 'load_date', align: 'center' },
+    { text: 'Date de retour', value: 'return_date', align: 'center' },
     { text: 'Actions', value: 'actions', sortable: false },
 ];
 
@@ -273,13 +273,23 @@ const createInventory = () => {
                             :items-per-page="10"
                             class="elevation-1"
                         >
-                            <template v-slot:item.status="{ item }">
-                                <v-chip
-                                    :color="item.status === 'ACTIVE' ? 'success' : (item.status === 'LOADING' ? 'warning' : 'error')"
-                                    small
-                                >
-                                    {{ item.status }}
-                                </v-chip>
+                        
+                            <template v-slot:item.load_date="{ item }">
+                                {{ item.load_date ? new Date(item.load_date).toLocaleDateString('fr-FR', { 
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                }) : '-' }}
+                            </template>
+
+                            <template v-slot:item.return_date="{ item }">
+                                {{ item.return_date ? new Date(item.return_date).toLocaleDateString('fr-FR', { 
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric'
+                                }) : '-' }}
                             </template>
 
                             <template v-slot:item.actions="{ item }">
@@ -385,6 +395,14 @@ const createInventory = () => {
                                             required
                                             :error-messages="form.errors.commercial_id"
                                         ></v-select>
+
+                                        <v-text-field
+                                            v-model="form.return_date"
+                                            label="Date de retour"
+                                            type="date"
+                                            required
+                                            :error-messages="form.errors.return_date"
+                                        ></v-text-field>
 
                                         <v-textarea
                                             v-model="form.comment"

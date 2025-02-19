@@ -54,13 +54,26 @@ class CarLoadController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'commercial_id' => 'required|exists:users,id',
+            'commercial_id' => 'required|exists:commercials,id',
+            'return_date' => 'required|date|after:today',
             'comment' => 'nullable|string',
             'items' => 'array',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity_loaded' => 'required|integer|min:1',
             'items.*.comment' => 'nullable|string',
         ]);
+
+        // Check for active car loads for the same commercial
+        $hasActiveCarLoad = CarLoad::where('commercial_id', $validated['commercial_id'])
+            ->where('return_date', '>', now())
+            ->where('status', '!=', 'UNLOADED')
+            ->exists();
+
+        if ($hasActiveCarLoad) {
+            return redirect()->back()
+                ->withErrors(['commercial_id' => 'Ce commercial a déjà un chargement actif.'])
+                ->withInput();
+        }
 
         $carLoad = $this->carLoadService->createCarLoad($validated);
 
@@ -73,8 +86,21 @@ class CarLoadController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'commercial_id' => 'required|exists:users,id',
+            'return_date' => 'required|date|after:today',
             'comment' => 'nullable|string',
         ]);
+
+        // Check for active car loads for the same commercial (excluding current car load)
+        $hasActiveCarLoad = CarLoad::where('commercial_id', $validated['commercial_id'])
+            ->where('id', '!=', $carLoad->id)
+            ->where('return_date', '>', now())
+            ->exists();
+
+        if ($hasActiveCarLoad) {
+            return redirect()->back()
+                ->withErrors(['commercial_id' => 'Ce commercial a déjà un chargement actif.'])
+                ->withInput();
+        }
 
         $this->carLoadService->updateCarLoad($carLoad, $validated);
 

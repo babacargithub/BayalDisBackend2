@@ -11,40 +11,32 @@ class CarLoadService
 {
     public function createCarLoad(array $data): CarLoad
     {
-        return DB::transaction(function () use ($data) {
-            $carLoad = CarLoad::create([
-                'name' => $data['name'],
-                'commercial_id' => $data['commercial_id'],
-                'load_date' => Carbon::now(),
-                'status' => 'LOADING',
-                'comment' => $data['comment'] ?? null,
-            ]);
+        $carLoad = CarLoad::create([
+            'name' => $data['name'],
+            'commercial_id' => $data['commercial_id'],
+            'comment' => $data['comment'] ?? null,
+            'return_date' => $data['return_date'],
+            'status' => 'LOADING',
+            'load_date' => now(),
+        ]);
 
-            if (isset($data['items']) && is_array($data['items'])) {
-                foreach ($data['items'] as $item) {
-                    $carLoad->items()->create([
-                        'product_id' => $item['product_id'],
-                        'quantity_loaded' => $item['quantity_loaded'],
-                        'comment' => $item['comment'] ?? null,
-                    ]);
-                }
-            }
+        if (isset($data['items'])) {
+            $carLoad->items()->createMany($data['items']);
+        }
 
-            return $carLoad;
-        });
+        return $carLoad;
     }
 
     public function updateCarLoad(CarLoad $carLoad, array $data): CarLoad
     {
-        return DB::transaction(function () use ($carLoad, $data) {
-            $carLoad->update([
-                'name' => $data['name'],
-                'commercial_id' => $data['commercial_id'],
-                'comment' => $data['comment'] ?? null,
-            ]);
+        $carLoad->update([
+            'name' => $data['name'],
+            'commercial_id' => $data['commercial_id'],
+            'comment' => $data['comment'] ?? null,
+            'return_date' => $data['return_date'],
+        ]);
 
-            return $carLoad;
-        });
+        return $carLoad;
     }
 
     public function addItem(CarLoad $carLoad, array $data): CarLoadItem
