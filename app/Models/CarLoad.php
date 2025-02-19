@@ -16,12 +16,14 @@ class CarLoad extends Model
         'commercial_id',
         'status', // LOADING, ACTIVE, UNLOADED
         'comment',
+        "returned",
         'previous_car_load_id'
     ];
 
     protected $casts = [
         'load_date' => 'datetime',
         'return_date' => 'datetime',
+        'returned' => 'boolean'
     ];
 
     public function commercial(): BelongsTo

@@ -61,7 +61,9 @@ const headers = [
 
 const inventoryHeaders = [
     { title: 'Produit', key: 'product.name' },
-    { title: 'Quantité comptée', key: 'quantity_counted', type: 'number' },
+    { title: 'Qté chargée', key: 'total_loaded', type: 'number' },
+    { title: 'Qté vendu', key: 'total_sold', type: 'number' },
+    { title: 'Qté retournée', key: 'total_returned', type: 'number' },
     { title: 'Commentaire', key: 'comment' },
     { title: 'Actions', key: 'actions', sortable: false }
 ];
@@ -639,7 +641,7 @@ const createInventory = () => {
                                                         store: 'car-loads.inventories.items.store'
                                                     }"
                                                     :parent-id="inventory.id"
-                                                    :additional-route-params="{ carLoad: selectedCarLoad.id }"
+                                                    :additional-route-params="{ carLoad: selectedCarLoad.id, inventory: inventory.id }"
                                                     editable-field="total_returned"
                                                 >
                                                     <template #add-form-fields="{ item, index, errors }">
@@ -753,6 +755,9 @@ const createInventory = () => {
                         >
                             {{ successMessage }}
                         </v-snackbar>
+
+                        <!-- Debug section -->
+                      
                     </div>
                 </div>
             </div>

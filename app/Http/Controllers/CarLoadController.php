@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
+use App\Models\Commercial;
 use App\Models\Product;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
@@ -24,7 +25,7 @@ class CarLoadController extends Controller
     public function index()
     {
         $carLoads = $this->carLoadService->getAllCarLoads();
-        $commercials = \App\Models\Commercial::select('id', 'name')
+        $commercials = Commercial::select('id', 'name')
             ->orderBy('name')
             ->get();
         $products = Product::select('id', 'name')
@@ -206,11 +207,22 @@ class CarLoadController extends Controller
         $validated = $request->validate([
             'items' => 'array',
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity_counted' => 'required|integer|min:0',
+            'items.*.total_returned' => 'required|integer|min:0',
             'items.*.comment' => 'nullable|string',
         ]);
+        $items = collect($validated['items'])
+            ->map(function ($item) use ($inventory, $carLoad) {
+                return new CarLoadInventoryItem([
+                    'product_id' => $item['product_id'],
+                    'total_returned' => $item['total_returned'],
+                    'comment' => $item['comment'] ?? null,
+                    "total_loaded" => $carLoad->items()->where('product_id', $item['product_id'])->sum('quantity_loaded'),
+                    // TODO find a way to get the total sold later
+                    "total_sold" => 0,
+                ]);
+            });
 
-        $inventory->items()->createMany($validated['items']);
+        $inventory->items()->saveMany($items);
 
         return redirect()->back()
             ->with('success', 'Articles ajoutés avec succès');

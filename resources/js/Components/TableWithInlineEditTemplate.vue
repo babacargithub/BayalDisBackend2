@@ -166,6 +166,8 @@ const removeItemRow = (index) => {
 const submitItems = () => {
     formError.value = '';
     const routeParams = props.parentId ? { parentId: props.parentId } : {};
+    // Add additional route params
+    Object.assign(routeParams, props.additionalRouteParams);
     
     itemForm.post(route(props.routes.store, routeParams), {
         onSuccess: (page) => {
@@ -177,6 +179,13 @@ const submitItems = () => {
             formError.value = Object.values(errors).flat().join(', ');
         }
     });
+};
+
+// Add this function to handle nested object properties
+const getNestedValue = (obj, path) => {
+    return path.split('.').reduce((current, key) => 
+        current ? current[key] : undefined, obj
+    );
 };
 </script>
 
@@ -203,7 +212,7 @@ const submitItems = () => {
                     ></v-text-field>
                 </template>
                 <template v-else>
-                    {{ item[header.key] }}
+                    {{ getNestedValue(item, header.key) }}
                 </template>
             </template>
 
