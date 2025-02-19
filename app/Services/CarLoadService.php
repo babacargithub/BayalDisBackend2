@@ -156,4 +156,31 @@ class CarLoadService
             ->orderBy('created_at', 'desc')
             ->paginate(100);
     }
+
+    public function getCurrentCarLoadItems()
+    {
+        // TO
+       /* $currentCarLoad = CarLoad::where('commercial_id', auth()->user()->commercial_id)
+            // check that the car laod is not past
+            ->where('return_date', '>', now())
+            ->with(['items.product'])
+            ->first(); */
+
+        $currentCarLoad = CarLoad::
+            with(['items.product'])
+            ->find(2)
+            ->first();
+
+        if (!$currentCarLoad) {
+            return [];
+        }
+
+        return $currentCarLoad->items->map(function ($item) {
+            return [
+                'product_name' => $item->product->name,
+                'quantity_loaded' => $item->quantity_loaded,
+                'created_at' => $item->created_at->format('Y-m-d H:i:s')
+            ];
+        });
+    }
 } 

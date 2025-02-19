@@ -3,6 +3,7 @@
 use App\Http\Controllers\PaymentController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ApiCarLoadController;
 use App\Http\Controllers\Api\SalespersonController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\CustomerVisitController;
@@ -74,4 +75,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Add this route with the other API routes
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
+
+    Route::get('/car-loads/current-items', [ApiCarLoadController::class, 'getCurrentItems']);
 });
