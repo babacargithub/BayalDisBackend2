@@ -23,6 +23,7 @@ use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\CarLoadController;
+use App\Http\Controllers\TeamController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -208,6 +209,9 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');
     Route::get('/admin/users', [AdminController::class, 'rapport'])->name('users.index');
+    Route::resource('teams', TeamController::class);
+    Route::post('teams/{team}/add-commercial', [TeamController::class, 'addCommercial'])->name('teams.add-commercial');
+    Route::post('teams/{team}/remove-commercial', [TeamController::class, 'removeCommercial'])->name('teams.remove-commercial');
 });
 
 require __DIR__.'/auth.php';

@@ -55,7 +55,16 @@ const menuItems = [
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
         ]
     },
-    { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
+    { 
+        name: 'Commerciaux',
+        icon: 'mdi-account-tie',
+        isDropdown: true,
+        ref: ref(false),
+        items: [
+            { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
+            { name: 'Équipes', route: 'teams.index', icon: 'mdi-account-group' },
+        ]
+    },
     { name: 'Caisses', route: 'caisses.index', icon: 'mdi-cash-register' },
     // {
     //     name: 'Commandes & Livraisons',
