@@ -64,6 +64,7 @@ const inventoryHeaders = [
     { title: 'Qté chargée', key: 'total_loaded', type: 'number' },
     { title: 'Qté vendu', key: 'total_sold', type: 'number' },
     { title: 'Qté retournée', key: 'total_returned', type: 'number' },
+    { title: 'Résultat', key: 'result', align: 'center' },
     { title: 'Commentaire', key: 'comment' },
     { title: 'Actions', key: 'actions', sortable: false }
 ];
@@ -633,22 +634,24 @@ const createInventory = () => {
                         </v-dialog>
 
                         <!-- Inventory Dialog -->
-                        <v-dialog v-model="showInventoryDialog" max-width="800">
+                        <v-dialog v-model="showInventoryDialog" max-width="1200">
                             <v-card>
-                                <v-card-title class="text-h5">
+                                <v-card-title class="text-h5 pa-4">
                                     Inventaire - {{ selectedCarLoad?.name }}
                                 </v-card-title>
 
-                                <v-card-text>
+                                <v-card-text class="pa-4">
                                     <template v-if="selectedCarLoad?.inventory">
-                                      {{ selectedCarLoad?.inventory.name }}
-
+                                        <div class="text-subtitle-1 mb-4">
+                                            {{ selectedCarLoad?.inventory.name }}
+                                        </div>
 
                                         <v-window v-model="selectedCarLoad.inventory">
                                             <v-window-item
                                                 v-for="inventory in [selectedCarLoad.inventory]"
                                                 :key="inventory.id"
                                                 :value="inventory"
+                                                class="pa-2"
                                             >
                                                 <table-with-inline-edit
                                                     :items="inventory.items"
@@ -661,7 +664,27 @@ const createInventory = () => {
                                                     :parent-id="inventory.id"
                                                     :additional-route-params="{ carLoad: selectedCarLoad.id, inventory: inventory.id }"
                                                     editable-field="total_returned"
+                                                    class="inventory-table"
                                                 >
+                                                    <template #item.result="{ item }">
+                                                        <div class="d-flex align-center justify-center">
+                                                            <v-icon
+                                                                :color="item.total_loaded - item.total_sold - item.total_returned >= 0 ? 'success' : 'error'"
+                                                                class="mr-2"
+                                                            >
+                                                                {{ item.total_loaded - item.total_sold - item.total_returned >= 0 ? 'mdi-check-circle' : 'mdi-alert-circle' }}
+                                                            </v-icon>
+                                                            <template v-if="item.total_loaded - item.total_sold - item.total_returned < 0">
+                                                                <span class="font-weight-bold error--text">
+                                                                    {{ item.total_loaded - item.total_sold - item.total_returned }}
+                                                                </span>
+                                                            </template>
+                                                            <template v-else>
+                                                                {{ item.total_loaded - item.total_sold - item.total_returned }}
+                                                            </template>
+                                                        </div>
+                                                    </template>
+
                                                     <template #add-form-fields="{ item, index, errors }">
                                                         <v-select
                                                             v-model="item.product_id"
@@ -688,11 +711,12 @@ const createInventory = () => {
                                                     </template>
                                                 </table-with-inline-edit>
 
-                                                <div class="d-flex justify-end mt-4">
+                                                <div class="d-flex justify-end mt-6">
                                                     <v-btn
                                                         color="primary"
                                                         :disabled="inventory.closed"
                                                         @click="() => closeInventory(inventory)"
+                                                        class="px-6"
                                                     >
                                                         Clôturer l'inventaire
                                                     </v-btn>
@@ -721,12 +745,13 @@ const createInventory = () => {
                                     </template>
                                 </v-card-text>
 
-                                <v-card-actions>
+                                <v-card-actions class="pa-4">
                                     <v-spacer></v-spacer>
                                     <v-btn
                                         color="grey darken-1"
                                         text
                                         @click="showInventoryDialog = false"
+                                        class="px-4"
                                     >
                                         Fermer
                                     </v-btn>

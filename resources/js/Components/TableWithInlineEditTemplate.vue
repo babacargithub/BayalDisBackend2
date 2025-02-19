@@ -198,71 +198,81 @@ const getNestedValue = (obj, path) => {
             hide-default-footer
             class="elevation-1 mb-4"
         >
-            <!-- Dynamic field slots based on headers -->
-            <template v-for="header in headers" :key="header.key" v-slot:[`item.${header.key}`]="{ item }">
-                <template v-if="header.key === editableField && editingItemId === item.id">
-                    <v-text-field
-                        v-model="editingValue"
-                        :type="header.type || 'text'"
-                        dense
-                        hide-details
-                        class="mt-0 pt-0"
-                        @keyup.enter="saveEditing(item)"
-                        @keyup.esc="cancelEditing"
-                    ></v-text-field>
+            <template v-for="header in headers" :key="header.key" #[`item.${header.key}`]="slotProps">
+                <!-- If there's a custom slot for this column, use it -->
+                <template v-if="$slots[`item.${header.key}`]">
+                    <slot 
+                        :name="`item.${header.key}`" 
+                        v-bind="slotProps"
+                    ></slot>
                 </template>
+                <!-- Otherwise, use default rendering -->
                 <template v-else>
-                    {{ getNestedValue(item, header.key) }}
+                    <template v-if="header.key === editableField && editingItemId === slotProps.item.id">
+                        <v-text-field
+                            v-model="editingValue"
+                            :type="header.type || 'text'"
+                            dense
+                            hide-details
+                            class="mt-0 pt-0"
+                            @keyup.enter="saveEditing(slotProps.item)"
+                            @keyup.esc="cancelEditing"
+                        ></v-text-field>
+                    </template>
+                    <template v-else>
+                        {{ getNestedValue(slotProps.item, header.key) }}
+                    </template>
                 </template>
             </template>
 
-            <!-- Actions Column -->
-            <template v-slot:item.actions="{ item }">
-                <template v-if="editingItemId === item.id">
-                    <v-btn 
-                        icon 
-                        small 
-                        density="comfortable"
-                        variant="text"
-                        color="success"
-                        class="mr-2"
-                        @click="saveEditing(item)"
-                    >
-                        <v-icon>mdi-check</v-icon>
-                    </v-btn>
-                    <v-btn 
-                        icon 
-                        small 
-                        density="comfortable"
-                        variant="text"
-                        color="grey"
-                        @click="cancelEditing"
-                    >
-                        <v-icon>mdi-close</v-icon>
-                    </v-btn>
-                </template>
-                <template v-else>
-                    <v-btn 
-                        icon 
-                        small 
-                        density="comfortable"
-                        variant="text"
-                        class="mr-2"
-                        @click="startEditing(item)"
-                    >
-                        <v-icon>mdi-pencil</v-icon>
-                    </v-btn>
-                    <v-btn 
-                        icon 
-                        small 
-                        density="comfortable"
-                        variant="text"
-                        color="error" 
-                        @click="deleteItem(item.id)"
-                    >
-                        <v-icon>mdi-delete</v-icon>
-                    </v-btn>
-                </template>
+            <template #item.actions="slotProps">
+                <slot name="item.actions" v-bind="slotProps">
+                    <template v-if="editingItemId === slotProps.item.id">
+                        <v-btn 
+                            icon 
+                            small 
+                            density="comfortable"
+                            variant="text"
+                            color="success"
+                            class="mr-2"
+                            @click="saveEditing(slotProps.item)"
+                        >
+                            <v-icon>mdi-check</v-icon>
+                        </v-btn>
+                        <v-btn 
+                            icon 
+                            small 
+                            density="comfortable"
+                            variant="text"
+                            color="grey"
+                            @click="cancelEditing"
+                        >
+                            <v-icon>mdi-close</v-icon>
+                        </v-btn>
+                    </template>
+                    <template v-else>
+                        <v-btn 
+                            icon 
+                            small 
+                            density="comfortable"
+                            variant="text"
+                            class="mr-2"
+                            @click="startEditing(slotProps.item)"
+                        >
+                            <v-icon>mdi-pencil</v-icon>
+                        </v-btn>
+                        <v-btn 
+                            icon 
+                            small 
+                            density="comfortable"
+                            variant="text"
+                            color="error" 
+                            @click="deleteItem(slotProps.item.id)"
+                        >
+                            <v-icon>mdi-delete</v-icon>
+                        </v-btn>
+                    </template>
+                </slot>
             </template>
         </v-data-table>
 
