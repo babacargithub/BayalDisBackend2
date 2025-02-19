@@ -97,10 +97,10 @@
                     <td class="text-right">{{ $item->total_loaded }}</td>
                     <td class="text-right">{{ $item->total_sold }}</td>
                     <td class="text-right">{{ $item->total_returned }}</td>
-                    <td class="text-right result {{ $result < 0 ? 'negative' : '' }}">
-                        {{ $result }}
+                    <td class="text-right result {{ $result < 0 ? 'negative' : 'success' }}">
+                                {{  $result >0? "+":""}}{{ $result }}
                     </td>
-                    <td class="text-right price {{ $price < 0 ? 'negative' : '' }}">
+                    <td class="text-right price {{ $price < 0 ? 'negative' : 'success' }}">
                         {{ number_format($price, 0, ',', ' ') }} F
                     </td>
                 </tr>
@@ -110,10 +110,10 @@
                 <td class="text-right">{{ $totalLoaded }}</td>
                 <td class="text-right">{{ $totalSold }}</td>
                 <td class="text-right">{{ $totalReturned }}</td>
-                <td class="text-right result {{ $totalResult < 0 ? 'negative' : '' }}">
-                    {{ $totalResult }}
+                <td class="text-right result {{ $totalResult < 0 ? 'negative' : 'success' }}">
+                        {{ $totalResult >0? "+":""}}{{ $totalResult }}
                 </td>
-                <td class="text-right price {{ $totalPrice < 0 ? 'negative' : '' }}">
+                <td class="text-right price {{ $totalPrice < 0 ? 'negative' : 'success' }}">
                     {{ number_format($totalPrice, 0, ',', ' ') }} F
                 </td>
             </tr>

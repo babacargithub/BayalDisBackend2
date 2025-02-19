@@ -246,6 +246,11 @@ const createInventory = () => {
 const exportInventoryPdf = (carLoadId, inventoryId) => {
     window.open(route('car-loads.inventories.export-pdf', { carLoad: carLoadId, inventory: inventoryId }));
 };
+
+const exportCarLoadItemsPdf = (carLoadId) => {
+    // () => window.open(route('car-loads.items.export-pdf', { carLoad: selectedCarLoad.id }))
+    window.open(route('car-loads.items.export-pdf', { carLoad: carLoadId }));
+};
 </script>
 
 <template>
@@ -537,6 +542,18 @@ const exportInventoryPdf = (carLoadId, inventoryId) => {
 
                                     <div v-else class="text-center py-4">
                                         Aucun article dans ce chargement
+                                    </div>
+
+                                    <!-- Add export button -->
+                                    <div v-if="selectedCarLoad?.items?.length" class="d-flex justify-end mb-4">
+                                        <v-btn
+                                            color="info"
+                                            @click="exportCarLoadItemsPdf(selectedCarLoad.id)"
+                                            class="px-6"
+                                        >
+                                            <v-icon left>mdi-file-pdf-box</v-icon>
+                                            Exporter en PDF
+                                        </v-btn>
                                     </div>
 
                                     <!-- Add error message display -->

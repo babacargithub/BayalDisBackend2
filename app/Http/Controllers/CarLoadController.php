@@ -297,4 +297,17 @@ class CarLoadController extends Controller
 
         return $pdf->download("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
     }
+
+    public function exportItemsPdf(CarLoad $carLoad)
+    {
+        $carLoad->load(['items.product', 'commercial']);
+        
+        $pdf = PDF::loadView('pdf.car-load-items', [
+            'carLoad' => $carLoad,
+            'items' => $carLoad->items,
+            'date' => now()->format('d/m/Y H:i')
+        ]);
+
+        return $pdf->download("chargement_{$carLoad->id}_{$carLoad->name}.pdf");
+    }
 } 

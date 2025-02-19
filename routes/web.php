@@ -202,6 +202,8 @@ Route::middleware('auth')->group(function () {
         ->name('car-loads.inventories.items.destroy');
     Route::put('/car-loads/{carLoad}/inventories/{inventory}/close', [CarLoadController::class, 'closeInventory'])
         ->name('car-loads.inventories.close');
+    Route::get('/car-loads/{carLoad}/items/export-pdf', [CarLoadController::class, 'exportItemsPdf'])
+        ->name('car-loads.items.export-pdf');
 });
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');
