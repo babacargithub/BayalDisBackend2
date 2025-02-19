@@ -192,6 +192,8 @@ Route::middleware('auth')->group(function () {
     // Car Load Inventory Routes
     Route::post('/car-loads/{carLoad}/inventories', [CarLoadController::class, 'createInventory'])
         ->name('car-loads.inventories.store');
+    Route::get('/car-loads/{carLoad}/inventories/{inventory}/export-pdf', [CarLoadController::class, 'exportInventoryPdf'])
+        ->name('car-loads.inventories.export-pdf');
     Route::post('/car-loads/{carLoad}/inventories/{inventory}/items', [CarLoadController::class, 'addInventoryItems'])
         ->name('car-loads.inventories.items.store');
     Route::put('/car-loads/{carLoad}/inventories/{inventory}/items/{item}', [CarLoadController::class, 'updateInventoryItem'])

@@ -242,6 +242,10 @@ const createInventory = () => {
         }
     });
 };
+
+const exportInventoryPdf = (carLoadId, inventoryId) => {
+    window.open(route('car-loads.inventories.export-pdf', { carLoad: carLoadId, inventory: inventoryId }));
+};
 </script>
 
 <template>
@@ -669,18 +673,18 @@ const createInventory = () => {
                                                     <template #item.result="{ item }">
                                                         <div class="d-flex align-center justify-center">
                                                             <v-icon
-                                                                :color="item.total_loaded - item.total_sold - item.total_returned >= 0 ? 'success' : 'error'"
+                                                                :color="(item.total_sold + item.total_returned - item.total_loaded) >= 0 ? 'success' : 'error'"
                                                                 class="mr-2"
                                                             >
-                                                                {{ item.total_loaded - item.total_sold - item.total_returned >= 0 ? 'mdi-check-circle' : 'mdi-alert-circle' }}
+                                                                {{ (item.total_sold + item.total_returned - item.total_loaded) >= 0 ? 'mdi-check-circle' : 'mdi-alert-circle' }}
                                                             </v-icon>
-                                                            <template v-if="item.total_loaded - item.total_sold - item.total_returned < 0">
+                                                            <template v-if="(item.total_sold + item.total_returned - item.total_loaded) < 0">
                                                                 <span class="font-weight-bold error--text">
-                                                                    {{ item.total_loaded - item.total_sold - item.total_returned }}
+                                                                    {{ item.total_sold + item.total_returned - item.total_loaded }}
                                                                 </span>
                                                             </template>
                                                             <template v-else>
-                                                                {{ item.total_loaded - item.total_sold - item.total_returned }}
+                                                                {{ item.total_sold + item.total_returned - item.total_loaded }}
                                                             </template>
                                                         </div>
                                                     </template>
@@ -698,7 +702,7 @@ const createInventory = () => {
                                                         <v-text-field
                                                             v-model="item.total_returned"
                                                             type="number"
-                                                            label="Quantité"
+                                                            label="Quantité retournée"
                                                             class="mr-2"
                                                             :error-messages="errors[`items.${index}.total_returned`]"
                                                         ></v-text-field>
@@ -711,7 +715,15 @@ const createInventory = () => {
                                                     </template>
                                                 </table-with-inline-edit>
 
-                                                <div class="d-flex justify-end mt-6">
+                                                <div class="d-flex justify-space-between mt-6">
+                                                    <v-btn
+                                                        color="info"
+                                                        @click="exportInventoryPdf(selectedCarLoad.id, inventory.id)"
+                                                        class="px-6"
+                                                    >
+                                                        <v-icon left>mdi-file-pdf-box</v-icon>
+                                                        Exporter en PDF
+                                                    </v-btn>
                                                     <v-btn
                                                         color="primary"
                                                         :disabled="inventory.closed"

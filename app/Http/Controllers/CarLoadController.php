@@ -12,6 +12,7 @@ use App\Services\CarLoadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use PDF;
 
 class CarLoadController extends Controller
 {
@@ -281,5 +282,19 @@ class CarLoadController extends Controller
 
         return redirect()->back()
             ->with('success', 'Inventaire clôturé avec succès');
+    }
+
+    public function exportInventoryPdf(CarLoad $carLoad, CarLoadInventory $inventory)
+    {
+        $inventory->load(['items.product', 'carLoad.commercial', 'user']);
+        
+        $pdf = PDF::loadView('pdf.inventory', [
+            'inventory' => $inventory,
+            'carLoad' => $carLoad,
+            'items' => $inventory->items,
+            'date' => now()->format('d/m/Y H:i')
+        ]);
+
+        return $pdf->download("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
     }
 } 
