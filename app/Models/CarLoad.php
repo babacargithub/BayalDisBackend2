@@ -13,7 +13,7 @@ class CarLoad extends Model
         'name',
         'load_date',
         'return_date',
-        'commercial_id',
+        'team_id',
         'status', // LOADING, ACTIVE, UNLOADED
         'comment',
         "returned",
@@ -26,9 +26,9 @@ class CarLoad extends Model
         'returned' => 'boolean'
     ];
 
-    public function commercial(): BelongsTo
+    public function team(): BelongsTo
     {
-        return $this->belongsTo(Commercial::class);
+        return $this->belongsTo(Team::class);
     }
 
     public function items(): HasMany

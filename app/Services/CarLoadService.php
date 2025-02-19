@@ -13,7 +13,7 @@ class CarLoadService
     {
         $carLoad = CarLoad::create([
             'name' => $data['name'],
-            'commercial_id' => $data['commercial_id'],
+            'team_id' => $data['team_id'],
             'comment' => $data['comment'] ?? null,
             'return_date' => $data['return_date'],
             'status' => 'LOADING',
@@ -31,7 +31,7 @@ class CarLoadService
     {
         $carLoad->update([
             'name' => $data['name'],
-            'commercial_id' => $data['commercial_id'],
+            'team_id' => $data['team_id'],
             'comment' => $data['comment'] ?? null,
             'return_date' => $data['return_date'],
         ]);
@@ -124,7 +124,7 @@ class CarLoadService
         return DB::transaction(function () use ($previousCarLoad) {
             $newCarLoad = CarLoad::create([
                 'name' => $previousCarLoad->name . ' (Copy)',
-                'commercial_id' => $previousCarLoad->commercial_id,
+                'team_id' => $previousCarLoad->team_id,
                 'status' => 'LOADING',
                 'load_date' => Carbon::now(),
                 'previous_car_load_id' => $previousCarLoad->id,
@@ -142,17 +142,17 @@ class CarLoadService
         });
     }
 
-    public function getCarLoadsByCommercial(int $commercialId)
+    public function getCarLoadsByTeam(int $teamId)
     {
-        return CarLoad::where('commercial_id', $commercialId)
-            ->with(['items.product', 'commercial'])
+        return CarLoad::where('team_id', $teamId)
+            ->with(['items.product', 'team'])
             ->orderBy('created_at', 'desc')
             ->paginate(10);
     }
 
     public function getAllCarLoads()
     {
-        return CarLoad::with(['items.product', 'commercial','inventory.items.product'])
+        return CarLoad::with(['items.product', 'team', 'inventory.items.product'])
             ->orderBy('created_at', 'desc')
             ->paginate(100);
     }

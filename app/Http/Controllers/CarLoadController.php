@@ -27,7 +27,7 @@ class CarLoadController extends Controller
     public function index()
     {
         $carLoads = $this->carLoadService->getAllCarLoads();
-        $commercials = Commercial::select('id', 'name')
+        $teams = \App\Models\Team::select('id', 'name')
             ->orderBy('name')
             ->get();
         $products = Product::select('id', 'name')
@@ -44,7 +44,7 @@ class CarLoadController extends Controller
 
         return Inertia::render('CarLoads/Index', [
             'carLoads' => $carLoads,
-            'commercials' => $commercials,
+            'teams' => $teams,
             'products' => $products
         ]);
     }
@@ -81,7 +81,7 @@ class CarLoadController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'commercial_id' => 'required|exists:commercials,id',
+            'team_id' => 'required|exists:teams,id',
             'return_date' => 'required|date|after:today',
             'comment' => 'nullable|string',
             'items' => 'array',
@@ -90,15 +90,15 @@ class CarLoadController extends Controller
             'items.*.comment' => 'nullable|string',
         ]);
 
-        // Check for active car loads for the same commercial
-        $hasActiveCarLoad = CarLoad::where('commercial_id', $validated['commercial_id'])
+        // Check for active car loads for the same team
+        $hasActiveCarLoad = CarLoad::where('team_id', $validated['team_id'])
             ->where('return_date', '>', now())
-            ->where('status', '!=', 'UNLOADED')
+            ->where('returned', false)
             ->exists();
 
         if ($hasActiveCarLoad) {
             return redirect()->back()
-                ->withErrors(['commercial_id' => 'Ce commercial a déjà un chargement actif.'])
+                ->withErrors(['team_id' => 'Cette équipe a déjà un chargement actif.'])
                 ->withInput();
         }
 
@@ -112,20 +112,21 @@ class CarLoadController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'commercial_id' => 'required|exists:users,id',
+            'team_id' => 'required|exists:teams,id',
             'return_date' => 'required|date|after:today',
             'comment' => 'nullable|string',
         ]);
 
-        // Check for active car loads for the same commercial (excluding current car load)
-        $hasActiveCarLoad = CarLoad::where('commercial_id', $validated['commercial_id'])
+        // Check for active car loads for the same team (excluding current car load)
+        $hasActiveCarLoad = CarLoad::where('team_id', $validated['team_id'])
             ->where('id', '!=', $carLoad->id)
             ->where('return_date', '>', now())
+            ->where('returned', false)
             ->exists();
 
         if ($hasActiveCarLoad) {
             return redirect()->back()
-                ->withErrors(['commercial_id' => 'Ce commercial a déjà un chargement actif.'])
+                ->withErrors(['team_id' => 'Cette équipe a déjà un chargement actif.'])
                 ->withInput();
         }
 
@@ -137,7 +138,7 @@ class CarLoadController extends Controller
 
     public function destroy(CarLoad $carLoad)
     {
-        if ($carLoad->status !== 'LOADING') {
+        if ($carLoad->returned) {
             return redirect()->back()
                 ->with('error', 'Seuls les chargements en cours de chargement peuvent être supprimés');
         }
@@ -318,7 +319,7 @@ class CarLoadController extends Controller
 
     public function exportInventoryPdf(CarLoad $carLoad, CarLoadInventory $inventory)
     {
-        $inventory->load(['items.product', 'carLoad.commercial', 'user']);
+        $inventory->load(['items.product', 'carLoad.team', 'user']);
         
         $pdf = PDF::loadView('pdf.inventory', [
             'inventory' => $inventory,
