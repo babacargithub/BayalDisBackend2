@@ -630,11 +630,12 @@ const saveEditingInventoryItem = (item) => {
                                     <div v-if="selectedCarLoad?.items?.length" class="d-flex justify-end mb-4">
                                         <v-btn
                                             color="info"
+                                            variant="text"
                                             @click="exportCarLoadItemsPdf(selectedCarLoad.id)"
                                             class="px-6"
                                         >
                                             <v-icon left>mdi-file-pdf-box</v-icon>
-                                            Exporter en PDF
+                                            PDF
                                         </v-btn>
                                     </div>
 
@@ -770,6 +771,34 @@ const saveEditingInventoryItem = (item) => {
                                                     class="inventory-table"
                                                     show-actions
                                                 >
+                                                    <template #add-form-fields="{ item, index, errors }">
+                                                        <v-select
+                                                            v-model="item.product_id"
+                                                            :items="products"
+                                                            item-title="name"
+                                                            item-value="id"
+                                                            label="Produit"
+                                                            class="mr-2"
+                                                            :error-messages="errors[`items.${index}.product_id`]"
+                                                            required
+                                                        ></v-select>
+
+                                                        <v-text-field
+                                                            v-model="item.total_returned"
+                                                            type="number"
+                                                            label="Quantité retournée"
+                                                            class="mr-2"
+                                                            :error-messages="errors[`items.${index}.total_returned`]"
+                                                            required
+                                                        ></v-text-field>
+
+                                                        <v-text-field
+                                                            v-model="item.comment"
+                                                            label="Commentaire"
+                                                            class="mr-2"
+                                                            :error-messages="errors[`items.${index}.comment`]"
+                                                        ></v-text-field>
+                                                    </template>
                                                     <template #item.result="{ item }">
                                                         <div class="d-flex align-center justify-center">
                                                             <v-icon
@@ -887,15 +916,17 @@ const saveEditingInventoryItem = (item) => {
                                                         </v-card-actions>
                                                     </v-card>
                                                 </v-dialog>
+                                                <v-divider class="my-4"></v-divider>
 
-                                                <div class="d-flex justify-space-between mt-6">
+                                                <div class="d-flex justify-end mt-6">
                                                     <v-btn
                                                         color="info"
+                                                        variant="text"
                                                         @click="exportInventoryPdf(selectedCarLoad.id, inventory.id)"
                                                         class="px-6"
                                                     >
                                                         <v-icon left>mdi-file-pdf-box</v-icon>
-                                                        Exporter en PDF
+                                                        PDF
                                                     </v-btn>
                                                     <v-btn
                                                         color="primary"
@@ -903,6 +934,7 @@ const saveEditingInventoryItem = (item) => {
                                                         @click="() => closeInventory(inventory)"
                                                         class="px-6"
                                                     >
+                                                        <v-icon left>mdi-lock</v-icon>
                                                         Clôturer l'inventaire
                                                     </v-btn>
                                                 </div>

@@ -306,7 +306,7 @@ const getNestedValue = (obj, path) => {
                         variant="text"
                         color="error"
                         @click="removeItemRow(index)"
-                        :disabled="itemForm.items.length === 1"
+                        
                     >
                         <v-icon>mdi-delete</v-icon>
                     </v-btn>
@@ -319,7 +319,7 @@ const getNestedValue = (obj, path) => {
                         @click="addItemRow"
                     >
                         <v-icon left>mdi-plus</v-icon>
-                        Ajouter une ligne
+                        
                     </v-btn>
 
                     <v-btn
