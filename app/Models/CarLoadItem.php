@@ -11,7 +11,8 @@ class CarLoadItem extends Model
         'car_load_id',
         'product_id',
         'quantity_loaded',
-        'comment'
+        'comment',
+        "loaded_at"
     ];
 
     protected $casts = [

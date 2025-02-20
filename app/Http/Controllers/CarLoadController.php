@@ -155,6 +155,7 @@ class CarLoadController extends Controller
             'items' => 'array',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity_loaded' => 'required|integer|min:1',
+            "items.*.loaded_at" => "required|date",
             'items.*.comment' => 'nullable|string',
         ]);
 
@@ -170,6 +171,7 @@ class CarLoadController extends Controller
         $validated = $request->validate([
             'quantity_loaded' => 'required|integer|min:1',
             'comment' => 'nullable|string',
+            'loaded_at' => 'nullable|date',
         ]);
 
         try {

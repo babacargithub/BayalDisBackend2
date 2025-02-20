@@ -355,10 +355,7 @@ class SalespersonController extends Controller
 
         // Get sales invoices
         $invoicesQuery = SalesInvoice::with(['customer', 'items.product'])
-            ->whereDate('created_at', $date)
-            ->whereHas('customer', function ($query) use ($commercial) {
-                $query->where('commercial_id', $commercial->id);
-            });
+            ->whereDate('created_at', $date);
         $paymentsQuery = Payment::whereDate('created_at', $date)
             ->where('user_id', $request->user()->id);
 

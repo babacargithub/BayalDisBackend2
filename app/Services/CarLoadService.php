@@ -152,7 +152,14 @@ class CarLoadService
 
     public function getAllCarLoads()
     {
-        return CarLoad::with(['items.product', 'team', 'inventory.items.product'])
+        return CarLoad::with([
+            'items' => function($query) {
+                $query->orderBy('loaded_at', 'desc');
+            },
+            'items.product',
+            'team',
+            'inventory.items.product'
+        ])
             ->orderBy('created_at', 'desc')
             ->paginate(100);
     }

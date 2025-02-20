@@ -18,6 +18,7 @@ class SalesInvoice extends Model
         'paid',
         'should_be_paid_at',
         "comment",
+
     ];
 
     protected $casts = [

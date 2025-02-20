@@ -42,6 +42,7 @@ const itemForm = useForm({
         {
             product_id: null,
             quantity_loaded: null,
+            loaded_at: null,
             comment: ''
         }
     ]
@@ -141,6 +142,7 @@ const addItemRow = () => {
     itemForm.items.push({
         product_id: null,
         quantity_loaded: null,
+        loaded_at: null,
         comment: ''
     });
 };
@@ -150,9 +152,8 @@ const removeItemRow = (index) => {
 };
 
 const submitItems = () => {
-    itemForm.post(route('car-loads.inventories.items.store', {
-        carLoad: selectedCarLoad.value.id,
-        inventory: selectedCarLoad.value.inventory.id
+    itemForm.post(route('car-loads.items.store', {
+        carLoad: selectedCarLoad.value.id
     }), {
         onSuccess: () => {
             showAddItemsForm.value = false;
@@ -613,7 +614,7 @@ const addMissingProduct = (product) => {
                                             { title: 'Produit', key: 'product.name' },
                                             { title: 'Quantité', key: 'quantity_loaded' },
                                             { title: 'Commentaire', key: 'comment' },
-                                            { title: 'Chargé le', key: 'created_at' },
+                                            { title: 'Chargé le', key: 'loaded_at' },
                                             { title: 'Actions', key: 'actions', sortable: false }
                                         ]"
                                         :items="selectedCarLoad.items"
@@ -636,13 +637,14 @@ const addMissingProduct = (product) => {
                                                 {{ item.quantity_loaded }}
                                             </template>
                                         </template>
-                                        <template v-slot:item.created_at="{ item }">
-                                            {{ new Date(item.created_at).toLocaleDateString('fr-FR', { 
+                                        <template v-slot:item.loaded_at="{ item }">
+                                            {{ new Date(item.loaded_at ??
+                                            item.created_at).toLocaleDateString('fr-FR', {
                                                 day: '2-digit',
-                                                month: '2-digit',
+                                                // month like feb.
+                                                month: 'short',
                                                 year: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit'
+
                                             }) }}
                                             </template>
                                         <template v-slot:item.actions="{ item }">
@@ -754,6 +756,14 @@ const addMissingProduct = (product) => {
                                                     label="Quantité"
                                                     class="mr-2"
                                                     :error-messages="itemForm.errors[`items.${index}.quantity_loaded`]"
+                                                    required
+                                                ></v-text-field>
+                                              <v-text-field
+                                                    v-model="item.loaded_at"
+                                                    type="date"
+                                                    label="Chargé le "
+                                                    class="mr-2"
+                                                    :error-messages="itemForm.errors[`items.${index}.loaded_at`]"
                                                     required
                                                 ></v-text-field>
 
