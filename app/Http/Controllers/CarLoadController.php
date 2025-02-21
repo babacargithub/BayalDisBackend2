@@ -151,21 +151,25 @@ class CarLoadController extends Controller
 
     public function addItems(Request $request, CarLoad $carLoad)
     {
-        $validated = $request->validate([
-            'items' => 'array',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity_loaded' => 'required|integer|min:1',
-            "items.*.loaded_at" => "required|date",
-            'items.*.comment' => 'nullable|string',
-        ]);
 
-
-           $carLoad->items()->createMany(array_map(function ($item) {
+        try {
+            $validated = $request->validate([
+                'items' => 'array',
+                'items.*.product_id' => 'required|exists:products,id',
+                'items.*.quantity_loaded' => 'required|integer|min:1',
+                "items.*.loaded_at" => "required|date",
+                'items.*.comment' => 'nullable|string',
+            ]);
+            $items = array_map(function ($item) {
                 $item["quantity_left"] = $item["quantity_loaded"];
                 return $item;
-            }, $validated['items']));
+            }, $validated['items']);
+            $this->carLoadService->createItems($carLoad, $items);
             return redirect()->back()
                 ->with('success', 'Produit ajouté avec succès');
+        } catch (\Exception $e) {
+            return back()->withErrors(["error"=>$e->getMessage()]);
+        }
 
     }
 

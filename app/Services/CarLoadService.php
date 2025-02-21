@@ -76,13 +76,23 @@ class CarLoadService
         });
     }
 
-    public function deleteItem(CarLoadItem $item): void
+    public function deleteItem(CarLoadItem $item)
     {
-        if ($item->carLoad->status === 'UNLOADED') {
+        if ($item->carLoad->returned) {
             throw new \Exception('Cannot delete items from an unloaded car load');
         }
+        return DB::transaction(function () use ($item) {
+            $quantity_left = $item->quantity_left;
 
-        $item->delete();
+             // increment stock
+             $product = Product::findOrFail($item->product_id);
+             $product->incrementStock($quantity_left, updateMainStock: true);
+             $product->save();
+//             dd($quantity_left, $product->stock_available);
+//             throw new \Exception('Cannot delete items from an unloaded car load');
+             $item->delete();
+
+         });
     }
 
     public function activateCarLoad(CarLoad $carLoad): CarLoad
@@ -307,6 +317,24 @@ class CarLoadService
                     'comment' => 'Transformé à partir de ' . $product->name
                 ]);
             }
+        });
+    }
+
+    public function createItems(CarLoad $carLoad, array $items) : CarLoad
+    {
+       return DB::transaction(function () use ($items, $carLoad) {
+           foreach ($items as $item) {
+                $carLoad->items()->create([
+                    'product_id' => $item['product_id'],
+                    'quantity_loaded' => $item['quantity_loaded'],
+                    'quantity_left' => $item['quantity_left'],
+                    'loaded_at' => $item['loaded_at'] ?? now()->toDateString(),
+                    'comment' => $item['comment'] ?? null,
+                ]);
+                $product = Product::find($item['product_id']);
+                $product->decrementStock($item['quantity_loaded'], updateMainStock: true);
+            }
+           return $carLoad;
         });
     }
 } 

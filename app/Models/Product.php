@@ -37,11 +37,12 @@ class Product extends Model
 
     public function stockEntries()
     {
-        return $this->hasMany(StockEntry::class);
+        return $this->hasMany(StockEntry::class, 'product_id');
     }
 
     public function getStockAvailableAttribute()
     {
+        // TODO check later why this not returning the correct value
         return $this->stockEntries()->sum('quantity_left');
     }
 
@@ -99,10 +100,10 @@ class Product extends Model
     /**
      * @throws Exception
      */
-    public function decrementStock(int $quantity): self
+    public function decrementStock(int $quantity, bool $updateMainStock = false): self
     {
         $commercial = auth()->user()->commercial;
-        if ($commercial) {
+        if ($commercial && !$updateMainStock) {
             self::decreaseStockForProductInCarLoad($this, $quantity);
             return  $this;
         }
@@ -132,25 +133,24 @@ class Product extends Model
     /**
      * @throws Exception
      */
-    public function incrementStock(int $quantity): self
+    public function incrementStock(int $quantity, bool $updateMainStock = false): self
     {
 
         // increment stock using FIFO method
-        $stockEntries = $this->stockEntries()->orderBy('created_at', 'asc')->get();
-        $remainingQuantity = $quantity;
-
-        foreach ($stockEntries as $stockEntry) {
-            if ($stockEntry->quantity_left >= $remainingQuantity) {
-                $stockEntry->increment('quantity_left', $remainingQuantity);
-                $stockEntry->save();
-                break;
-            }
-
-            $remainingQuantity -= $stockEntry->quantity_left;
+        if ($updateMainStock) {
+            $stockEntry = $this->stockEntries()->orderBy('created_at', 'asc')->latest()->firstOrFail();
+            $stockEntry->quantity_left += $quantity;
             $stockEntry->save();
-        }   
-
-        $this->save();
+            $stockEntry->refresh();
+        } else {
+            // find current car load 
+            $commercial = auth()->user()->commercial;
+            if ($commercial) {
+                self::increaseQuantityLeftOfProductInCarLoad($this, $quantity);
+                return  $this;
+            }
+            
+        }
         return $this;
     }
 
@@ -186,6 +186,24 @@ class Product extends Model
                 );
             }
             $carLoad->decreaseStockOfProduct($product, $quantity);
+        }
+
+    } public static  function increaseQuantityLeftOfProductInCarLoad(Product $product, int $quantity): void
+{
+        // check if user is commercial
+        $commercial = auth()->user()->commercial;
+        if ($commercial) {
+            $carLoad = CarLoad::where("team_id", $commercial->team_id)
+                ->where("return_date", ">=", now())
+                ->where("returned", false)
+                ->first();
+            if ($carLoad == null) {
+                throw new UnprocessableEntityHttpException('Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !',
+                );
+            }
+            $carLoadItem = $carLoad->items()->where('product_id', $product->id)->firstOrFail();
+            $carLoadItem->quantity_left = $quantity;
+            $carLoadItem->save();
         }
 
     }
