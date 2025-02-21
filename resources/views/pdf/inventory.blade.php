@@ -58,8 +58,13 @@
     </div>
 
     <div class="info">
-        <p><strong>Commercial:</strong> {{ $carLoad->commercial->name }}</p>
-        <p><strong>Date d'inventaire:</strong> {{ $date }}</p>
+        <p><strong>Commercial:</strong> {{ $carLoad->team->manager->name}}</p>
+        <p>
+            <strong>Date Chargement:</strong> {{ $carLoad->load_date?->format("d/m/Y") }}<strong
+            >&nbsp;Date
+                déchargement:</strong> {{ $carLoad->return_date?->format("d/m/Y")
+        }}<strong>&nbsp;Date
+                d'inventaire:</strong> {{ $date }}</p>
         <p><strong>Créé par:</strong> {{ $inventory->user->name }}</p>
     </div>
 

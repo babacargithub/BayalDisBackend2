@@ -183,6 +183,7 @@ const successMessage = ref('');
 const errorMessage = ref('');
 const editingItemId = ref(null);
 const editingQuantity = ref(null);
+const editingQuantityLeft = ref(null);
 const editingInventoryItemId = ref(null);
 const editingReturnedQuantity = ref(null);
 const showInventoryItemDeleteDialog = ref(false);
@@ -190,7 +191,8 @@ const inventoryItemToDelete = ref(null);
 
 // Create a separate form for editing items
 const editItemForm = useForm({
-    quantity_loaded: null
+    quantity_loaded: null,
+   quantity_left: null,
 });
 
 // Create a separate form for editing inventory items
@@ -226,18 +228,22 @@ const confirmDelete = () => {
 const startEditing = (item) => {
     editingItemId.value = item.id;
     editingQuantity.value = item.quantity_loaded;
+    editingQuantityLeft.value = item.quantity_left;
     editItemForm.quantity_loaded = item.quantity_loaded;
+    editItemForm.quantity_left = item.quantity_left;
 };
 
 const cancelEditing = () => {
     editingItemId.value = null;
     editingQuantity.value = null;
+    editingQuantityLeft.value = null;
     editItemForm.reset();
 };
 
 const saveEditing = (item) => {
     editItemForm.quantity_loaded = editingQuantity.value;
-    editItemForm.put(route('car-loads.items.update', { 
+    editItemForm.quantity_left = editingQuantityLeft.value;
+    editItemForm.put(route('car-loads.items.update', {
         carLoad: selectedCarLoad.value.id,
         item: item.id 
     }), {
@@ -366,12 +372,12 @@ const closeInventory = (inventory) => {
     });
 };
 
-const addMissingProduct = (product) => {
+const addMissingProduct = (item) => {
     // Create a form with a single item
     const singleItemForm = useForm({
         items: [{
-            product_id: product.id,
-            total_returned: null,
+            product_id: item.id,
+            total_returned: item.total_returned,
             comment: ''
         }]
     });
@@ -391,6 +397,37 @@ const addMissingProduct = (product) => {
         },
         onError: (errors) => {
             errorMessage.value = Object.values(errors).flat().join(', ');
+            showErrorSnackbar.value = true;
+        }
+    });
+};
+
+const createNewCarLoadFromInventory = () => {
+    if (!selectedCarLoad.value?.inventory) return;
+
+    const inventory = selectedCarLoad.value.inventory;
+    const newCarLoadForm = useForm({
+        name: `Crée à partir de ${inventory.name}`,
+    });
+
+    newCarLoadForm.post(route('car-loads.create-from-inventory', { inventory: inventory.id }), {
+        onSuccess: (page) => {
+            showInventoryDialog.value = false;
+            // Check for flash messages from the backend
+            if (page.props.flash.success) {
+                successMessage.value = page.props.flash.success;
+                showSuccessSnackbar.value = true;
+            }
+        },
+        onError: (errors) => {
+            // Handle error response from the server
+            if (errors.error) {
+                errorMessage.value = errors.error;
+            } else if (errors.message) {
+                errorMessage.value = errors.message;
+            } else {
+                errorMessage.value = 'Une erreur est survenue lors de la création du chargement';
+            }
             showErrorSnackbar.value = true;
         }
     });
@@ -612,7 +649,8 @@ const addMissingProduct = (product) => {
                                         v-if="selectedCarLoad?.items?.length"
                                         :headers="[
                                             { title: 'Produit', key: 'product.name' },
-                                            { title: 'Quantité', key: 'quantity_loaded' },
+                                            { title: 'Qté chargé', key: 'quantity_loaded' },
+                                            { title: 'Reste', key: 'quantity_left' },
                                             { title: 'Commentaire', key: 'comment' },
                                             { title: 'Chargé le', key: 'loaded_at' },
                                             { title: 'Actions', key: 'actions', sortable: false }
@@ -637,6 +675,22 @@ const addMissingProduct = (product) => {
                                                 {{ item.quantity_loaded }}
                                             </template>
                                         </template>
+                                      <template v-slot:item.quantity_left="{ item }">
+                                            <template v-if="editingItemId === item.id && !selectedCarLoad?.inventory?.closed">
+                                                <v-text-field
+                                                    v-model="editingQuantityLeft"
+                                                    type="number"
+                                                    dense
+                                                    hide-details
+                                                    class="mt-0 pt-0"
+                                                    @keyup.enter="saveEditing(item)"
+                                                    @keyup.esc="cancelEditing"
+                                                ></v-text-field>
+                                            </template>
+                                            <template v-else>
+                                                {{ item.quantity_left }}
+                                            </template>
+                                        </template>
                                         <template v-slot:item.loaded_at="{ item }">
                                             {{ new Date(item.loaded_at ??
                                             item.created_at).toLocaleDateString('fr-FR', {
@@ -646,6 +700,17 @@ const addMissingProduct = (product) => {
                                                 year: 'numeric',
 
                                             }) }}
+                                            </template>
+                                      <template v-slot:item.comment="{ item }">
+                                        <v-btn variant="flat" v-if="item?.comment != null">
+                                          <v-icon>mdi-comment</v-icon>
+
+                                          <v-tooltip
+                                              activator="parent"
+                                              location="top"
+                                          >{{item.comment}}</v-tooltip>
+                                        </v-btn>
+
                                             </template>
                                         <template v-slot:item.actions="{ item }">
                                             <template v-if="!selectedCarLoad?.inventory?.closed">
@@ -758,6 +823,7 @@ const addMissingProduct = (product) => {
                                                     :error-messages="itemForm.errors[`items.${index}.quantity_loaded`]"
                                                     required
                                                 ></v-text-field>
+
                                               <v-text-field
                                                     v-model="item.loaded_at"
                                                     type="date"
@@ -831,9 +897,6 @@ const addMissingProduct = (product) => {
 
                                 <v-card-text class="pa-4">
                                     <template v-if="selectedCarLoad?.inventory">
-                                        <div class="text-subtitle-1 mb-4">
-                                            {{ selectedCarLoad?.inventory.name }}
-                                        </div>
 
                                         <v-window v-model="selectedCarLoad.inventory">
                                             <v-window-item
@@ -1004,173 +1067,185 @@ const addMissingProduct = (product) => {
                                                         </v-card-actions>
                                                     </v-card>
                                                 </v-dialog>
+
+                                                <!-- Missing Products Section -->
+                                                <div v-if="selectedCarLoad.missing_products?.length" class="mt-6">
+                                                    <v-expansion-panels>
+                                                        <v-expansion-panel>
+                                                            <v-expansion-panel-title>
+                                                                <div class="d-flex align-center">
+                                                                    <v-icon color="warning" class="mr-2">
+                                                                        mdi-alert-circle
+                                                                    </v-icon>
+                                                                    Produits non inventoriés ({{ selectedCarLoad.missing_products.length }})
+                                                                </div>
+                                                            </v-expansion-panel-title>
+                                                            <v-expansion-panel-text>
+                                                                <v-data-table
+                                                                    :headers="[
+                                                                        { title: 'Produit', key: 'name' },
+                                                                        { title: 'Qté chargée', key: 'quantity_loaded' },
+                                                                        { title: 'Actions', key: 'actions', align: 'right' }
+                                                                    ]"
+                                                                    :items="selectedCarLoad.missing_products"
+                                                                    hide-default-footer
+                                                                    class="elevation-1"
+                                                                >
+                                                                    <template v-slot:item.actions="{ item }">
+<!--                                                                      create input field for quantity returned-->
+                                                                      <div class="v-row">
+                                                                        <v-text-field
+                                                                            v-model="item.total_returned"
+                                                                            type="number"
+                                                                            label="Qté retournée"
+                                                                            class="mr-2"
+                                                                            :error-messages="itemForm.errors[`items.${index}.quantity_loaded`]"
+                                                                            required/>
+                                                                        <v-btn
+                                                                            v-if="!inventory.closed"
+                                                                            color="primary"
+                                                                            variant="text"
+                                                                            size="small"
+                                                                            @click="addMissingProduct(item)"
+                                                                        >
+                                                                          <v-icon left>mdi-check</v-icon>Ajouter
+                                                                        </v-btn>
+                                                                      </div>
+                                                                    </template>
+                                                                </v-data-table>
+                                                            </v-expansion-panel-text>
+                                                        </v-expansion-panel>
+                                                    </v-expansion-panels>
+                                                </div>
+
                                                 <v-divider class="my-4"></v-divider>
 
-                                                <div class="d-flex justify-end mt-6">
-                                                    <v-btn
-                                                        color="info"
-                                                        variant="text"
-                                                        @click="exportInventoryPdf(selectedCarLoad.id, inventory.id)"
-                                                        class="px-6"
-                                                    >
-                                                        <v-icon left>mdi-file-pdf-box</v-icon>
-                                                        PDF
-                                                    </v-btn>
-                                                    <v-btn
-                                                        color="primary"
-                                                        :disabled="inventory?.closed"
-                                                        @click="() => closeInventory(inventory)"
-                                                        class="px-6"
-                                                    >
-                                                        <v-icon left>mdi-lock</v-icon>
-                                                        Clôturer l'inventaire
-                                                    </v-btn>
-                                                </div>
+                                              <v-btn-group divided rounded>
+                                                <v-btn
+                                                    color="info"
+                                                    variant="text"
+                                                    @click="exportInventoryPdf(selectedCarLoad.id, inventory.id)"
+                                                    class="px-6 mr-2"
+                                                >
+                                                  <v-icon left>mdi-file-pdf-box</v-icon>
+                                                  PDF
+                                                </v-btn>
+                                                <v-btn
+                                                    color="primary"
+                                                    :disabled="inventory?.closed"
+                                                    @click="() => closeInventory(inventory)"
+                                                    class="px-6"
+                                                >
+                                                  <v-icon left>mdi-lock</v-icon>
+                                                  Clôturer l'inventaire
+                                                </v-btn>
+                                                <v-btn
+                                                    v-if="selectedCarLoad?.inventory?.closed"
+                                                    color="primary"
+                                                    stacked variant="text"
+                                                    @click="createNewCarLoadFromInventory"
+                                                    :loading="form.processing"
+                                                >
+                                                  <v-icon left>mdi-plus</v-icon>
+                                                  Créer un nouveau chargement
+                                                </v-btn>
+                                              </v-btn-group>
+                                            </v-window-item>
+                                        </v-window>
+                                    </template>
+                                    <template v-else>
+                                        <v-form @submit.prevent="createInventory" class="mt-4">
+                                            <v-text-field
+                                                v-model="inventoryForm.name"
+                                                label="Nom de l'inventaire"
+                                                :error-messages="inventoryForm.errors.name"
+                                                variant="outlined"
+                                                color="primary"
+                                            ></v-text-field>
 
-                                <!-- Missing Products Section -->
-                                <div v-if="selectedCarLoad.missing_products?.length" class="mt-6">
-                                    <v-expansion-panels>
-                                        <v-expansion-panel>
-                                            <v-expansion-panel-title>
-                                                <div class="d-flex align-center">
-                                                    <v-icon color="warning" class="mr-2">
-                                                        mdi-alert-circle
-                                                    </v-icon>
-                                                    Produits non inventoriés ({{ selectedCarLoad.missing_products.length }})
-                                                </div>
-                                            </v-expansion-panel-title>
-                                            <v-expansion-panel-text>
-                                                <v-list>
-                                                    <v-list-item
-                                                        v-for="product in selectedCarLoad.missing_products"
-                                                        :key="product.id"
-                                                        class="mb-2"
-                                                    >
-                                                        <template v-slot:prepend>
-                                                            <v-icon color="warning">mdi-package-variant</v-icon>
-                                                        </template>
-                                                        <v-list-item-title class="d-flex align-center">
-                                                            {{ product.name }}
-                                                            <v-chip
-                                                                color="warning"
-                                                                size="small"
-                                                                class="ml-4"
-                                                            >
-                                                                Qté chargée: {{ product.quantity_loaded }}
-                                                            </v-chip>
-                                                        </v-list-item-title>
-                                                        <template v-slot:append>
-                                                            <v-btn
-                                                                v-if="!inventory.closed"
-                                                                color="primary"
-                                                                variant="text"
-                                                                size="small"
-                                                                @click="addMissingProduct(product)"
-                                                            >
-                                                                <v-icon>mdi-plus</v-icon>
-                                                                Ajouter à l'inventaire
-                                                            </v-btn>
-                                                        </template>
-                                                    </v-list-item>
-                                                </v-list>
-                                            </v-expansion-panel-text>
-                                        </v-expansion-panel>
-                                    </v-expansion-panels>
-                                </div>
-                            </v-window-item>
-                        </v-window>
-                    </template>
-                    <template v-else>
-                        <v-form @submit.prevent="createInventory" class="mt-4">
-                            <v-text-field
-                                v-model="inventoryForm.name"
-                                label="Nom de l'inventaire"
-                                :error-messages="inventoryForm.errors.name"
-                            ></v-text-field>
+                                            <div class="d-flex justify-end mt-4">
+                                                <v-btn
+                                                    color="primary"
+                                                    type="submit"
+                                                    :loading="inventoryForm.processing"
+                                                >
+                                                    Créer l'inventaire
+                                                </v-btn>
+                                            </div>
+                                        </v-form>
+                                    </template>
+                                </v-card-text>
 
-                            <div class="d-flex justify-end mt-4">
-                                <v-btn
-                                    color="primary"
-                                    type="submit"
-                                    :loading="inventoryForm.processing"
-                                >
-                                    Créer l'inventaire
-                                </v-btn>
-                            </div>
-                        </v-form>
-                    </template>
-                </v-card-text>
+                                <v-card-actions class="pa-4">
+                                    <v-spacer></v-spacer>
+                                    <v-btn
+                                        color="grey darken-1"
+                                        text
+                                        @click="showInventoryDialog = false"
+                                        class="px-4"
+                                    >
+                                        Fermer
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
 
-                <v-card-actions class="pa-4">
-                    <v-spacer></v-spacer>
-                    <v-btn
-                        color="grey darken-1"
-                        text
-                        @click="showInventoryDialog = false"
-                        class="px-4"
-                    >
-                        Fermer
-                    </v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
+                        <!-- Confirmation Dialog -->
+                        <v-dialog v-model="showConfirmDialog" max-width="400px">
+                            <v-card>
+                                <v-card-title class="text-h5">
+                                    Confirmation
+                                </v-card-title>
 
-        <!-- Confirmation Dialog -->
-        <v-dialog v-model="showConfirmDialog" max-width="400px">
-            <v-card>
-                <v-card-title class="text-h5">
-                    Confirmation
-                </v-card-title>
+                                <v-card-text>
+                                    Êtes-vous sûr de vouloir supprimer cet article? Cette action est irréversible!
+                                </v-card-text>
 
-                <v-card-text>
-                    Êtes-vous sûr de vouloir supprimer cet article? Cette action est irréversible!
-                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn
+                                        color="grey darken-1"
+                                        text
+                                        @click="showConfirmDialog = false"
+                                    >
+                                        Annuler
+                                    </v-btn>
+                                    <v-btn
+                                        color="error"
+                                        @click="confirmDelete"
+                                        :loading="form.processing"
+                                    >
+                                        Supprimer
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
 
-                <v-card-actions>
-                    <v-spacer></v-spacer>
-                    <v-btn
-                        color="grey darken-1"
-                        text
-                        @click="showConfirmDialog = false"
-                    >
-                        Annuler
-                    </v-btn>
-                    <v-btn
-                        color="error"
-                        @click="confirmDelete"
-                        :loading="form.processing"
-                    >
-                        Supprimer
-                    </v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
+                        <!-- Success Snackbar -->
+                        <v-snackbar
+                            v-model="showSuccessSnackbar"
+                            color="success"
+                            timeout="3000"
+                        >
+                            {{ successMessage }}
+                        </v-snackbar>
 
-        <!-- Success Snackbar -->
-        <v-snackbar
-            v-model="showSuccessSnackbar"
-            color="success"
-            timeout="3000"
-        >
-            {{ successMessage }}
-        </v-snackbar>
+                        <!-- Error Snackbar -->
+                        <v-snackbar
+                            v-model="showErrorSnackbar"
+                            color="error"
+                            timeout="5000"
+                        >
+                            {{ errorMessage }}
+                        </v-snackbar>
 
-        <!-- Error Snackbar -->
-        <v-snackbar
-            v-model="showErrorSnackbar"
-            color="error"
-            timeout="5000"
-        >
-            {{ errorMessage }}
-        </v-snackbar>
-
-        <!-- Debug section -->
-      
-    </div>
-</div>
-</div>
+                        <!-- Debug section -->
+                      
+                    </div>
+                </div>
+            </div>
         </div>
-</AuthenticatedLayout>
+    </AuthenticatedLayout>
 </template>
 
 <style>

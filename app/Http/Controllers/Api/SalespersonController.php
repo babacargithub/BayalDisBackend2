@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerVisitResource;
+use App\Models\CarLoad;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
@@ -20,6 +21,8 @@ use Carbon\Carbon;
 use App\Models\Order;
 use App\Services\CustomerVisitService;
 use App\Services\SalesInvoiceService;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class SalespersonController extends Controller
 {
@@ -201,66 +204,63 @@ class SalespersonController extends Controller
 
         // Verify that the customer belongs to this salesperson
         $customer = Customer::findOrFail($validated['customer_id']);
-        
-
-        $vente = $commercial->ventes()->create([
-            'product_id' => $validated['product_id'],
-            'customer_id' => $validated['customer_id'],
-            'quantity' => $validated['quantity'],
-            'price' => $validated['price'],
-            'paid' => $validated['paid'],
-            'paid_at' => $validated['paid'] ? now() : null,
-            'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
-            'payment_method' => $validated['payment_method'] ?? "Cash",
-            'user_id' => $request->user()->id,
-        ]);
-        if ($customer->is_prospect){
-            $customer->is_prospect = false;
-            $customer->save();
-        }
         $product = Product::findOrFail($validated['product_id']);
+        return DB::transaction(function ()use ($product, $validated, $commercial, $request, $customer) {
+//            i{
+//
+//            }
+//            else if ($product->stock_available < $validated['quantity']) {
+//                return response()->json(['message' => 'Stock insuffisant pour le produit '.$product->name], 422);
+//            }
 
-        if ($product->stock_available < $validated['quantity']) {
-            return response()->json(['message' => 'Stock insuffisant'], 422);
-        }
-        // check if customer has visit planned if yes we mark it as completed
-        $visit = $customer->visits()->whereDate('visit_planned_at', '<=', now()->toDateString())->where('status',
-            CustomerVisit::STATUS_PLANNED)->first();
-        if ($visit) {
-            $visit->status = CustomerVisit::STATUS_COMPLETED;
-            $visit->visited_at = now();
-            $visit->notes = "Visite marquée comme terminée directement suite à une vente";
-            $visit->gps_coordinates = $customer->gps_coordinates;
-            $visit->save();
-        }
+            $vente = $commercial->ventes()->create([
+                'product_id' => $validated['product_id'],
+                'customer_id' => $validated['customer_id'],
+                'quantity' => $validated['quantity'],
+                'price' => $validated['price'],
+                'paid' => $validated['paid'],
+                'paid_at' => $validated['paid'] ? now() : null,
+                'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
+                'payment_method' => $validated['payment_method'] ?? "Cash",
+                'user_id' => $request->user()->id,
+            ]);
+            if ($customer->is_prospect){
+                $customer->is_prospect = false;
+                $customer->save();
+            }
 
-        $product->decrementStock($validated['quantity']);
+            // check if customer has visit planned if yes we mark it as completed
+            $this->terminateVisitIfCustomerHasOne($customer);
 
-        // Load the relationships
-        $vente->load(['customer', 'product']);
+            $product->decrementStock($validated['quantity']);
 
-        $response = [
-            'vente' => [
-                'id' => $vente->id,
-                'product' => $vente->product->name,
-                'customer' => $vente->customer->name,
-                'customer_phone_number' => $vente->customer->phone_number,
-                'quantity' => $vente->quantity,
-                'price' => $vente->price,
-                'total' => $vente->price * $vente->quantity,
-                'paid' => (bool)$vente->paid,
-                'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
-                'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
-                'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
-            ],
-        ];
+            // Load the relationships
+            $vente->load(['customer', 'product']);
 
-        // Add Wave payment URL if Wave is selected as payment method
-        if (strtolower($validated['payment_method']) == 'wave') {
-            $response['vente']['wave_payment_url'] = 'https://pay.wave.com/m/M_lzWrf_pI8keK/c/sn/?amount=' . $vente->price * $vente->quantity;
-        }
+            $response = [
+                'vente' => [
+                    'id' => $vente->id,
+                    'product' => $vente->product->name,
+                    'customer' => $vente->customer->name,
+                    'customer_phone_number' => $vente->customer->phone_number,
+                    'quantity' => $vente->quantity,
+                    'price' => $vente->price,
+                    'total' => $vente->price * $vente->quantity,
+                    'paid' => (bool)$vente->paid,
+                    'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
+                    'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
+                    'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
+                ],
+            ];
 
-        return response()->json($response, 201);
+            // Add Wave payment URL if Wave is selected as payment method
+            if (strtolower($validated['payment_method']) == 'wave') {
+                $response['vente']['wave_payment_url'] = 'https://pay.wave.com/m/M_lzWrf_pI8keK/c/sn/?amount=' . $vente->price * $vente->quantity;
+            }
+
+            return response()->json($response, 201);
+
+        });
     }
 
     public function getCustomerVentes(Request $request, Customer $customer)
@@ -586,6 +586,7 @@ class SalespersonController extends Controller
 
         $orders =Order::
         with(['customer', 'product'])
+            ->where("status", Order::STATUS_WAITING)
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -901,6 +902,9 @@ class SalespersonController extends Controller
             'paid' => 'required|boolean',
             'payment_method' => 'required_if:paid,true|nullable|string',
             'should_be_paid_at' => 'required_if:paid,false|nullable|date',
+        ],[
+            "should_be_paid_at"=>"Vous devez préciser l'échéance car la facture n'est pas payée !",
+            'payment_method'=>"Vous devez choisir un moyen de paiement parmi CASH, WAVE ou OM"
         ]);
 
 
@@ -1039,4 +1043,23 @@ class SalespersonController extends Controller
 
         return response()->json($invoices);
     }
+
+    /**
+     * @param Customer|\LaravelIdea\Helper\App\Models\_IH_Customer_C|array $customer
+     * @return void
+     */
+    function terminateVisitIfCustomerHasOne(Customer|\LaravelIdea\Helper\App\Models\_IH_Customer_C|array $customer): void
+    {
+        $visit = $customer->visits()->whereDate('visit_planned_at', '<=', now()->toDateString())->where('status',
+            CustomerVisit::STATUS_PLANNED)->first();
+        if ($visit) {
+            $visit->status = CustomerVisit::STATUS_COMPLETED;
+            $visit->visited_at = now();
+            $visit->notes = "Visite marquée comme terminée directement suite à une vente";
+            $visit->gps_coordinates = $customer->gps_coordinates;
+            $visit->save();
+        }
+    }
+
+
 }

@@ -5,12 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $quantity_left
+ */
 class CarLoadItem extends Model
 {
     protected $fillable = [
         'car_load_id',
         'product_id',
         'quantity_loaded',
+        "quantity_left",
         'comment',
         "loaded_at"
     ];
@@ -19,7 +23,9 @@ class CarLoadItem extends Model
         'quantity_loaded' => 'integer',
         "created_at" => "datetime",
         "updated_at" => "datetime",
+        "loaded_at" => "date"
     ];
+    protected $guarded = ['id',"quantity_left"];
 
     public function carLoad(): BelongsTo
     {
@@ -30,4 +36,18 @@ class CarLoadItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    public function increaseQuantityLeft(int $quantity): void
+    {
+        $this->quantity_left += $quantity;
+        $this->save();
+    }
+    public function decreaseQuantityLeft(int $quantity): void
+    {
+        $this->quantity_left -= $quantity;
+        $this->save();
+
+    }
+
+
 }

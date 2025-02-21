@@ -68,7 +68,7 @@ class CarLoadController extends Controller
 
     public function show(CarLoad $carLoad)
     {
-        $carLoad->load(['items.product', 'commercial']);
+        $carLoad->load(['items.product']);
         $products = Product::all();
 
         return Inertia::render('CarLoads/Show', [
@@ -160,7 +160,10 @@ class CarLoadController extends Controller
         ]);
 
 
-           $carLoad->items()->createMany($validated['items']);
+           $carLoad->items()->createMany(array_map(function ($item) {
+                $item["quantity_left"] = $item["quantity_loaded"];
+                return $item;
+            }, $validated['items']));
             return redirect()->back()
                 ->with('success', 'Produit ajouté avec succès');
 
@@ -170,11 +173,13 @@ class CarLoadController extends Controller
     {
         $validated = $request->validate([
             'quantity_loaded' => 'required|integer|min:1',
+            "quantity_left" => "nullable|numeric",
             'comment' => 'nullable|string',
             'loaded_at' => 'nullable|date',
         ]);
 
         try {
+
             $this->carLoadService->updateItem($item, $validated);
             return redirect()->back()
                 ->with('success', 'Produit mis à jour avec succès');
@@ -246,12 +251,12 @@ class CarLoadController extends Controller
         $carLoad->inventory()->create([
             'name' => $validated['name'],
             'user_id' => auth()->id(),
-            'comment' => $validated['comment'] ?? null  ,
         ]);
 
-        $inventory = $carLoad->inventory;
-        $inventory->items()->createMany($validated["items"]);
-
+        if (isset($validated["items"])) {
+            $inventory = $carLoad->inventory;
+            $inventory->items()->createMany($validated["items"]);
+        }
 
 
         return redirect()->back()
@@ -314,6 +319,8 @@ class CarLoadController extends Controller
     public function closeInventory(CarLoad $carLoad, CarLoadInventory $inventory)
     {
         $inventory->update(['closed' => true]);
+        $carLoad->returned = true;
+        $carLoad->save();
 
         return redirect()->back()
             ->with('success', 'Inventaire clôturé avec succès');
@@ -344,5 +351,24 @@ class CarLoadController extends Controller
         ]);
 
         return $pdf->download("chargement_{$carLoad->id}_{$carLoad->name}.pdf");
+    }
+
+    public function createFromInventory(CarLoadInventory $inventory)
+    {
+        try {
+            $this->carLoadService->createFromInventory($inventory);
+            return redirect()->route('car-loads.index')
+                ->with('success', 'Nouveau chargement créé avec succès à partir de l\'inventaire');
+        } catch (\Exception $e) {
+            // If we're handling an AJAX/Inertia request
+            if (request()->wantsJson()) {
+                return response()->json([
+                    'error' => $e->getMessage()
+                ], 422);
+            }
+
+            // For regular requests, redirect back with error
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
     }
 } 

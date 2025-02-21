@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerVisit;
 use App\Models\SalesInvoice;
 use App\Models\Customer;
 use App\Models\Product;
@@ -42,7 +43,8 @@ class SalesInvoiceService
                 ];
 
                 // Update product stock using the decrementStock method
-               Product::findOrFail($item['product_id'])->decrementStock($item['quantity']);
+               $product = Product::findOrFail($item['product_id']);
+               $product->decrementStock($item['quantity']);
             }
                 Vente::insert($itemsArray);
 
@@ -58,7 +60,8 @@ class SalesInvoiceService
             }
             //check customer has current visite also check if it is a prospect
             $customer = Customer::findOrFail($data['customer_id']);
-            $customerVisit = $customer->visits()->where('status', 'completed')->orderBy('created_at','asc')->first();
+            $customerVisit = $customer->visits()->where('status', CustomerVisit::STATUS_PLANNED)->orderBy('created_at','asc')
+                ->first();
             $customerVisit?->complete([
                 "notes" => "Visite complété après enregistrement facture",
                 "gps_coordinates" =>  $customer->gps_coordinates,

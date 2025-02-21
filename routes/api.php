@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ApiCarLoadController;
 use App\Http\Controllers\Api\SalespersonController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\CustomerVisitController;
+use App\Http\Controllers\Api\ProductController as ApiProductController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
@@ -71,10 +72,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('visits/complete-from-mobile', [CustomerVisitController::class, 'completeFromMobile']);
 
         Route::get('customer-categories', [SalespersonController::class, 'getCustomerCategories']);
+        Route::post('orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
+
+        Route::get('car-loads/current-items', [ApiCarLoadController::class, 'getCurrentItems']);
+        Route::get('products/{product}/variants', [ApiCarLoadController::class, 'getProductVariants']);
+        Route::post('car-loads/{product}/transform', [ApiCarLoadController::class, 'transformToVariants']);
     });
 
     // Add this route with the other API routes
-    Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
 
-    Route::get('/car-loads/current-items', [ApiCarLoadController::class, 'getCurrentItems']);
 });

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use JetBrains\PhpStorm\ArrayShape;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class Product extends Model
 {
@@ -61,7 +62,7 @@ class Product extends Model
         return $this->hasMany(Product::class, 'parent_id');
     }
 
-    public function getIsBaseProductAttribute()
+    public function getIsBaseProductAttribute(): bool
     {
         return is_null($this->parent_id);
     }
@@ -95,8 +96,16 @@ class Product extends Model
         return $this->ventes()->sum('quantity');
     }
 
+    /**
+     * @throws Exception
+     */
     public function decrementStock(int $quantity): self
     {
+        $commercial = auth()->user()->commercial;
+        if ($commercial) {
+            self::decreaseStockForProductInCarLoad($this, $quantity);
+            return  $this;
+        }
         $totalAvailableStock = $this->stockEntries()->sum('quantity_left');
 
         if ($totalAvailableStock < $quantity) {
@@ -119,8 +128,13 @@ class Product extends Model
         return $this;
 
     }
+
+    /**
+     * @throws Exception
+     */
     public function incrementStock(int $quantity): self
     {
+
         // increment stock using FIFO method
         $stockEntries = $this->stockEntries()->orderBy('created_at', 'asc')->get();
         $remainingQuantity = $quantity;
@@ -150,5 +164,29 @@ class Product extends Model
             throw new Exception("Aucun stock disponible pour le produit {$this->name}");
         }
         return $stockEntry;
+    }
+    /**
+     * @throws \Exception
+     */
+    public static  function decreaseStockForProductInCarLoad(Product $product, int $quantity)
+    {
+        // check if user is commercial
+        $commercial = auth()->user()->commercial;
+        if ($commercial) {
+            $carLoad = CarLoad::where("team_id", $commercial->team_id)
+                ->where("return_date", ">=", now())
+                ->where("returned", false)
+                ->first();
+            if ($carLoad == null) {
+                throw new UnprocessableEntityHttpException('Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !',
+                );
+            }
+            if ($carLoad->getTotalQuantityLeftOfProduct($product) < $quantity) {
+                throw new UnprocessableEntityHttpException('Stock insuffisant pour le produit ' . $product->name . " dans le véhicule " . $carLoad->name.'. Qté restante : '.$carLoad->getTotalQuantityLeftOfProduct($product),
+                );
+            }
+            $carLoad->decreaseStockOfProduct($product, $quantity);
+        }
+
     }
 }
