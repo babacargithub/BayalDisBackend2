@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\SalesInvoice;
 use App\Models\User;
 use App\Models\Vente;
 use App\Models\Payment;
@@ -45,6 +46,11 @@ class DashboardController extends Controller
             $total_amount_paid = Vente::whereDate('created_at', $today)
                 ->where('paid', true)
                 ->sum(DB::raw('price * quantity'));
+            $total_paid_invoices = SalesInvoice::whereDate("created_at",now()->toDateString())
+                ->where("paid", true)
+                ->get()
+                ->sum("total");
+            $total_amount_paid = $total_amount_paid + $total_paid_invoices;
             
             $total_amount_unpaid = Vente::whereDate('created_at', $today)
                 ->where('paid', false)

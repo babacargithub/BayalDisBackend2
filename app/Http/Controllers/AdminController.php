@@ -12,6 +12,7 @@ use App\Models\Depense;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
 use Illuminate\Support\Facades\DB;
+use App\Models\CarLoad;
 
 class AdminController extends Controller
 {
@@ -19,6 +20,8 @@ class AdminController extends Controller
     {
         // Calculate total stock value
         $stockValue = Product::all()->sum("stock_value");
+        $totalCarLoads = CarLoad::where("returned", false)->sum("stock_value");
+        $stockValue += $totalCarLoads;
 
         // Calculate total debt (unpaid amount from sales)
         $totalDebt = SalesInvoice::all()->sum("total_remaining");

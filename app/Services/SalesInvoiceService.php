@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Payment;
 use App\Models\Vente;
+use http\Client\Curl\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
@@ -34,19 +35,27 @@ class SalesInvoiceService
                 $itemAmount = $item['quantity'] * $item['price'];
                 $totalAmount += $itemAmount;
 
-                $itemsArray[] = [
+                $itemsArray[] = new Vente([
                     'sales_invoice_id' => $salesInvoice->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     "type" => "INVOICE_ITEM",
-                ];
+                    "created_at"=>now(),
+                    "updated_at"=>now(),
+                ]);
 
                 // Update product stock using the decrementStock method
                $product = Product::findOrFail($item['product_id']);
                $product->decrementStock($item['quantity']);
             }
-                Vente::insert($itemsArray);
+            $itemsArray = collect($itemsArray);
+                $salesInvoice->items()->saveMany($itemsArray);
+                // loop through items to calculate profits
+                foreach ($itemsArray as $vente){
+                    $vente->profit = ($vente->price - $vente->product->coast_price) * $vente->quantity;
+                    $vente->save();
+                }
 
 
             // If paid, create payment record

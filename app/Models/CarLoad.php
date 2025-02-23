@@ -101,5 +101,16 @@ class CarLoad extends Model
         }
     }
 
+    public function stockValue(): int
+    {
+    
+        $items = $this->items()->get();
+        $totalValue = 0;
+        foreach ($items as $item) {
+            $totalValue += $item->quantity_left * $item->product->cost_price;
+        }
+        return $totalValue;
+    }
+
     
 } 
