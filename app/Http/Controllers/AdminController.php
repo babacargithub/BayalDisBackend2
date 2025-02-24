@@ -18,9 +18,10 @@ class AdminController extends Controller
 {
     public function rapport()
     {
+        $fondRoulement = 855000+1620000;
         // Calculate total stock value
         $stockValue = Product::all()->sum("stock_value");
-        $totalCarLoads = CarLoad::where("returned", false)->sum("stock_value");
+        $totalCarLoads = CarLoad::where("returned", false)->get()->sum("stock_value");
         $stockValue += $totalCarLoads;
 
         // Calculate total debt (unpaid amount from sales)
@@ -57,7 +58,8 @@ class AdminController extends Controller
                 'total_profits' => $totalProfits,
                 "total_caisses"=>"$totalCaisses",
                 "total_payments"=>Payment::all()->sum('amount'),
-                "value_of_business"=>($stockValue+$totalCaisses+$totalDebt)
+                "value_of_business"=>($stockValue+$totalCaisses+$totalDebt),
+                "net_profit"=> ($stockValue+$totalCaisses+$totalDebt) - $fondRoulement
             ]
         ]);
     }

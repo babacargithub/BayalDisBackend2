@@ -66,7 +66,9 @@ class SalesInvoice extends Model
 
     public function getTotalRemainingAttribute()
     {
-        return $this->total - $this->payments->sum('amount');
+        return $this->items()
+                ->selectRaw('SUM(quantity * price) as total')
+                ->value('total') - $this->payments->sum('amount');
     }
 
     public function getTotalPaidAttribute() : int

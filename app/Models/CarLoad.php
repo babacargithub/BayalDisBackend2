@@ -101,7 +101,7 @@ class CarLoad extends Model
         }
     }
 
-    public function stockValue(): int
+    public function getStockValueAttribute(): int
     {
     
         $items = $this->items()->get();

@@ -64,6 +64,7 @@
           <v-table>
             <thead>
               <tr>
+                <th>Date</th>
                 <th>Client</th>
                 <th>Articles</th>
                 <th>Total</th>
@@ -76,6 +77,9 @@
             </thead>
             <tbody>
               <tr v-for="invoice in filteredInvoices" :key="invoice.id">
+                <td>
+                  {{ invoice.created_at ? formatDate(invoice.created_at) : 'N/A' }}
+                </td>
                 <td>{{ invoice.customer.name }}</td>
                 <td>{{ invoice.items?.length || 0 }} article(s)</td>
                 <td>{{ formatPrice(invoice.total) }}</td>
@@ -85,6 +89,7 @@
                     {{ formatPrice(getRemainingAmount(invoice)) }}
                   </span>
                 </td>
+
                 <td>
                   {{ invoice.should_be_paid_at ? formatDate(invoice.should_be_paid_at) : 'N/A' }}
                 </td>
@@ -267,7 +272,16 @@ const formatPrice = (price) => {
 }
 
 const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('fr-FR')
+  if (date==null){
+    return "";
+  }
+  // return new Date(date).toLocaleDateString('fr-FR')
+  return new Date(date).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+
+  })
 }
 
 const getRemainingAmount = (invoice) => {
