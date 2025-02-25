@@ -8,6 +8,7 @@ use App\Models\Vente;
 use App\Models\Payment;
 use App\Models\Customer;
 use App\Models\Product;
+use Exception;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -104,7 +105,7 @@ class SalesInvoiceController extends Controller
             DB::commit();
 
             return redirect()->back()->with('success', 'Facture créée avec succès');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->back()->withErrors(['error' => 'Échec de la création de la facture. Veuillez réessayer.']);
@@ -140,7 +141,7 @@ class SalesInvoiceController extends Controller
           
             DB::commit();
             return redirect()->back()->with('success', 'Invoice updated successfully.');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->back()->with('error', 'Failed to update invoice. Please try again.');
@@ -156,6 +157,16 @@ class SalesInvoiceController extends Controller
 
         try {
             DB::beginTransaction();
+        // put stock back            
+            foreach ($salesInvoice->items as $item) {
+                $product = Product::findOrFail($item->product_id);
+                $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($product, $salesInvoice->commercial);
+                if ($carLoadItem !=null){
+                    $carLoadItem->quantity_left += $item->quantity;
+                    $carLoadItem->save();
+
+                }
+            }
             
             // Delete related items first
             $salesInvoice->items()->delete();
@@ -165,7 +176,7 @@ class SalesInvoiceController extends Controller
             
             DB::commit();
             return redirect()->route('sales-invoices.index')->with('success', 'Invoice deleted successfully.');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->route('sales-invoices.index')->with('error', 'Failed to delete invoice. Please try again.');
@@ -217,7 +228,7 @@ class SalesInvoiceController extends Controller
                 'success' => 'Item added successfully',
                 'invoice' => $salesInvoice
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->back()->with('error', 'Failed to add item');
@@ -237,7 +248,7 @@ class SalesInvoiceController extends Controller
         try {
             DB::beginTransaction();
 
-            $commercial = $item->commercial;
+            $commercial = $item->commercial ?? $salesInvoice->commercial;
             // put stock back
             if ($commercial != null){
                 $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($item->product, $commercial);
@@ -262,7 +273,7 @@ class SalesInvoiceController extends Controller
                 'success' => 'Article supprimé avec succès',
                 'invoice' => $salesInvoice
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->back()->withErrors(['error' => 'Échec de la suppression de l\'article. Veuillez réessayer.']);
@@ -325,7 +336,7 @@ class SalesInvoiceController extends Controller
                 'success' => 'Paiement ajouté avec succès',
                 'invoice' => $salesInvoice
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->back()->withErrors(['error' => 'Échec de l\'ajout du paiement. Veuillez réessayer.']);
@@ -351,7 +362,7 @@ class SalesInvoiceController extends Controller
 
             DB::commit();
             return redirect()->back()->with('success', 'Payment removed successfully.');
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->back()->with('error', 'Failed to remove payment. Please try again.');
@@ -417,7 +428,7 @@ class SalesInvoiceController extends Controller
                 'success' => 'Paiement mis à jour avec succès',
                 'invoice' => $salesInvoice
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             report($e);
             return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour du paiement. Veuillez réessayer.']);
