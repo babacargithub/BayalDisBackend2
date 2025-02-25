@@ -112,5 +112,20 @@ class CarLoad extends Model
         return $totalValue;
     }
 
+    public static function findCarLoadItemForProductAndCommercial(Product $product, Commercial $commercial)
+    {
+        $carload = CarLoad::where("returned", false)
+        ->where("team_id", $commercial->team_id)
+        ->where("return_date",">", now()->toDateString())
+        ->first();
+    if ($carload == null){ 
+        return null;
+      }
+        $carLoadItem = $carload->items()
+            ->where("product_id", $product->id)
+            ->latest()
+            ->first();
+        return $carLoadItem;
+    }
     
 } 

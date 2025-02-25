@@ -24,6 +24,7 @@ class SalesInvoiceService
                 "label" => "Facture Vente",
                 'paid' => $data['paid'] ?? false,
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
+                "commercial_id" => request()->user()->commercial->id,
             ]);
             $salesInvoice->save();
             $salesInvoice->refresh();
@@ -42,6 +43,7 @@ class SalesInvoiceService
                     'price' => $item['price'],
                     "type" => "INVOICE_ITEM",
                     "created_at"=>now(),
+                    "commercial_id" => request()->user()->commercial->id,
                     "updated_at"=>now(),
                 ]);
 

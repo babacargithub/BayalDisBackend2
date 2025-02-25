@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CarLoad;
 use App\Models\Vente;
 use App\Models\Product;
 use App\Models\Customer;
@@ -150,11 +151,33 @@ class VenteController extends Controller
     public function destroy(Vente $vente)
     {
         try {
-            if ($vente->type !== 'SINGLE') {
-                return redirect()->back()->with('error', 'Cannot delete invoice items directly');
-            }
-            $vente->delete();
-            return redirect()->back()->with('success', 'Vente supprimée avec succès');
+           return  DB::transaction(function () use ($vente){
+               if ($vente->type !== 'SINGLE') {
+                   return redirect()->back()->with('error', 'Cannot delete invoice items directly');
+               }
+               $commercial = $vente->commercial;
+               // put stock back
+               if ($commercial){
+                   $carload = CarLoad::where("returned", false)
+                       ->where("team_id", $commercial->team_id)
+                       ->where("return_date",">", now()->toDateString())
+                       ->first();
+                   if ($carload){
+                       $carLoadItem = $carload->items()
+                           ->where("product_id", $vente->product_id)
+                           ->latest()
+                           ->first();
+                       if ($carLoadItem){
+                           $carLoadItem->quantity_left += $vente->quantity;
+                           $carLoadItem->save();
+                       }
+                   }
+
+               }
+
+               $vente->delete();
+               return redirect()->back()->with('success', 'Vente supprimée avec succès !');
+           });
         } catch (Exception $e) {
             return redirect()->back()->with('error', 'Erreur lors de la suppression de la vente : ' . $e->getMessage());
         }

@@ -18,7 +18,7 @@ class SalesInvoice extends Model
         'paid',
         'should_be_paid_at',
         "comment",
-
+        "commercial_id",
     ];
 
     protected $casts = [
@@ -74,5 +74,9 @@ class SalesInvoice extends Model
     public function getTotalPaidAttribute() : int
     {
         return $this->payments->sum('amount');
+    }
+    public function commercial(): BelongsTo
+    {
+        return $this->belongsTo(Commercial::class);
     }
 } 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CarLoad;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
 use App\Models\Payment;
@@ -186,7 +187,7 @@ class SalesInvoiceController extends Controller
             DB::beginTransaction();
             
             // Create the new item
-            Vente::create([
+            $vente = Vente::create([
                 'sales_invoice_id' => $salesInvoice->id,
                 'product_id' => $request->product_id,
                 'quantity' => $request->quantity,
@@ -195,6 +196,12 @@ class SalesInvoiceController extends Controller
                 'paid' => $salesInvoice->paid,
                 'should_be_paid_at' => $salesInvoice->should_be_paid_at,
             ]);
+            $vente->refresh();
+            $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($vente->product, \request()->user()->commercial);
+            if ($carLoadItem !== null){
+                $carLoadItem->quantity_left -= $vente->quantity;
+                $carLoadItem->save();
+            }
 
             // Reload the invoice with its relationships
             $salesInvoice->load([
@@ -228,6 +235,17 @@ class SalesInvoiceController extends Controller
 
         try {
             DB::beginTransaction();
+
+            $commercial = $item->commercial;
+            // put stock back
+            if ($commercial != null){
+                $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($item->product, $commercial);
+
+                    if ($carLoadItem) {
+                        $carLoadItem->quantity_left += $item->quantity;
+                        $carLoadItem->save();
+                    }
+            }
             $item->delete();
             
             // Reload the invoice with its relationships
