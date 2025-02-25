@@ -9,6 +9,14 @@
           <v-btn color="primary" @click="showCreateDialog = true">
             Nouvelle Facture
           </v-btn>
+          <v-btn 
+            color="error" 
+            :href="route('sales-invoices.unpaid-pdf')"
+            target="_blank"
+          >
+            <v-icon>mdi-file-pdf-box</v-icon>
+            Factures impayées
+          </v-btn>
         </div>
       </div>
     </template>
@@ -66,38 +74,27 @@
               <tr>
                 <th>Date</th>
                 <th>Client</th>
-                <th>Articles</th>
+                <th>Téléphone</th>
                 <th>Total</th>
-                <th>Payé</th>
+                <th>Total payé</th>
                 <th>Reste à payer</th>
-                <th>Échéance</th>
-                <th>Statut</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="invoice in filteredInvoices" :key="invoice.id">
+                <td>{{ formatDate(invoice.created_at) }}</td>
                 <td>
-                  {{ invoice.created_at ? formatDate(invoice.created_at) : 'N/A' }}
+                  <div>{{ invoice.customer.name }}</div>
+                  <div class="text-caption text-grey">{{ invoice.customer.address }}</div>
                 </td>
-                <td>{{ invoice.customer.name }}</td>
-                <td>{{ invoice.items?.length || 0 }} article(s)</td>
+                <td>{{ invoice.customer.phone_number }}</td>
                 <td>{{ formatPrice(invoice.total) }}</td>
                 <td>{{ formatPrice(invoice.total - getRemainingAmount(invoice)) }}</td>
                 <td>
                   <span :class="getRemainingAmount(invoice) > 0 ? 'text-error' : ''">
                     {{ formatPrice(getRemainingAmount(invoice)) }}
                   </span>
-                </td>
-
-                <td>
-                  {{ invoice.should_be_paid_at ? formatDate(invoice.should_be_paid_at) : 'N/A' }}
-                </td>
-                <td>
-                  <v-chip
-                    :color="invoice.paid ? 'success' : 'warning'"
-                    :text="invoice.paid ? 'Payée' : 'Non Payée'"
-                  />
                 </td>
                 <td>
                   <div class="flex gap-1">

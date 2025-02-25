@@ -11,6 +11,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use PDF;
 
 class SalesInvoiceController extends Controller
 {
@@ -197,7 +198,7 @@ class SalesInvoiceController extends Controller
                 'should_be_paid_at' => $salesInvoice->should_be_paid_at,
             ]);
             $vente->refresh();
-            $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($vente->product, \request()->user()->commercial);
+            $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($vente->product, $salesInvoice->commercial);
             if ($carLoadItem !== null){
                 $carLoadItem->quantity_left -= $vente->quantity;
                 $carLoadItem->save();
@@ -492,5 +493,23 @@ class SalesInvoiceController extends Controller
 
         return $pdf->download('facture de '.$salesInvoice->customer->name.'-' . $salesInvoice->id . '.pdf');
 
+    }
+
+    public function exportUnpaidPdf()
+    {
+        $unpaidInvoices = SalesInvoice::with(['customer', 'payments', 'items'])
+            ->select('sales_invoices.*')
+            ->selectRaw('(SELECT SUM(quantity * price) FROM ventes WHERE sales_invoice_id = sales_invoices.id AND type = "INVOICE_ITEM") as total')
+            ->selectRaw('COALESCE((SELECT SUM(amount) FROM payments WHERE sales_invoice_id = sales_invoices.id), 0) as total_paid')
+            ->havingRaw('total_paid < total OR total_paid IS NULL')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $pdf = PDF::loadView('pdf.unpaid-invoices', [
+            'invoices' => $unpaidInvoices,
+            'date' => now()->format('d/m/Y H:i')
+        ]);
+
+        return $pdf->download('factures_impayees_'.now()->format('d_m_Y').'.pdf');
     }
 } 
