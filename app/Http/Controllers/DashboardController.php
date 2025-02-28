@@ -67,8 +67,8 @@ class DashboardController extends Controller
                 ->where('paid', true)
                 ->where('type',Vente::TYPE_SINGLE)
                 ->sum('profit')
-                + SalesInvoice::whereDate("created_at",$today->toDateString())
-                    ->get()->sum("totalProfitPaid");
+                +  Payment::whereDate('created_at', $today)
+                    ->get()->sum("total_profit");
 
             $total_payments = Payment::whereDate('created_at', $today)
                 ->sum('amount');

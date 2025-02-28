@@ -23,6 +23,7 @@ class Payment extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];
+    protected $appends = ['total_profit'];
 
     public function salesInvoice(): BelongsTo
     {
@@ -32,5 +33,11 @@ class Payment extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+    public function getTotalProfitAttribute()
+    {
+        $percentageOfProfit = $this->salesInvoice->getPercentageOfProfit();
+        return (int)$this->amount * $percentageOfProfit;
+
     }
 } 

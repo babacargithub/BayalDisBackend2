@@ -84,10 +84,15 @@ class SalesInvoice extends Model
         return (int)$this->items()->selectRaw('SUM(profit) as total')->value('total');
 
     }
-    public function getTotalProfitPaidAttribute() : int
+    public function getPercentageOfProfit(): float|int
     {
         $profit = $this->getTotalProfitAttribute();
-        $percentageOfProfit = $profit / $this->total;
+        return $profit / $this->total;
+
+    }
+    public function getTotalProfitPaidAttribute() : int
+    {
+        $percentageOfProfit = $this->getPercentageOfProfit();
 
         return  $this->total_paid * $percentageOfProfit;
 
