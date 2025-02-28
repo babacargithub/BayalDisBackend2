@@ -26,6 +26,7 @@ class CarLoad extends Model
         'return_date' => 'datetime',
         'returned' => 'boolean'
     ];
+    protected $appends = ['stock_value'];
 
     public function team(): BelongsTo
     {

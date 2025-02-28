@@ -78,6 +78,8 @@
                 <th>Total</th>
                 <th>Total payé</th>
                 <th>Reste à payer</th>
+                <th>Bénéfice</th>
+                <th>Benefi Recu</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -94,6 +96,15 @@
                 <td>
                   <span :class="getRemainingAmount(invoice) > 0 ? 'text-error' : ''">
                     {{ formatPrice(getRemainingAmount(invoice)) }}
+                  </span>
+                </td>
+                <td>
+                  <span>
+                    {{ formatPrice(invoice.total_profit) }}
+                  </span>
+                </td> <td>
+                  <span>
+                    {{ formatPrice(invoice.total_profit_paid) }}
                   </span>
                 </td>
                 <td>

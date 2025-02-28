@@ -14,6 +14,8 @@ class Vente extends Model
     const PAYMENT_METHOD_CASH = 'Cash';
     const PAYMENT_METHOD_WAVE = 'Wave';
     const PAYMENT_METHOD_OM = 'Om';
+    const TYPE_INVOICE = "INVOICE_ITEM";
+    const TYPE_SINGLE = "SINGLE";
 
     protected $fillable = [
         'customer_id',

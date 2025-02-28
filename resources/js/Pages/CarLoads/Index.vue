@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref , onMounted} from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { useForm } from '@inertiajs/vue3';
@@ -21,6 +21,10 @@ const props = defineProps({
         required: true
     }
 });
+onMounted(() => {
+    console.log(props.carLoads)
+
+})
 
 const showNewDialog = ref(false);
 const showEditDialog = ref(false);
@@ -462,7 +466,7 @@ const createNewCarLoadFromInventory = () => {
                         <v-data-table
                             :headers="headers"
                             :items="carLoads.data"
-                            :items-per-page="10"
+                            :items-per-page="100"
                             class="elevation-1"
                         >
                         
@@ -645,8 +649,9 @@ const createNewCarLoadFromInventory = () => {
 
                                 <v-card-text>
                                     <!-- Existing Items Table -->
+                                  <p>Valeur stock : <span class="text-bold">{{selectedCarLoad?.stock_value}}</span></p>
                                     <v-data-table
-                                        v-if="selectedCarLoad?.items?.length"
+                                        v-if="selectedCarLoad?.items?.length > 0"
                                         :headers="[
                                             { title: 'Produit', key: 'product.name' },
                                             { title: 'Qté chargé', key: 'quantity_loaded' },
@@ -656,6 +661,8 @@ const createNewCarLoadFromInventory = () => {
                                             { title: 'Actions', key: 'actions', sortable: false }
                                         ]"
                                         :items="selectedCarLoad.items"
+                                        :items-per-page="-1"
+                                        
                                         hide-default-footer
                                         class="elevation-1 mb-4"
                                     >

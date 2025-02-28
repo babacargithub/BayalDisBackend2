@@ -43,21 +43,32 @@ class DashboardController extends Controller
         try {
             $today = Carbon::today();
             
-            $total_amount_paid = Vente::whereDate('created_at', $today)
+            $total_amount_paid_single = Vente::whereDate('created_at', $today)
                 ->where('paid', true)
+                ->where("type",Vente::TYPE_SINGLE)
                 ->sum(DB::raw('price * quantity'));
-            $total_paid_invoices = SalesInvoice::whereDate("created_at",now()->toDateString())
-                ->where("paid", true)
-                ->get()
-                ->sum("total");
-            $total_amount_paid = $total_amount_paid + $total_paid_invoices;
+
+            $total_paid_invoices = 0;
+
+            $total_amount_paid_single = $total_amount_paid_single + $total_paid_invoices;
             
             $total_amount_unpaid = Vente::whereDate('created_at', $today)
                 ->where('paid', false)
-                ->sum(DB::raw('price * quantity'));
+                ->where('type',Vente::TYPE_SINGLE)
+                ->sum(DB::raw('price * quantity'))
+                +
+                SalesInvoice::whereDate("created_at",now()->toDateString())
+                    ->get()->sum("total_remaining");
+
 
             $total_profit = Vente::whereDate('created_at', $today)
                 ->sum('profit');
+            $total_net_profit =Vente::whereDate('created_at', $today)
+                ->where('paid', true)
+                ->where('type',Vente::TYPE_SINGLE)
+                ->sum('profit')
+                + SalesInvoice::whereDate("created_at",$today->toDateString())
+                    ->get()->sum("totalProfitPaid");
 
             $total_payments = Payment::whereDate('created_at', $today)
                 ->sum('amount');
@@ -69,10 +80,11 @@ class DashboardController extends Controller
                 'total_ventes' => Vente::whereDate('created_at', $today)->count(),
                 'total_ventes_paid' => Vente::whereDate('created_at', $today)->where('paid', true)->count(),
                 'total_ventes_unpaid' => Vente::whereDate('created_at', $today)->where('paid', false)->count(),
-                'total_amount_paid' => $total_amount_paid,
+                'total_amount_paid' => $total_amount_paid_single,
                 'total_amount_unpaid' => $total_amount_unpaid,
-                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
+                'total_amount_gross' => $total_amount_paid_single + $total_amount_unpaid,
                 'total_profit' => $total_profit,
+                'total_net_profit' => $total_net_profit,
                 'total_payments' => $total_payments,
             ];
         } catch (\Exception $e) {

@@ -8,6 +8,7 @@ use App\Models\Commercial;
 use App\Models\Product;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
+use App\Models\Team;
 use App\Services\CarLoadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ class CarLoadController extends Controller
     public function index()
     {
         $carLoads = $this->carLoadService->getAllCarLoads();
-        $teams = \App\Models\Team::select('id', 'name')
+        $teams = Team::select('id', 'name')
             ->orderBy('name')
             ->get();
         $products = Product::select('id', 'name')

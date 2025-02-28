@@ -527,6 +527,7 @@ class SalespersonController extends Controller
             ->where("commercial_id", $commercial->id)
             ->whereBetween('created_at', [$startDate, $endDate])
             ->where("paid", true)
+            ->where('type', Vente::TYPE_SINGLE)
             ->value('total');
 
         $encaissements =  Payment::where("user_id",request()->user()->id)->whereBetween('created_at',
@@ -535,10 +536,12 @@ class SalespersonController extends Controller
         $totals = [
            [
                "name" => "Total Ventes",
-               "total_amount" =>  Vente::selectRaw("SUM(quantity * price) as total")
+               "total_amount" =>  (Vente::selectRaw("SUM(quantity * price) as total")
                    ->where("commercial_id", $commercial->id)
                    ->whereBetween('created_at', [$startDate, $endDate])
-                   ->value('total') ?? 0,
+                       ->where('type', Vente::TYPE_SINGLE)
+                   ->value('total') ?? 0) + SalesInvoice::whereBetween("created_at", [$startDate, $endDate])->get()
+                       ->sum("total_remaining"),
            ],
             [
                "name" => "Ventes payées",
@@ -549,6 +552,7 @@ class SalespersonController extends Controller
                "total_amount" => Vente::selectRaw("SUM(quantity * price) as total")
                    ->where("commercial_id", $commercial->id)
                    ->where("paid", false)
+                       ->where("type", Vente::TYPE_SINGLE)
                    ->whereBetween('created_at', [$startDate, $endDate])
                    ->value('total') ?? 0
            ],

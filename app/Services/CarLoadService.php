@@ -67,6 +67,7 @@ class CarLoadService
                 'quantity_loaded' => $data['quantity_loaded'],
                 'comment' => $data['comment'] ?? null,
             ]);
+            //TODO check the difference after update on warehouse stock update it accordingly
             if (isset($data["quantity_left"])){
                 $item->quantity_left = $data["quantity_left"];
                 $item->save();
@@ -163,7 +164,7 @@ class CarLoadService
         return CarLoad::where('team_id', $teamId)
             ->with(['items.product', 'team'])
             ->orderBy('created_at', 'desc')
-            ->paginate(10);
+            ->paginate(100);
     }
 
     public function getAllCarLoads()

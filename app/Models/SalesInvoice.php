@@ -26,7 +26,7 @@ class SalesInvoice extends Model
         'should_be_paid_at' => 'datetime',
     ];
 
-    protected $appends = ['total', 'total_remaining'];
+    protected $appends = ['total', 'total_remaining','total_profit',"total_profit_paid"];
 
     public function customer(): BelongsTo
     {
@@ -66,9 +66,9 @@ class SalesInvoice extends Model
 
     public function getTotalRemainingAttribute()
     {
-        return $this->items()
+        return intval($this->items()
                 ->selectRaw('SUM(quantity * price) as total')
-                ->value('total') - $this->payments->sum('amount');
+                ->value('total')) - $this->payments->sum('amount');
     }
 
     public function getTotalPaidAttribute() : int
@@ -78,5 +78,18 @@ class SalesInvoice extends Model
     public function commercial(): BelongsTo
     {
         return $this->belongsTo(Commercial::class);
+    }
+    public function getTotalProfitAttribute() : int
+    {
+        return (int)$this->items()->selectRaw('SUM(profit) as total')->value('total');
+
+    }
+    public function getTotalProfitPaidAttribute() : int
+    {
+        $profit = $this->getTotalProfitAttribute();
+        $percentageOfProfit = $profit / $this->total;
+
+        return  $this->total_paid * $percentageOfProfit;
+
     }
 } 

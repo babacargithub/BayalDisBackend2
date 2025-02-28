@@ -40,10 +40,8 @@ class AdminController extends Controller
         $totalProfitsOfSingleVentes = Vente::where("type","SINGLE")
             ->where("paid", true)
             ->sum("profit");
-        $totalProfitsSalesInvoices  = Vente::whereHas('salesInvoice', function($query) {
-            $query->where('paid', true);
-        })
-        ->sum('profit');
+        $totalProfitsSalesInvoices  = SalesInvoice::all()
+        ->sum('totalProfitPaid');
 
         $totalProfits = $totalProfitsOfSingleVentes + $totalProfitsSalesInvoices;
         $totalCaisses = Caisse::all()->sum('balance');
@@ -59,6 +57,7 @@ class AdminController extends Controller
                 "total_caisses"=>"$totalCaisses",
                 "total_payments"=>Payment::all()->sum('amount'),
                 "value_of_business"=>($stockValue+$totalCaisses+$totalDebt),
+                "profit_un_paid"=> $totalProfitsOfSingleVentes,
                 "net_profit"=> ($stockValue+$totalCaisses+$totalDebt) - $fondRoulement
             ]
         ]);

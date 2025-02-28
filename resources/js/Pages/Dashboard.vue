@@ -21,6 +21,7 @@ const props = defineProps({
             total_amount_paid: 0,
             total_amount_unpaid: 0,
             total_profit: 0,
+            total_net_profit: 0,
             total_payments: 0
         })
     },
@@ -37,7 +38,9 @@ const props = defineProps({
             total_amount_paid: 0,
             total_amount_unpaid: 0,
             total_profit: 0,
-            total_payments: 0
+            total_net_profit: 0,
+
+          total_payments: 0
         })
     },
     monthlyStats: {
@@ -53,7 +56,9 @@ const props = defineProps({
             total_amount_paid: 0,
             total_amount_unpaid: 0,
             total_profit: 0,
-            total_payments: 0
+            total_payments: 0,
+            total_net_profit: 0,
+
         })
     },
     overallStats: {
@@ -70,7 +75,8 @@ const props = defineProps({
             total_amount_unpaid: 0,
             total_profit: 0,
             total_commerciaux: 0,
-            total_payments: 0
+            total_payments: 0,
+            total_net_profit: 0
         })
     },
     selectedDate: {
@@ -308,7 +314,7 @@ const monthlyVentesSection = `
                         <v-card>
                             <v-card-text>
                                 <v-row>
-                                    <v-col cols="12" md="6">
+                                    <v-col cols="12" md="6" sm="12">
                                         <v-card variant="outlined">
                                             <v-card-title class="text-subtitle-1">
                                                 <v-icon start>mdi-account-group</v-icon>
@@ -339,32 +345,48 @@ const monthlyVentesSection = `
                                                 Ventes
                                             </v-card-title>
                                             <v-card-text>
-                                                <div class="d-flex justify-space-between">
-                                                    <div class="text-center">
-                                                        <div class="text-h5">{{ dailyStats.total_ventes }}</div>
-                                                        <div class="text-caption">Total</div>
-                                                    </div>
-                                                    <div class="text-center">
-                                                        <div class="text-h6 font-weight-bold primary--text">{{ formatCurrency(dailyStats.total_amount_gross) }}</div>
-                                                        <div class="text-caption">Brut</div>
-                                                    </div>
-                                                    <div class="text-center">
-                                                        <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(dailyStats.total_amount_paid) }}</div>
-                                                        <div class="text-caption">Payé</div>
-                                                    </div>
-                                                    <div class="text-center">
-                                                        <div class="text-h6 font-weight-bold error--text">{{ formatCurrency(dailyStats.total_amount_unpaid) }}</div>
-                                                        <div class="text-caption">Impayé</div>
-                                                    </div>
-                                                    <div class="text-center">
-                                                        <div class="text-h6 font-weight-bold warning--text">{{ formatCurrency(dailyStats.total_payments) }}</div>
-                                                        <div class="text-caption">Encaissements</div>
-                                                    </div>
-                                                    <div class="text-center">
-                                                        <div class="text-h6 font-weight-bold success--text">{{ formatCurrency(dailyStats.total_profit) }}</div>
-                                                        <div class="text-caption">Bénéfice</div>
-                                                    </div>
-                                                </div>
+                                              <v-row>
+                                                <v-col cols="6" sm="4" md="3" lg="auto" class="text-center">
+                                                  <div class="text-h5">{{ dailyStats.total_ventes }}</div>
+                                                  <div class="text-caption">Total</div>
+                                                </v-col>
+                                                <v-col cols="6" sm="4" md="3" lg="auto" class="text-center">
+                                                  <div class="text-h6 font-weight-bold primary--text">
+                                                    {{ formatCurrency(dailyStats.total_amount_gross) }}
+                                                  </div>
+                                                  <div class="text-caption">Brut</div>
+                                                </v-col>
+                                                <v-col cols="6" sm="4" md="3" lg="auto" class="text-center">
+                                                  <div class="text-h6 font-weight-bold success--text">
+                                                    {{ formatCurrency(dailyStats.total_amount_paid) }}
+                                                  </div>
+                                                  <div class="text-caption">Payé</div>
+                                                </v-col>
+                                                <v-col cols="6" sm="4" md="3" lg="auto" class="text-center">
+                                                  <div class="text-h6 font-weight-bold error--text">
+                                                    {{ formatCurrency(dailyStats.total_amount_unpaid) }}
+                                                  </div>
+                                                  <div class="text-caption">Impayé</div>
+                                                </v-col>
+                                                <v-col cols="6" sm="4" md="3" lg="auto" class="text-center">
+                                                  <div class="text-h6 font-weight-bold warning--text">
+                                                    {{ formatCurrency(dailyStats.total_payments) }}
+                                                  </div>
+                                                  <div class="text-caption">Encaissements</div>
+                                                </v-col>
+                                                <v-col cols="6" sm="4" md="3" lg="auto" class="text-center">
+                                                  <div class="text-h6 font-weight-bold success--text">
+                                                    {{ formatCurrency(dailyStats.total_profit) }}
+                                                  </div>
+                                                  <div class="text-caption">Bénéfice</div>
+                                                </v-col>
+                                                <v-col cols="6" sm="4" md="3" lg="auto" class="text-center">
+                                                  <div class="text-h6 font-weight-bold success--text">
+                                                    {{ formatCurrency(dailyStats.total_net_profit) }}
+                                                  </div>
+                                                  <div class="text-caption">Bénéfice net</div>
+                                                </v-col>
+                                              </v-row>
                                             </v-card-text>
                                         </v-card>
                                     </v-col>
