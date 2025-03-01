@@ -15,7 +15,7 @@ class CustomerCategoryController extends Controller
      */
     public function index()
     {
-        $categories = CustomerCategory::with('customers')->get();
+        $categories = CustomerCategory::with('customers')->withCount("customers")->get();
         $customers = Customer::select('id', 'name', 'phone_number')->get();
         
         return Inertia::render('Clients/CustomerCategories', [

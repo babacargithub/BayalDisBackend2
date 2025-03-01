@@ -23,7 +23,7 @@ class Payment extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];
-    protected $appends = ['total_profit'];
+    protected $appends = [];
 
     public function salesInvoice(): BelongsTo
     {

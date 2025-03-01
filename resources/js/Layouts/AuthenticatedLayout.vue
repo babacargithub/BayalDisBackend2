@@ -38,7 +38,6 @@ const menuItems = [
         items: [
             { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cash-register' },
             { name: 'Factures', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
-            { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
             { name: 'Dépenses', route: 'depenses.index', icon: 'mdi-cash-minus' },
         ]
     },
@@ -49,8 +48,9 @@ const menuItems = [
         ref: clientsDropdownOpen,
         items: [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
-            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' }, { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
-          { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
+            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' }, 
+            { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
+            { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
             { name: 'Catégories client', route: 'customer-categories.index', icon: 'mdi-folder-account' },
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
         ]
@@ -95,6 +95,8 @@ const menuItems = [
         items: [
             { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
             { name: 'Utilisateurs', route: 'users.index', icon: 'mdi-account-multiple' },
+            { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
+
         ]
     },
 ];

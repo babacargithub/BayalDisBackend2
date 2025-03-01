@@ -9,9 +9,10 @@
     </template>
 
     <v-card class="mx-auto mt-4">
-      <v-list>
-        <v-list-item v-for="category in categories" :key="category.id">
+      <v-list border>
+        <v-list-item border  v-for="category in categories" :key="category.id">
           <v-list-item-title>{{ category.name }}</v-list-item-title>
+          <v-list-item-title>{{ category.customers_count }}</v-list-item-title>
           <template v-slot:append>
             <v-btn icon="mdi-account-plus" variant="text" color="primary" @click="showAddCustomersDialog(category)" />
             <v-btn icon="mdi-eye" variant="text" @click="showCategoryDialog(category)" />
