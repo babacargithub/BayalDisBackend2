@@ -77,6 +77,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('car-loads/current-items', [ApiCarLoadController::class, 'getCurrentItems']);
         Route::get('products/{product}/variants', [ApiCarLoadController::class, 'getProductVariants']);
         Route::post('car-loads/{product}/transform', [ApiCarLoadController::class, 'transformToVariants']);
+
+        Route::get('weekly-debts', [SalespersonController::class, 'getWeeklyDebts']);
     });
 
     // Add this route with the other API routes

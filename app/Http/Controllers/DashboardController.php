@@ -42,7 +42,7 @@ class DashboardController extends Controller
     {
         try {
             $today = Carbon::today();
-            
+
             $total_amount_paid_single = Vente::whereDate('created_at', $today)
                 ->where('paid', true)
                 ->where("type",Vente::TYPE_SINGLE)
@@ -51,7 +51,7 @@ class DashboardController extends Controller
             $total_paid_invoices = 0;
 
             $total_amount_paid_single = $total_amount_paid_single + $total_paid_invoices;
-            
+
             $total_amount_unpaid = Vente::whereDate('created_at', $today)
                 ->where('paid', false)
                 ->where('type',Vente::TYPE_SINGLE)
@@ -72,7 +72,7 @@ class DashboardController extends Controller
 
             $total_payments = Payment::whereDate('created_at', $today)
                 ->sum('amount');
-            
+
             return [
                 'total_customers' => Customer::whereDate('created_at', $today)->count(),
                 'total_prospects' => Customer::whereDate('created_at', $today)->prospects()->count(),
@@ -97,11 +97,11 @@ class DashboardController extends Controller
     {
         try {
             $startOfWeek = Carbon::now()->startOfWeek();
-            
+
             $total_amount_paid = Vente::where('created_at', '>=', $startOfWeek)
                 ->where('paid', true)
                 ->sum(DB::raw('price * quantity'));
-            
+
             $total_amount_unpaid = Vente::where('created_at', '>=', $startOfWeek)
                 ->where('paid', false)
                 ->sum(DB::raw('price * quantity'));
@@ -111,7 +111,7 @@ class DashboardController extends Controller
 
             $total_payments = Payment::where('created_at', '>=', $startOfWeek)
                 ->sum('amount');
-            
+
             return [
                 'total_customers' => Customer::where('created_at', '>=', $startOfWeek)->count(),
                 'total_prospects' => Customer::where('created_at', '>=', $startOfWeek)->prospects()->count(),
@@ -135,11 +135,11 @@ class DashboardController extends Controller
     {
         try {
             $startOfMonth = Carbon::now()->startOfMonth();
-            
+
             $total_amount_paid = Vente::where('created_at', '>=', $startOfMonth)
                 ->where('paid', true)
                 ->sum(DB::raw('price * quantity'));
-            
+
             $total_amount_unpaid = Vente::where('created_at', '>=', $startOfMonth)
                 ->where('paid', false)
                 ->sum(DB::raw('price * quantity'));
@@ -149,7 +149,7 @@ class DashboardController extends Controller
 
             $total_payments = Payment::where('created_at', '>=', $startOfMonth)
                 ->sum('amount');
-            
+
             return [
                 'total_customers' => Customer::where('created_at', '>=', $startOfMonth)->count(),
                 'total_prospects' => Customer::where('created_at', '>=', $startOfMonth)->prospects()->count(),
@@ -174,26 +174,26 @@ class DashboardController extends Controller
         try {
             $total_amount_paid = Vente::where('paid', true)
                 ->sum(DB::raw('price * quantity'));
-            
+
             $total_amount_unpaid = Vente::where('paid', false)
                 ->sum(DB::raw('price * quantity'));
 
-            $total_profit = Vente::sum('profit');
+            $total_profit = Vente::where("paid", true)->sum('profit');
 
             $total_payments = Payment::sum('amount');
-            
+
             return [
                 'total_customers' => Customer::count(),
                 'total_prospects' => Customer::prospects()->count(),
                 'total_confirmed_customers' => Customer::nonProspects()->count(),
-                'total_ventes' => Vente::count(),
-                'total_ventes_paid' => Vente::where('paid', true)->count(),
-                'total_ventes_unpaid' => Vente::where('paid', false)->count(),
+                'ventes_count' => SalesInvoice::count(),
+                'total_ventes_paid' => SalesInvoice::where('paid', true)->count(),
+                'total_ventes_unpaid' => SalesInvoice::where('paid', false)->count(),
                 'total_amount_paid' => $total_amount_paid,
                 'total_amount_unpaid' => $total_amount_unpaid,
                 'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
                 'total_profit' => $total_profit,
-                'total_commerciaux' => Commercial::count(),
+                'total_ventes' => (int) Vente::select(DB::raw("SUM(price * quantity) as total"))->first()->total,
                 'total_payments' => $total_payments,
             ];
         } catch (\Exception $e) {
@@ -201,4 +201,4 @@ class DashboardController extends Controller
             return [];
         }
     }
-} 
+}

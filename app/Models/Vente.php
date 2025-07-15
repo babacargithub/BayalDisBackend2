@@ -85,9 +85,7 @@ class Vente extends Model
             }
 
             // Calculate profit when saving
-            if ($vente->product) {
-                $vente->profit = ($vente->price - $vente->product->cost_price) * $vente->quantity;
-            }
+            $vente->calculateProfit();
         });
     }
 
@@ -160,4 +158,67 @@ class Vente extends Model
         return Customer::whereId($this->customer_id)->first();
 
     }
-} 
+
+    /**
+     * @param $vente
+     * @return void
+     */
+    function calculateProfit(): void
+    {
+        if ($this->product) {
+            // Get the historical cost price from StockEntry records
+            $historicalCostPrice = $this->getCostPriceFromStockEntry();
+
+            // Calculate profit using the historical cost price
+            $this->profit = ($this->price - $historicalCostPrice) * $this->quantity;
+        }
+    }
+
+    /**
+     * Get the historical cost price for a Vente based on FIFO principle
+     *
+     * @param $vente
+     * @return float
+     */
+    private function getHistoricalCostPrice($vente): float
+    {
+        // If the Vente is new and doesn't have a creation date yet, use the current date
+        $venteDate = $vente->created_at ?? now();
+
+        // Get StockEntry records that existed before or at the time of the Vente
+        // Ordered by creation date (FIFO principle)
+        $stockEntries = \App\Models\StockEntry::where('product_id', $vente->product_id)
+            ->where('created_at', '<=', $venteDate)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        // If no historical stock entries found, fall back to the product's current cost price
+        if ($stockEntries->isEmpty()) {
+            return $vente->product->cost_price;
+        }
+
+        // For simplicity, we'll use the weighted average cost price of all available stock entries
+        // This is a reasonable approximation when we don't have exact information about which
+        // specific stock entries were used for this sale
+        $totalQuantity = $stockEntries->sum('quantity');
+        $totalValue = $stockEntries->sum(function ($entry) {
+            return $entry->quantity * $entry->unit_price;
+        });
+
+        // Calculate weighted average cost price
+        return $totalQuantity > 0 ? $totalValue / $totalQuantity : $vente->product->cost_price;
+    }
+    public function getCostPriceFromStockEntry()
+    {
+        $costPrice = 0;
+        $costStockEntry = StockEntry::where('product_id', $this->product_id)
+            ->where("quantity", ">", 0)
+            ->orderBy("created_at", "asc")
+            ->first();
+        if ($costStockEntry != null) {
+            $costPrice = $this->product->cost_price;
+        }
+        return $costPrice;
+
+    }
+}

@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Payment;
 use App\Models\Vente;
+use Carbon\Carbon;
 use http\Client\Curl\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -85,5 +86,49 @@ class SalesInvoiceService
 
             return $salesInvoice;
         });
+    }
+
+    public function weeklyDebts(int $commercial_id)
+    {
+        $invoices = SalesInvoice::with(['customer', 'items.product', 'payments'])
+            >where('commercial_id', $commercial_id)
+            ->get();
+
+        $groupedInvoices = $invoices->groupBy(function ($invoice) {
+            $date = Carbon::parse($invoice->created_at);
+            $weekStart = $date->startOfWeek();
+            $weekEnd = $date->copy()->endOfWeek();
+            return $weekStart->format('Y-m-d') . '|' . $weekEnd->format('Y-m-d');
+        })->map(function ($weekInvoices, $weekKey) {
+            [$weekStart, $weekEnd] = explode('|', $weekKey);
+            
+            $total = $weekInvoices->sum('total');
+            $totalPaid = $weekInvoices->sum(function ($invoice) {
+                return $invoice->payments->sum('amount');
+            });
+            
+            return [
+                'label' => "Du " . Carbon::parse($weekStart)->locale('fr')->isoFormat('dddd D MMMM') . 
+                          " au " . Carbon::parse($weekEnd)->locale('fr')->isoFormat('dddd D MMMM YYYY'),
+                'total' => $total,
+                'total_paid' => $totalPaid,
+                'total_remaining' => $total - $totalPaid,
+                'invoices' => $weekInvoices->map(function ($invoice) {
+                    return [
+                        'id' => $invoice->id,
+                        'created_at' => $invoice->created_at,
+                        'customer' => [
+                            'name' => $invoice->customer->name,
+                            'phone_number' => $invoice->customer->phone_number,
+                        ],
+                        'total' => $invoice->total,
+                        'total_paid' => $invoice->payments->sum('amount'),
+                        'total_remaining' => $invoice->total - $invoice->payments->sum('amount'),
+                    ];
+                })->values(),
+            ];
+        })->values();
+
+        return $groupedInvoices;
     }
 } 

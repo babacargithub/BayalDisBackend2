@@ -39,7 +39,7 @@ class Sector extends Model
 
     public function getTotalAmountOfVentesAttribute(): int
     {
-        return DB::select("SELECT SUM(ventes.price * ventes.quantity) as total_amount FROM ventes
+        return (int) DB::select("SELECT SUM(ventes.price * ventes.quantity) as total_amount FROM ventes
         JOIN customers ON ventes.customer_id = customers.id
         WHERE customers.sector_id = ?", [$this->id])[0]->total_amount;
     }

@@ -1048,6 +1048,17 @@ class SalespersonController extends Controller
         return response()->json($invoices);
     }
 
+    public function getWeeklyDebts(Request $request, SalesInvoiceService $salesInvoiceService): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+        if (!$commercial) {
+            return response()->json(['message' => 'Commercial not found'], 404);
+        }
+
+        $weeklyDebts = $salesInvoiceService->weeklyDebts($commercial->id);
+        return response()->json($weeklyDebts);
+    }
+
     /**
      * @param Customer|\LaravelIdea\Helper\App\Models\_IH_Customer_C|array $customer
      * @return void

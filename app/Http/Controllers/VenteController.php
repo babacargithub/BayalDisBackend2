@@ -35,7 +35,8 @@ class VenteController extends Controller
                 'ventes.price',
                 'ventes.paid',
                 'ventes.created_at',
-                'ventes.should_be_paid_at'
+                'ventes.should_be_paid_at',
+                'ventes.profit' // <-- Add profit to the select
             )
             ->join('products', 'ventes.product_id', '=', 'products.id')
             ->with([

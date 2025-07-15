@@ -456,6 +456,7 @@ const paymentHeaders = [
                                             <th>Client</th>
                                             <th>Quantité</th>
                                             <th>Prix Total</th>
+                                            <th>Bénéfice</th>
                                             <th>Statut</th>
                                             <th>Date Échéance</th>
                                             <th>Commercial</th>
@@ -469,6 +470,7 @@ const paymentHeaders = [
                                             <td>{{ vente.customer?.name }}</td>
                                             <td>{{ vente.quantity }}</td>
                                             <td>{{ formatPrice(vente.price * vente.quantity) }}</td>
+                                            <td>{{ formatCurrency(vente.profit) }}</td>
                                             <td>
                                                 <v-chip
                                                     :color="vente.paid ? 'success' : 'error'"
