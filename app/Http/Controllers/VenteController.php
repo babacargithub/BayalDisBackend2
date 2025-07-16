@@ -7,6 +7,7 @@ use App\Models\Vente;
 use App\Models\Product;
 use App\Models\Customer;
 use App\Models\Commercial;
+use App\Models\SalesInvoice;
 use Exception;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -24,75 +25,142 @@ class VenteController extends Controller
 
     public function index(Request $request)
     {
-        // Base query with optimized eager loading and join to ensure products exist
-        $query = Vente::query()
+        // Base query for invoices with optimized eager loading
+        $query = SalesInvoice::query()
             ->select(
-                'ventes.id',
-                'ventes.product_id',
-                'ventes.customer_id',
-                'ventes.commercial_id',
-                'ventes.quantity',
-                'ventes.price',
-                'ventes.paid',
-                'ventes.created_at',
-                'ventes.should_be_paid_at',
-                'ventes.profit' // <-- Add profit to the select
+                'sales_invoices.id',
+                'sales_invoices.customer_id',
+                'sales_invoices.commercial_id',
+                'sales_invoices.paid',
+                'sales_invoices.created_at',
+                'sales_invoices.should_be_paid_at',
+                'sales_invoices.comment'
             )
-            ->join('products', 'ventes.product_id', '=', 'products.id')
+            ->whereHas('items', function ($q) {
+                $q->where('type', 'INVOICE_ITEM');
+            })
             ->with([
-                'product:id,name',
                 'customer:id,name',
                 'commercial:id,name',
-            ])
-            ->where('ventes.type', 'SINGLE'); // Only show single ventes, not invoice items
+                'items' => function ($query) {
+                    $query->select('id', 'sales_invoice_id', 'product_id', 'quantity', 'price')
+                        ->where('type', 'INVOICE_ITEM');
+                },
+                'payments' => function ($query) {
+                    $query->select('id', 'sales_invoice_id', 'amount', 'created_at');
+                }
+            ]);
 
         // Filter by payment status
-        if ($request->has('paid')) {
-            $query->where('ventes.paid', $request->boolean('paid'));
+        if ($request->filled('paid_status')) {
+            switch ($request->paid_status) {
+                case 'paid':
+                    // Invoices where total payments >= total invoice amount
+                    $query->whereRaw('
+                        (SELECT COALESCE(SUM(payments.amount), 0) FROM payments WHERE payments.sales_invoice_id = sales_invoices.id) 
+                        >= 
+                        (SELECT COALESCE(SUM(ventes.quantity * ventes.price), 0) FROM ventes WHERE ventes.sales_invoice_id = sales_invoices.id AND ventes.type = "INVOICE_ITEM")
+                    ');
+                    break;
+                case 'partial':
+                    // Invoices where total payments > 0 but < total invoice amount
+                    $query->whereRaw('
+                        (SELECT COALESCE(SUM(payments.amount), 0) FROM payments WHERE payments.sales_invoice_id = sales_invoices.id) > 0
+                        AND
+                        (SELECT COALESCE(SUM(payments.amount), 0) FROM payments WHERE payments.sales_invoice_id = sales_invoices.id) 
+                        < 
+                        (SELECT COALESCE(SUM(ventes.quantity * ventes.price), 0) FROM ventes WHERE ventes.sales_invoice_id = sales_invoices.id AND ventes.type = "INVOICE_ITEM")
+                    ');
+                    break;
+                case 'unpaid':
+                    // Invoices where total payments = 0
+                    $query->whereRaw('
+                        (SELECT COALESCE(SUM(payments.amount), 0) FROM payments WHERE payments.sales_invoice_id = sales_invoices.id) = 0
+                    ');
+                    break;
+            }
         }
 
         // Filter by date range
         if ($request->filled('date_debut')) {
-            $query->whereDate('ventes.created_at', '>=', $request->date_debut);
+            $query->whereDate('sales_invoices.created_at', '>=', $request->date_debut);
         }
         if ($request->filled('date_fin')) {
-            $query->whereDate('ventes.created_at', '<=', $request->date_fin);
+            $query->whereDate('sales_invoices.created_at', '<=', $request->date_fin);
         }
 
         // Filter by commercial
         if ($request->filled('commercial_id')) {
-            $query->where('ventes.commercial_id', $request->commercial_id);
+            $query->where('sales_invoices.commercial_id', $request->commercial_id);
         }
 
-        // Calculate statistics using database queries
+        // Calculate statistics using separate queries to avoid conflicts
+        $baseStatsQuery = SalesInvoice::query()
+            ->whereHas('items', function ($q) {
+                $q->where('type', 'INVOICE_ITEM');
+            });
+
+        // Apply same filters to statistics
+        if ($request->filled('date_debut')) {
+            $baseStatsQuery->whereDate('created_at', '>=', $request->date_debut);
+        }
+        if ($request->filled('date_fin')) {
+            $baseStatsQuery->whereDate('created_at', '<=', $request->date_fin);
+        }
+        if ($request->filled('commercial_id')) {
+            $baseStatsQuery->where('commercial_id', $request->commercial_id);
+        }
+
+        $totalInvoices = $baseStatsQuery->count();
+        
+        // Calculate amounts using database aggregation
+        $amountStats = DB::table('sales_invoices')
+            ->join('ventes', 'sales_invoices.id', '=', 'ventes.sales_invoice_id')
+            ->where('ventes.type', 'INVOICE_ITEM')
+            ->selectRaw('
+                SUM(ventes.quantity * ventes.price) as total_amount,
+                COUNT(DISTINCT sales_invoices.id) as invoice_count
+            ')->first();
+
+        // Calculate paid amounts
+        $paidStats = DB::table('sales_invoices')
+            ->join('payments', 'sales_invoices.id', '=', 'payments.sales_invoice_id')
+            ->selectRaw('
+                SUM(payments.amount) as total_paid,
+                COUNT(DISTINCT sales_invoices.id) as paid_invoices_count
+            ')->first();
+
+        // Calculate unpaid amounts
+        $unpaidAmount = ($amountStats->total_amount ?? 0) - ($paidStats->total_paid ?? 0);
+        $unpaidCount = $totalInvoices - ($paidStats->paid_invoices_count ?? 0);
+
         $statistics = [
-            'total_ventes' => $query->count(),
-            'total_amount' => $query->sum(DB::raw('ventes.price * ventes.quantity')),
-            'paid_count' => (clone $query)->where('ventes.paid', true)->count(),
-            'paid_amount' => (clone $query)->where('ventes.paid', true)->sum(DB::raw('ventes.price * ventes.quantity')),
-            'unpaid_count' => (clone $query)->where('ventes.paid', false)->count(),
-            'unpaid_amount' => (clone $query)->where('ventes.paid', false)->sum(DB::raw('ventes.price * ventes.quantity')),
+            'total_invoices' => $totalInvoices,
+            'total_amount' => $amountStats->total_amount ?? 0,
+            'paid_count' => $paidStats->paid_invoices_count ?? 0,
+            'paid_amount' => $paidStats->total_paid ?? 0,
+            'unpaid_count' => $unpaidCount,
+            'unpaid_amount' => $unpaidAmount,
         ];
 
-        // Get paginated results with proper eager loading
-        $ventes = $query->latest('ventes.created_at')
-            ->paginate(25)
-            ->through(function ($vente) {
-                // Ensure computed properties are properly set
-                $vente->subtotal = $vente->price * $vente->quantity;
-                return $vente;
-            });
+        // Get paginated results
+        $invoices = $query->latest('sales_invoices.created_at')->paginate(25);
+        
+        // Add computed properties to each invoice
+        foreach ($invoices as $invoice) {
+            $invoice->total_amount = $invoice->items->sum('subtotal');
+            $invoice->total_paid = $invoice->payments->sum('amount');
+        }
 
         // Get today's payments
         $payments = $this->paymentService->getTodayPayments();
         $paymentStats = $this->paymentService->getPaymentStatistics();
 
         return Inertia::render('Ventes/Index', [
-            'ventes' => $ventes,
-            'produits' => Product::select(['id', 'name', 'price'])->orderBy('name')->get(),
+            'invoices' => $invoices,
             'clients' => Customer::select(['id', 'name'])->orderBy('name')->get(),
             'commerciaux' => Commercial::select(['id', 'name'])->orderBy('name')->get(),
-            'filters' => $request->only(['date_debut', 'date_fin', 'paid', 'commercial_id']),
+            'filters' => $request->only(['date_debut', 'date_fin', 'paid_status', 'commercial_id']),
             'statistics' => $statistics,
             'payments' => [
                 'data' => $payments,

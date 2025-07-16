@@ -5,8 +5,7 @@ import { ref, computed, watch } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
-    ventes: Object,
-    produits: Array,
+    invoices: Object,
     clients: Array,
     commerciaux: Array,
     filters: Object,
@@ -17,59 +16,17 @@ const props = defineProps({
 // Add console log to debug payments data
 console.log('Payments data:', props.payments);
 
-const form = useForm({
-    product_id: '',
-    customer_id: '',
-    commercial_id: '',
-    quantity: '',
-    price: '',
-    payment_status: 'paid',
-    should_be_paid_at: '',
-    paid: true,
-});
-
-const dialog = ref(false);
 const filterDialog = ref(false);
 const deleteDialog = ref(false);
-const venteToDelete = ref(null);
+const invoiceToDelete = ref(null);
 const currentPage = ref(1);
 
 const filterForm = useForm({
     date_debut: props.filters?.date_debut || '',
     date_fin: props.filters?.date_fin || '',
-    paid: props.filters?.paid === true ? true : props.filters?.paid === false ? false : '',
+    paid_status: props.filters?.paid_status || '',
     commercial_id: props.filters?.commercial_id || '',
 });
-
-const productStats = computed(() => {
-    if (!props.ventes?.data || !props.ventes.data.length) return [];
-    
-    const stats = {};
-    props.ventes.data.forEach(vente => {
-        if (!vente?.product?.id) return;
-        
-        if (!stats[vente.product.id]) {
-            stats[vente.product.id] = {
-                product: vente.product,
-                totalQuantity: 0,
-                totalAmount: 0
-            };
-        }
-        stats[vente.product.id].totalQuantity += vente.quantity;
-        stats[vente.product.id].totalAmount += vente.price * vente.quantity;
-    });
-    
-    return Object.values(stats);
-});
-
-const submit = () => {
-    form.post(route('ventes.store'), {
-        onSuccess: () => {
-            dialog.value = false;
-            form.reset();
-        },
-    });
-};
 
 const applyFilters = () => {
     filterForm.get(route('ventes.index'), {
@@ -88,26 +45,8 @@ const applyPaidFilter = () => {
     });
 };
 
-watch(() => filterForm.paid, (newValue) => {
+watch(() => filterForm.paid_status, (newValue) => {
     applyPaidFilter();
-});
-
-watch(() => form.payment_status, (newValue) => {
-    form.paid = newValue === 'paid';
-    if (newValue === 'paid') {
-        form.should_be_paid_at = '';
-    }
-});
-
-watch(() => form.product_id, (newValue) => {
-    if (newValue) {
-        const selectedProduct = props.produits.find(p => p.id === newValue);
-        if (selectedProduct) {
-            form.price = selectedProduct.price;
-        }
-    } else {
-        form.price = '';
-    }
 });
 
 const formatPrice = (price) => {
@@ -120,12 +59,6 @@ const formatPrice = (price) => {
 const formatDate = (date) => {
     if (!date) return '';
     return new Date(date).toLocaleDateString('fr-FR');
-};
-
-const togglePaid = (vente) => {
-    useForm({
-        paid: !vente.paid,
-    }).patch(route('ventes.update', vente.id));
 };
 
 const formatNumber = (number) => {
@@ -141,18 +74,26 @@ const formatCurrency = (amount) => {
     }).format(amount || 0);
 };
 
-const confirmDelete = (vente) => {
-    venteToDelete.value = vente;
+const confirmDelete = (invoice) => {
+    invoiceToDelete.value = invoice;
     deleteDialog.value = true;
 };
 
-const deleteVente = () => {
-    router.delete(route('ventes.destroy', venteToDelete.value.id), {
-        onSuccess: () => {
-            deleteDialog.value = false;
-            venteToDelete.value = null;
-        },
-    });
+const deleteInvoice = () => {
+    // TODO: Implement delete logic
+    console.log('Delete invoice:', invoiceToDelete.value);
+    deleteDialog.value = false;
+    invoiceToDelete.value = null;
+};
+
+const showInvoice = (invoice) => {
+    // TODO: Implement show logic
+    console.log('Show invoice:', invoice);
+};
+
+const editInvoice = (invoice) => {
+    // TODO: Implement edit logic
+    console.log('Edit invoice:', invoice);
 };
 
 const changePage = (page) => {
@@ -169,7 +110,7 @@ watch([() => filterForm.date_debut, () => filterForm.date_fin, () => filterForm.
 // Add new data for payments
 const paymentSearch = ref('');
 const paymentMethodFilter = ref('');
-const selectedTab = ref('ventes');
+const selectedTab = ref('factures');
 
 const filteredPayments = computed(() => {
     if (!props.payments?.data) {
@@ -212,7 +153,7 @@ const paymentStatistics = computed(() => {
 
 // Update the header title check
 const pageTitle = computed(() => {
-    return selectedTab.value === 'encaissements' ? 'Encaissements' : 'Ventes';
+    return selectedTab.value === 'encaissements' ? 'Encaissements' : 'Factures';
 });
 
 const paymentToDelete = ref(null);
@@ -296,32 +237,35 @@ const paymentHeaders = [
                     {{ pageTitle }}
                 </h2>
                 <div class="flex gap-2">
-                    <template v-if="selectedTab === 'ventes'">
+                    <template v-if="selectedTab === 'factures'">
                         <v-btn-group class="mr-2">
                             <v-btn 
-                                :color="filterForm.paid === '' ? 'primary' : undefined"
-                                @click="filterForm.paid = ''"
+                                :color="filterForm.paid_status === '' ? 'primary' : undefined"
+                                @click="filterForm.paid_status = ''"
                             >
-                                Tous
+                                Toutes
                             </v-btn>
                             <v-btn 
-                                :color="filterForm.paid === true ? 'primary' : undefined"
-                                @click="filterForm.paid = true"
+                                :color="filterForm.paid_status === 'paid' ? 'primary' : undefined"
+                                @click="filterForm.paid_status = 'paid'"
                             >
                                 Payées
                             </v-btn>
                             <v-btn 
-                                :color="filterForm.paid === false ? 'primary' : undefined"
-                                @click="filterForm.paid = false"
+                                :color="filterForm.paid_status === 'partial' ? 'primary' : undefined"
+                                @click="filterForm.paid_status = 'partial'"
+                            >
+                                Partielles
+                            </v-btn>
+                            <v-btn 
+                                :color="filterForm.paid_status === 'unpaid' ? 'primary' : undefined"
+                                @click="filterForm.paid_status = 'unpaid'"
                             >
                                 Impayées
                             </v-btn>
                         </v-btn-group>
                         <v-btn color="secondary" @click="filterDialog = true">
                             Plus de filtres
-                        </v-btn>
-                        <v-btn color="primary" @click="dialog = true">
-                            Nouvelle vente
                         </v-btn>
                     </template>
                 </div>
@@ -336,9 +280,9 @@ const paymentHeaders = [
                         color="primary"
                         align-tabs="center"
                     >
-                        <v-tab value="ventes">
-                            <v-icon start>mdi-cart</v-icon>
-                            Ventes
+                        <v-tab value="factures">
+                            <v-icon start>mdi-file-document</v-icon>
+                            Factures
                         </v-tab>
                         <v-tab value="encaissements">
                             <v-icon start>mdi-cash-register</v-icon>
@@ -347,8 +291,8 @@ const paymentHeaders = [
                     </v-tabs>
 
                     <v-tabs-window v-model="selectedTab">
-                        <!-- Ventes Tab -->
-                        <v-tabs-window-item value="ventes">
+                        <!-- Factures Tab -->
+                        <v-tabs-window-item value="factures">
                             <!-- Statistics Cards -->
                             <v-row class="mb-6">
                                 <v-col cols="12" md="3">
@@ -356,13 +300,13 @@ const paymentHeaders = [
                                         <v-card-item>
                                             <div class="d-flex justify-space-between align-center">
                                                 <div>
-                                                    <div class="text-subtitle-2 mb-1">Total Ventes</div>
-                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.total_amount) }}</div>
+                                                    <div class="text-subtitle-2 mb-1">Total Factures</div>
+                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics?.total_amount || 0) }}</div>
                                                     <div class="text-caption mt-1">
-                                                        {{ formatNumber(statistics.total_ventes) }} ventes
+                                                        {{ formatNumber(statistics?.total_invoices || 0) }} factures
                                                     </div>
                                                 </div>
-                                                <v-icon size="48" color="primary">mdi-cart</v-icon>
+                                                <v-icon size="48" color="primary">mdi-file-document</v-icon>
                                             </div>
                                         </v-card-item>
                                     </v-card>
@@ -373,10 +317,10 @@ const paymentHeaders = [
                                         <v-card-item>
                                             <div class="d-flex justify-space-between align-center">
                                                 <div>
-                                                    <div class="text-subtitle-2 mb-1">Ventes Payées</div>
-                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.paid_amount) }}</div>
+                                                    <div class="text-subtitle-2 mb-1">Factures Payées</div>
+                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics?.paid_amount || 0) }}</div>
                                                     <div class="text-caption mt-1">
-                                                        {{ formatNumber(statistics.paid_count) }} ventes payées
+                                                        {{ formatNumber(statistics?.paid_count || 0) }} factures payées
                                                     </div>
                                                 </div>
                                                 <v-icon size="48" color="success">mdi-cash-check</v-icon>
@@ -390,10 +334,10 @@ const paymentHeaders = [
                                         <v-card-item>
                                             <div class="d-flex justify-space-between align-center">
                                                 <div>
-                                                    <div class="text-subtitle-2 mb-1">Ventes Impayées</div>
-                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics.unpaid_amount) }}</div>
+                                                    <div class="text-subtitle-2 mb-1">Factures Impayées</div>
+                                                    <div class="text-h5 font-weight-bold">{{ formatCurrency(statistics?.unpaid_amount || 0) }}</div>
                                                     <div class="text-caption mt-1">
-                                                        {{ formatNumber(statistics.unpaid_count) }} ventes impayées
+                                                        {{ formatNumber(statistics?.unpaid_count || 0) }} factures impayées
                                                     </div>
                                                 </div>
                                                 <v-icon size="48" color="error">mdi-cash-remove</v-icon>
@@ -409,10 +353,10 @@ const paymentHeaders = [
                                                 <div>
                                                     <div class="text-subtitle-2 mb-1">Taux de Paiement</div>
                                                     <div class="text-h5 font-weight-bold">
-                                                        {{ formatNumber((statistics.paid_count / statistics.total_ventes) * 100) }}%
+                                                        {{ statistics?.total_invoices ? formatNumber((statistics.paid_count / statistics.total_invoices) * 100) : 0 }}%
                                                     </div>
                                                     <div class="text-caption mt-1">
-                                                        des ventes sont payées
+                                                        des factures sont payées
                                                     </div>
                                                 </div>
                                                 <v-icon size="48" color="info">mdi-chart-pie</v-icon>
@@ -422,81 +366,77 @@ const paymentHeaders = [
                                 </v-col>
                             </v-row>
 
-                            <!-- Product Statistics -->
-                            <v-card class="mb-6">
-                                <v-card-title class="d-flex align-center">
-                                    <v-icon start color="primary">mdi-chart-box</v-icon>
-                                    Statistiques par Produit
-                                </v-card-title>
-                                <v-table>
-                                    <thead>
-                                        <tr>
-                                            <th>Produit</th>
-                                            <th>Quantité Totale</th>
-                                            <th>Montant Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="stat in productStats" :key="stat.product.id">
-                                            <td>{{ stat.product.name }}</td>
-                                            <td>{{ formatNumber(stat.totalQuantity) }}</td>
-                                            <td>{{ formatCurrency(stat.totalAmount) }}</td>
-                                        </tr>
-                                    </tbody>
-                                </v-table>
-                            </v-card>
-
                             <!-- Main Table -->
                             <v-card>
                                 <v-table>
                                     <thead>
                                         <tr>
+                                            <th>Numéro</th>
                                             <th>Date</th>
-                                            <th>Produit</th>
                                             <th>Client</th>
-                                            <th>Quantité</th>
-                                            <th>Prix Total</th>
-                                            <th>Bénéfice</th>
+                                            <th>Montant Total</th>
+                                            <th>Montant Payé</th>
+                                            <th>Reste à Payer</th>
                                             <th>Statut</th>
-                                            <th>Date Échéance</th>
                                             <th>Commercial</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="vente in ventes.data" :key="vente.id">
-                                            <td>{{ formatDate(vente.created_at) }}</td>
-                                            <td>{{ vente.product?.name }}</td>
-                                            <td>{{ vente.customer?.name }}</td>
-                                            <td>{{ vente.quantity }}</td>
-                                            <td>{{ formatPrice(vente.price * vente.quantity) }}</td>
-                                            <td>{{ formatCurrency(vente.profit) }}</td>
+                                        <tr v-for="invoice in invoices?.data || []" :key="invoice.id">
+                                            <td>{{ invoice.invoice_number || invoice.id }}</td>
+                                            <td>{{ formatDate(invoice.created_at) }}</td>
+                                            <td>{{ invoice.customer?.name }}</td>
+                                            <td>{{ formatCurrency(invoice.total_amount) }}</td>
+                                            <td>{{ formatCurrency(invoice.total_paid) }}</td>
+                                            <td>
+                                                <span :class="invoice.total_amount - invoice.total_paid > 0 ? 'text-error' : 'text-success'">
+                                                    {{ formatCurrency(invoice.total_amount - invoice.total_paid) }}
+                                                </span>
+                                            </td>
                                             <td>
                                                 <v-chip
-                                                    :color="vente.paid ? 'success' : 'error'"
-                                                    @click="togglePaid(vente)"
+                                                    :color="invoice.total_paid >= invoice.total_amount ? 'success' : 
+                                                           invoice.total_paid > 0 ? 'warning' : 'error'"
                                                 >
-                                                    {{ vente.paid ? 'Payé' : 'Non payé' }}
+                                                    {{ invoice.total_paid >= invoice.total_amount ? 'Payée' : 
+                                                       invoice.total_paid > 0 ? 'Partielle' : 'Impayée' }}
                                                 </v-chip>
                                             </td>
-                                            <td>{{ formatDate(vente.should_be_paid_at) }}</td>
-                                            <td>{{ vente.commercial?.name }}</td>
+                                            <td>{{ invoice.commercial?.name }}</td>
                                             <td>
-                                                <v-btn 
-                                                    icon="mdi-delete" 
-                                                    variant="text" 
-                                                    color="error"
-                                                    @click="confirmDelete(vente)"
-                                                />
+                                                <div class="d-flex gap-1">
+                                                    <v-btn 
+                                                        icon="mdi-eye" 
+                                                        variant="text" 
+                                                        color="primary"
+                                                        @click="showInvoice(invoice)"
+                                                        size="small"
+                                                    />
+                                                    <v-btn 
+                                                        icon="mdi-pencil" 
+                                                        variant="text" 
+                                                        color="secondary"
+                                                        @click="editInvoice(invoice)"
+                                                        size="small"
+                                                    />
+                                                    <v-btn 
+                                                        icon="mdi-delete" 
+                                                        variant="text" 
+                                                        color="error"
+                                                        @click="confirmDelete(invoice)"
+                                                        size="small"
+                                                    />
+                                                </div>
                                             </td>
                                         </tr>
                                     </tbody>
                                 </v-table>
                                 <!-- Add pagination -->
-                                <div class="d-flex justify-center mt-4" v-if="ventes.links && ventes.links.length > 3">
+                                <div class="d-flex justify-center mt-4" v-if="invoices?.links && invoices.links.length > 3">
                                     <v-pagination
                                         v-model="currentPage"
-                                        :length="Math.ceil(ventes.total / ventes.per_page)"
+                                        :length="Math.ceil(invoices.total / invoices.per_page)"
                                         :total-visible="7"
                                         @update:model-value="changePage"
                                     ></v-pagination>
@@ -698,89 +638,10 @@ const paymentHeaders = [
             </div>
         </div>
 
-        <!-- Nouvelle Vente Dialog -->
-        <v-dialog v-model="dialog" max-width="500px">
-            <v-card>
-                <v-card-title>Nouvelle Vente</v-card-title>
-                <v-card-text>
-                    <v-form @submit.prevent="submit">
-                        <v-select
-                            v-model="form.product_id"
-                            :items="produits"
-                            item-title="name"
-                            item-value="id"
-                            label="Produit"
-                            :error-messages="form.errors.product_id"
-                        />
-                        <v-select
-                            v-model="form.customer_id"
-                            :items="clients"
-                            item-title="name"
-                            item-value="id"
-                            label="Client"
-                            :error-messages="form.errors.customer_id"
-                        />
-                        <v-select
-                            v-model="form.commercial_id"
-                            :items="commerciaux"
-                            item-title="name"
-                            item-value="id"
-                            label="Commercial"
-                            :error-messages="form.errors.commercial_id"
-                        />
-                        <v-text-field
-                            v-model="form.quantity"
-                            label="Quantité"
-                            type="number"
-                            :error-messages="form.errors.quantity"
-                        />
-                        <v-text-field
-                            v-model="form.price"
-                            label="Prix unitaire"
-                            type="number"
-                            :error-messages="form.errors.price"
-                        />
-                        <v-radio-group
-                            v-model="form.payment_status"
-                            label="Statut de paiement"
-                            :error-messages="form.errors.paid"
-                            class="mt-4"
-                        >
-                            <v-radio
-                                label="Payé"
-                                value="paid"
-                                color="success"
-                            />
-                            <v-radio
-                                label="Non payé"
-                                value="unpaid"
-                                color="error"
-                            />
-                        </v-radio-group>
-                        <v-text-field
-                            v-if="form.payment_status === 'unpaid'"
-                            v-model="form.should_be_paid_at"
-                            label="Date d'échéance"
-                            type="date"
-                            :error-messages="form.errors.should_be_paid_at"
-                            class="mt-4"
-                        />
-                        <v-card-actions>
-                            <v-spacer />
-                            <v-btn color="error" @click="dialog = false">Annuler</v-btn>
-                            <v-btn color="primary" type="submit" :loading="form.processing">
-                                Sauvegarder
-                            </v-btn>
-                        </v-card-actions>
-                    </v-form>
-                </v-card-text>
-            </v-card>
-        </v-dialog>
-
         <!-- Filtres Dialog -->
         <v-dialog v-model="filterDialog" max-width="500px">
             <v-card>
-                <v-card-title>Filtrer les ventes</v-card-title>
+                <v-card-title>Filtrer les factures</v-card-title>
                 <v-card-text>
                     <v-form @submit.prevent="applyFilters">
                         <v-text-field
@@ -794,11 +655,12 @@ const paymentHeaders = [
                             type="date"
                         />
                         <v-select
-                            v-model="filterForm.paid"
+                            v-model="filterForm.paid_status"
                             :items="[
-                                { title: 'Tous', value: '' },
-                                { title: 'Payé', value: true },
-                                { title: 'Non payé', value: false }
+                                { title: 'Toutes', value: '' },
+                                { title: 'Payées', value: 'paid' },
+                                { title: 'Partielles', value: 'partial' },
+                                { title: 'Impayées', value: 'unpaid' }
                             ]"
                             label="Statut de paiement"
                         />
@@ -821,17 +683,18 @@ const paymentHeaders = [
             </v-card>
         </v-dialog>
 
-        <!-- Delete Confirmation Dialog -->
+        <!-- Delete Invoice Confirmation Dialog -->
         <v-dialog v-model="deleteDialog" max-width="500px">
             <v-card>
                 <v-card-title class="text-h5">Confirmer la suppression</v-card-title>
                 <v-card-text>
-                    Êtes-vous sûr de vouloir supprimer cette vente ? Cette action est irréversible.
-                    <div v-if="venteToDelete" class="mt-4">
-                        <strong>Détails de la vente :</strong>
-                        <div>Produit : {{ venteToDelete.product?.name }}</div>
-                        <div>Client : {{ venteToDelete.customer?.name }}</div>
-                        <div>Montant : {{ formatPrice(venteToDelete.price * venteToDelete.quantity) }}</div>
+                    Êtes-vous sûr de vouloir supprimer cette facture ? Cette action est irréversible.
+                    <div v-if="invoiceToDelete" class="mt-4">
+                        <strong>Détails de la facture :</strong>
+                        <div>Numéro : {{ invoiceToDelete.invoice_number || invoiceToDelete.id }}</div>
+                        <div>Client : {{ invoiceToDelete.customer?.name }}</div>
+                        <div>Montant Total : {{ formatCurrency(invoiceToDelete.total_amount) }}</div>
+                        <div>Montant Payé : {{ formatCurrency(invoiceToDelete.total_paid) }}</div>
                     </div>
                 </v-card-text>
                 <v-card-actions>
@@ -839,7 +702,7 @@ const paymentHeaders = [
                     <v-btn color="primary" variant="text" @click="deleteDialog = false">
                         Annuler
                     </v-btn>
-                    <v-btn color="error" variant="text" @click="deleteVente">
+                    <v-btn color="error" variant="text" @click="deleteInvoice">
                         Confirmer la suppression
                     </v-btn>
                 </v-card-actions>
