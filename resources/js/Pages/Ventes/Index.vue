@@ -21,6 +21,12 @@ const deleteDialog = ref(false);
 const invoiceToDelete = ref(null);
 const currentPage = ref(1);
 
+// Invoice items dialog
+const itemsDialog = ref(false);
+const selectedInvoice = ref(null);
+const invoiceItems = ref([]);
+const loadingItems = ref(false);
+
 const filterForm = useForm({
     date_debut: props.filters?.date_debut || '',
     date_fin: props.filters?.date_fin || '',
@@ -86,9 +92,33 @@ const deleteInvoice = () => {
     invoiceToDelete.value = null;
 };
 
-const showInvoice = (invoice) => {
-    // TODO: Implement show logic
-    console.log('Show invoice:', invoice);
+const showInvoice = async (invoice) => {
+    selectedInvoice.value = invoice;
+    loadingItems.value = true;
+    itemsDialog.value = true;
+
+    try {
+        // Fetch invoice details with items
+        const response = await fetch(route('sales-invoices.show', invoice.id), {
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            invoiceItems.value = data.props.invoice.items || [];
+        } else {
+            console.error('Failed to fetch invoice items');
+            invoiceItems.value = [];
+        }
+    } catch (error) {
+        console.error('Error fetching invoice items:', error);
+        invoiceItems.value = [];
+    } finally {
+        loadingItems.value = false;
+    }
 };
 
 const editInvoice = (invoice) => {
@@ -116,14 +146,14 @@ const filteredPayments = computed(() => {
     if (!props.payments?.data) {
         return [];
     }
-    
+
     let filtered = props.payments.data;
-    
+
     // Filter by payment method if selected
     if (paymentMethodFilter.value) {
         filtered = filtered.filter(payment => payment.payment_method === paymentMethodFilter.value);
     }
-    
+
     // Filter by search term
     if (paymentSearch.value) {
         const searchTerm = paymentSearch.value.toLowerCase();
@@ -132,7 +162,7 @@ const filteredPayments = computed(() => {
                    payment.customer?.phone_number?.toLowerCase().includes(searchTerm);
         });
     }
-    
+
     return filtered;
 });
 
@@ -143,7 +173,7 @@ const paymentStatistics = computed(() => {
         week_total: 0,
         month_total: 0
     };
-    
+
     const stats = props.payments.statistics;
     return {
         ...stats,
@@ -169,7 +199,7 @@ const deletePayment = () => {
         console.error('Missing required payment or invoice data');
         return;
     }
-    
+
     router.delete(route('sales-invoices.payments.destroy', {
         salesInvoice: paymentToDelete.value.invoice_id,
         payment: paymentToDelete.value.id
@@ -729,6 +759,119 @@ const paymentHeaders = [
                     </v-btn>
                     <v-btn color="error" variant="text" @click="deletePayment">
                         Confirmer la suppression
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Invoice Items Dialog -->
+        <v-dialog v-model="itemsDialog" max-width="900px">
+            <v-card>
+                <v-card-title class="text-h5 d-flex align-center">
+                    <v-icon class="mr-2" color="primary">mdi-file-document-outline</v-icon>
+                    Détails de la facture
+                    <template v-if="selectedInvoice">
+                        - {{ selectedInvoice.invoice_number || selectedInvoice.id }}
+                    </template>
+                </v-card-title>
+
+                <v-card-text>
+                    <div v-if="selectedInvoice" class="mb-4">
+                        <v-row>
+                            <v-col cols="12" md="6">
+                                <div class="text-subtitle-2 mb-1">Client</div>
+                                <div class="text-body-1">{{ selectedInvoice.customer?.name }}</div>
+                            </v-col>
+                            <v-col cols="12" md="6">
+                                <div class="text-subtitle-2 mb-1">Date</div>
+                                <div class="text-body-1">{{ formatDate(selectedInvoice.created_at) }}</div>
+                            </v-col>
+                        </v-row>
+                    </div>
+
+                    <v-divider class="mb-4"></v-divider>
+
+                    <div class="text-h6 mb-3">Articles de la facture</div>
+
+                    <v-data-table
+                        :headers="[
+                            { title: 'Produit', key: 'product.name', align: 'start' },
+                            { title: 'Prix unitaire', key: 'price', align: 'end' },
+                            { title: 'Quantité', key: 'quantity', align: 'center' },
+                            { title: 'Total', key: 'subtotal', align: 'end' },
+                            { title: 'Profit', key: 'profit', align: 'end' }
+                        ]"
+                        :items="invoiceItems"
+                        :loading="loadingItems"
+                        class="elevation-1"
+                        density="compact"
+                    >
+                        <template v-slot:item.price="{ item }">
+                            {{ formatCurrency(item.price) }}
+                        </template>
+
+                        <template v-slot:item.quantity="{ item }">
+                            <v-chip size="small" color="primary">
+                                {{ formatNumber(item.quantity) }}
+                            </v-chip>
+                        </template>
+
+                        <template v-slot:item.subtotal="{ item }">
+                            <span class="font-weight-medium">
+                                {{ formatCurrency(item.price * item.quantity) }}
+                            </span>
+                        </template>
+
+                        <template v-slot:item.profit="{ item }">
+                            <span :class="item.profit > 0 ? 'text-success' : item.profit < 0 ? 'text-error' : ''">
+                                {{ formatCurrency(item.profit) }}
+                            </span>
+                        </template>
+
+                        <template v-slot:no-data>
+                            <div class="d-flex align-center justify-center pa-4">
+                                <v-icon color="grey" class="mr-2">mdi-alert-circle-outline</v-icon>
+                                Aucun article trouvé pour cette facture
+                            </div>
+                        </template>
+
+                        <template v-slot:loading>
+                            <div class="d-flex align-center justify-center pa-4">
+                                <v-progress-circular indeterminate color="primary" class="mr-2"></v-progress-circular>
+                                Chargement des articles...
+                            </div>
+                        </template>
+                    </v-data-table>
+
+                    <!-- Summary -->
+                    <v-card v-if="invoiceItems.length > 0" class="mt-4" variant="outlined">
+                        <v-card-text>
+                            <v-row>
+                                <v-col cols="12" md="4">
+                                    <div class="text-subtitle-2 mb-1">Total articles</div>
+                                    <div class="text-h6">{{ invoiceItems.length }}</div>
+                                </v-col>
+                                <v-col cols="12" md="4">
+                                    <div class="text-subtitle-2 mb-1">Montant total</div>
+                                    <div class="text-h6 text-primary">
+                                        {{ formatCurrency(invoiceItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)) }}
+                                    </div>
+                                </v-col>
+                                <v-col cols="12" md="4">
+                                    <div class="text-subtitle-2 mb-1">Profit total</div>
+                                    <div class="text-h6" :class="invoiceItems.reduce((sum, item) => sum + item.profit, 0) > 0 ? 'text-success' : 'text-error'">
+                                        {{ formatCurrency(invoiceItems.reduce((sum, item) => sum + item.profit, 0)) }}
+                                    </div>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+                    </v-card>
+                </v-card-text>
+
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" @click="itemsDialog = false">
+                        Fermer
                     </v-btn>
                 </v-card-actions>
             </v-card>

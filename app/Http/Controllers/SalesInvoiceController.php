@@ -116,11 +116,20 @@ class SalesInvoiceController extends Controller
     {
         $salesInvoice->load([
             'customer:id,name',
-            'items:id,sales_invoice_id,product_id,quantity,price',
+            'items:id,sales_invoice_id,product_id,quantity,price,profit',
             'items.product:id,name',
-            'payments:id,sales_invoice_id,amount,payment_date,comment'
+            'payments:id,sales_invoice_id,amount,created_at,comment'
         ]);
-        
+
+        // Check if this is an AJAX request
+        if (request()->wantsJson() || request()->header('X-Requested-With') === 'XMLHttpRequest') {
+            return response()->json([
+                'props' => [
+                    'invoice' => $salesInvoice
+                ]
+            ]);
+        }
+
         return Inertia::render('SalesInvoices/Show', [
             'invoice' => $salesInvoice
         ]);
@@ -138,7 +147,7 @@ class SalesInvoiceController extends Controller
             DB::beginTransaction();
             $salesInvoice->update($request->only(['paid', 'should_be_paid_at', 'comment']));
             // update stock of products by calcaulating the difference between the old quantity and the new quantity
-          
+
             DB::commit();
             return redirect()->back()->with('success', 'Invoice updated successfully.');
         } catch (Exception $e) {
@@ -167,13 +176,13 @@ class SalesInvoiceController extends Controller
 
                 }
             }
-            
+
             // Delete related items first
             $salesInvoice->items()->delete();
-            
+
             // Then delete the invoice
             $salesInvoice->delete();
-            
+
             DB::commit();
             return redirect()->route('sales-invoices.index')->with('success', 'Invoice deleted successfully.');
         } catch (Exception $e) {
@@ -197,7 +206,7 @@ class SalesInvoiceController extends Controller
 
         try {
             DB::beginTransaction();
-            
+
             // Create the new item
             $vente = Vente::create([
                 'sales_invoice_id' => $salesInvoice->id,
@@ -221,9 +230,9 @@ class SalesInvoiceController extends Controller
                 'customer',
                 'payments'
             ]);
-            
+
             DB::commit();
-            
+
             return redirect()->back()->with([
                 'success' => 'Item added successfully',
                 'invoice' => $salesInvoice
@@ -259,16 +268,16 @@ class SalesInvoiceController extends Controller
                     }
             }
             $item->delete();
-            
+
             // Reload the invoice with its relationships
             $salesInvoice->load([
                 'items.product',
                 'customer',
                 'payments'
             ]);
-            
+
             DB::commit();
-            
+
             return redirect()->back()->with([
                 'success' => 'Article supprimé avec succès',
                 'invoice' => $salesInvoice
@@ -297,7 +306,7 @@ class SalesInvoiceController extends Controller
 
             // Load items to ensure total is calculated correctly
             $salesInvoice->load('items');
-            
+
             // Get current total paid amount
             $totalPaid = $salesInvoice->payments()->sum('amount');
             $remaining = $salesInvoice->total - $totalPaid;
@@ -351,7 +360,7 @@ class SalesInvoiceController extends Controller
 
         try {
             DB::beginTransaction();
-            
+
             $payment->delete();
 
             // Update invoice paid status
@@ -386,12 +395,12 @@ class SalesInvoiceController extends Controller
 
             // Load items to ensure total is calculated correctly
             $salesInvoice->load('items');
-            
+
             // Calculate new total paid amount excluding current payment
             $totalPaidExcludingCurrent = $salesInvoice->payments()
                 ->where('id', '!=', $payment->id)
                 ->sum('amount');
-            
+
             // Check if new amount would exceed invoice total
             if ($request->amount + $totalPaidExcludingCurrent > $salesInvoice->total) {
                 return redirect()->back()->withErrors(['amount' => 'Le nouveau montant dépasserait le total de la facture']);
@@ -452,7 +461,7 @@ class SalesInvoiceController extends Controller
             ]);
 
             DB::beginTransaction();
-            
+
             // Update the item
             $item->update([
                 'product_id' => $request->product_id,
@@ -475,9 +484,9 @@ class SalesInvoiceController extends Controller
                 'customer',
                 'payments'
             ]);
-            
+
             DB::commit();
-            
+
             return redirect()->back()->with([
                 'success' => 'Article mis à jour avec succès',
                 'invoice' => $salesInvoice
