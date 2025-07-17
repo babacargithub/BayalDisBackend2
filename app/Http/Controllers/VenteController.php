@@ -43,7 +43,7 @@ class VenteController extends Controller
                 'customer:id,name',
                 'commercial:id,name',
                 'items' => function ($query) {
-                    $query->select('id', 'sales_invoice_id', 'product_id', 'quantity', 'price')
+                    $query->select('id', 'sales_invoice_id', 'product_id', 'quantity', 'price', 'profit')
                         ->where('type', 'INVOICE_ITEM');
                 },
                 'payments' => function ($query) {
@@ -112,7 +112,7 @@ class VenteController extends Controller
         }
 
         $totalInvoices = $baseStatsQuery->count();
-        
+
         // Calculate amounts using database aggregation
         $amountStats = DB::table('sales_invoices')
             ->join('ventes', 'sales_invoices.id', '=', 'ventes.sales_invoice_id')
@@ -145,7 +145,7 @@ class VenteController extends Controller
 
         // Get paginated results
         $invoices = $query->latest('sales_invoices.created_at')->paginate(25);
-        
+
         // Add computed properties to each invoice
         foreach ($invoices as $invoice) {
             $invoice->total_amount = $invoice->items->sum('subtotal');

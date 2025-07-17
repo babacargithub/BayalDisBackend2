@@ -407,6 +407,7 @@ const paymentHeaders = [
                                             <th>Montant Total</th>
                                             <th>Montant Payé</th>
                                             <th>Reste à Payer</th>
+                                            <th>Bénéfice</th>
                                             <th>Statut</th>
                                             <th>Commercial</th>
                                             <th>Actions</th>
@@ -422,6 +423,11 @@ const paymentHeaders = [
                                             <td>
                                                 <span :class="invoice.total_amount - invoice.total_paid > 0 ? 'text-error' : 'text-success'">
                                                     {{ formatCurrency(invoice.total_amount - invoice.total_paid) }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span :class="(invoice.total_profit || 0) > 0 ? 'text-success' : (invoice.total_profit || 0) < 0 ? 'text-error' : ''">
+                                                    {{ formatCurrency(invoice.total_profit || 0) }}
                                                 </span>
                                             </td>
                                             <td>
