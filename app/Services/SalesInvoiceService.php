@@ -37,7 +37,7 @@ class SalesInvoiceService
                 $itemAmount = $item['quantity'] * $item['price'];
                 $totalAmount += $itemAmount;
 
-                $itemsArray[] = new Vente([
+                $vente = new Vente([
                     'sales_invoice_id' => $salesInvoice->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
@@ -47,8 +47,9 @@ class SalesInvoiceService
                     "commercial_id" => request()->user()->commercial->id,
                     "updated_at"=>now(),
                 ]);
+                $itemsArray[] = $vente;
 
-                // Update product stock using the decrementStock method
+                    // Update product stock using the decrementStock method
                $product = Product::findOrFail($item['product_id']);
                $product->decrementStock($item['quantity']);
             }
@@ -56,7 +57,7 @@ class SalesInvoiceService
                 $salesInvoice->items()->saveMany($itemsArray);
                 // loop through items to calculate profits
                 foreach ($itemsArray as $vente){
-                    $vente->profit = ($vente->price - $vente->product->coast_price) * $vente->quantity;
+                    $vente->calculateProfit();
                     $vente->save();
                 }
 

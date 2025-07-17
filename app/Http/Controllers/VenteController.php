@@ -39,6 +39,7 @@ class VenteController extends Controller
             ->whereHas('items', function ($q) {
                 $q->where('type', 'INVOICE_ITEM');
             })
+
             ->with([
                 'customer:id,name',
                 'commercial:id,name',
@@ -84,6 +85,8 @@ class VenteController extends Controller
         // Filter by date range
         if ($request->filled('date_debut')) {
             $query->whereDate('sales_invoices.created_at', '>=', $request->date_debut);
+        }else{
+            $query->whereDate("created_at", "=", today());
         }
         if ($request->filled('date_fin')) {
             $query->whereDate('sales_invoices.created_at', '<=', $request->date_fin);

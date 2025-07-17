@@ -444,54 +444,55 @@ class SalesInvoiceController extends Controller
         }
     }
 
-    public function updateItem(Request $request, SalesInvoice $salesInvoice, Vente $item)
+    public function updateProfit(Request $request, $salesInvoice,Vente $item)
     {
-        if ($salesInvoice->paid) {
-            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée']);
-        }
 
-        if ($item->sales_invoice_id !== $salesInvoice->id || $item->type !== 'INVOICE_ITEM') {
+        if ($item->type !== 'INVOICE_ITEM') {
+            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                return response()->json(['error' => 'Cet article n\'appartient pas à cette facture'], 422);
+            }
             return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture']);
         }
 
-            $validated = $request->validate([
-                'product_id' => 'required|exists:products,id',
-                'quantity' => 'required|integer|min:1',
-                'price' => 'required|integer|min:0',
-            ]);
 
-            DB::beginTransaction();
+        try {
+            // Check if this is a profit-only update
 
-            // Update the item
-            $item->update([
-                'product_id' => $request->product_id,
-                'quantity' => $request->quantity,
-                'price' => $request->price,
-            ]);
-            // update stock of products by calcaulating the difference between the old quantity and the new quantity
-            $product = Product::findOrFail($item->product_id);
-            // calculate the difference between the old quantity and the new quantity
-            $difference = $item->quantity - $request->quantity;
-           if ($difference > 0) {
-            $product->incrementStock($difference);
-           } else {
-            $product->decrementStock(abs($difference));
-           }
+                $validated = $request->validate([
+                    'profit' => 'required|integer',
+                ]);
 
-            // Reload the invoice with its relationships
-            $salesInvoice->load([
-                'items.product',
-                'customer',
-                'payments'
-            ]);
+                 //Update only the profit field
+                $item->profit = $validated['profit'];
+                $item->save();
 
-            DB::commit();
+
+            return response()->json(['error' => '!Cet article a été traité !!'.$validated['profit']], 200);
+
+
+            // Return JSON response for AJAX requests
+            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Bénéfice mis à jour avec succès',
+                    'item' => $item,
+                ]);
+            }
 
             return redirect()->back()->with([
                 'success' => 'Article mis à jour avec succès',
-                'invoice' => $salesInvoice
+                'invoice' => $item->salesInvoice
             ]);
 
+        } catch (Exception $e) {
+            report($e);
+
+            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                return response()->json(['error' => 'Échec de la mise à jour de l\'article. Veuillez réessayer.'], 500);
+            }
+
+            return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour de l\'article. Veuillez réessayer.']);
+        }
     }
 
     public function exportPdf(SalesInvoice $salesInvoice)

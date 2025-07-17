@@ -85,7 +85,7 @@ class Vente extends Model
             }
 
             // Calculate profit when saving
-            $vente->calculateProfit();
+            //$vente->calculateProfit();
         });
     }
 

@@ -27,6 +27,11 @@ const selectedInvoice = ref(null);
 const invoiceItems = ref([]);
 const loadingItems = ref(false);
 
+// Editable profit functionality
+const editingItemId = ref(null);
+const editingProfit = ref(0);
+const savingProfit = ref(false);
+
 const filterForm = useForm({
     date_debut: props.filters?.date_debut || '',
     date_fin: props.filters?.date_fin || '',
@@ -124,6 +129,68 @@ const showInvoice = async (invoice) => {
 const editInvoice = (invoice) => {
     // TODO: Implement edit logic
     console.log('Edit invoice:', invoice);
+};
+
+// Profit editing methods
+const startEditingProfit = (item) => {
+    editingItemId.value = item.id;
+    editingProfit.value = item.profit;
+};
+
+const cancelEditingProfit = () => {
+    editingItemId.value = null;
+    editingProfit.value = 0;
+};
+
+const saveProfit = async (item) => {
+    if (savingProfit.value) return;
+
+    savingProfit.value = true;
+
+    try {
+        // Get CSRF token safely
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || 
+                         document.head.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                         '';
+        
+        const response = await fetch(`/sales-invoices/${selectedInvoice.value.id}/items/${item.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken
+            },
+            body: JSON.stringify({
+                profit: editingProfit.value
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+
+            // Update the item in the local array
+            const itemIndex = invoiceItems.value.findIndex(i => i.id === item.id);
+            if (itemIndex !== -1) {
+                invoiceItems.value[itemIndex].profit = editingProfit.value;
+            }
+
+            // Cancel editing mode
+            cancelEditingProfit();
+
+            // Show success message (optional)
+            console.log('Profit updated successfully');
+        } else {
+            const errorData = await response.json();
+            console.error('Failed to update profit:', errorData.error);
+            // You could show an error message to the user here
+        }
+    } catch (error) {
+        console.error('Error updating profit:', error);
+        // You could show an error message to the user here
+    } finally {
+        savingProfit.value = false;
+    }
 };
 
 const changePage = (page) => {
@@ -829,7 +896,41 @@ const paymentHeaders = [
                         </template>
 
                         <template v-slot:item.profit="{ item }">
-                            <span :class="item.profit > 0 ? 'text-success' : item.profit < 0 ? 'text-error' : ''">
+                            <div v-if="editingItemId === item.id" class="d-flex align-center gap-2">
+                                <v-text-field
+                                    v-model.number="editingProfit"
+                                    type="number"
+                                    density="compact"
+                                    variant="outlined"
+                                    hide-details
+                                    style="width: 120px;"
+                                    @keyup.enter="saveProfit(item)"
+                                    @keyup.escape="cancelEditingProfit"
+                                />
+                                <v-btn
+                                    icon="mdi-check"
+                                    size="small"
+                                    color="success"
+                                    variant="text"
+                                    :loading="savingProfit"
+                                    @click="saveProfit(item)"
+                                />
+                                <v-btn
+                                    icon="mdi-close"
+                                    size="small"
+                                    color="error"
+                                    variant="text"
+                                    :disabled="savingProfit"
+                                    @click="cancelEditingProfit"
+                                />
+                            </div>
+                            <span 
+                                v-else
+                                :class="item.profit > 0 ? 'text-success' : item.profit < 0 ? 'text-error' : ''"
+                                class="cursor-pointer hover:bg-gray-100 px-2 py-1 rounded"
+                                @click="startEditingProfit(item)"
+                                title="Cliquer pour modifier"
+                            >
                                 {{ formatCurrency(item.profit) }}
                             </span>
                         </template>
