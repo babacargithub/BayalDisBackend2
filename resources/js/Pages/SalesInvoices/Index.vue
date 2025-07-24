@@ -44,7 +44,8 @@
         </div>
 
         <!-- Filter Buttons -->
-        <div class="mb-4 flex gap-4">
+        <div class="mb-4 flex gap-4 flex-wrap">
+          <!-- Payment Status Filters -->
           <v-btn-group>
             <v-btn
               :color="filter === 'all' ? 'primary' : ''"
@@ -65,6 +66,34 @@
               Non Payées
             </v-btn>
           </v-btn-group>
+
+          <!-- Week Filter Button -->
+          <v-btn
+            color="secondary"
+            @click="showWeekFilterDialog = true"
+            :append-icon="selectedWeeks.length > 0 ? 'mdi-filter' : 'mdi-calendar-week'"
+          >
+            Filtrer par semaines
+            <v-chip 
+              v-if="selectedWeeks.length > 0" 
+              size="small" 
+              color="primary" 
+              class="ml-2"
+            >
+              {{ selectedWeeks.length }}
+            </v-chip>
+          </v-btn>
+
+          <!-- Clear Week Filter -->
+          <v-btn
+            v-if="selectedWeeks.length > 0"
+            color="error"
+            variant="outlined"
+            size="small"
+            @click="clearWeekFilter"
+          >
+            Effacer filtre semaines
+          </v-btn>
         </div>
 
         <!-- Invoices List -->
@@ -178,6 +207,61 @@
       @updated="refreshData"
     />
 
+    <!-- Week Filter Dialog -->
+    <v-dialog v-model="showWeekFilterDialog" max-width="600px">
+      <v-card>
+        <v-card-title class="text-h5">
+          <v-icon class="mr-2">mdi-calendar-week</v-icon>
+          Filtrer par semaines
+        </v-card-title>
+        <v-card-text>
+          <div class="mb-4">
+            <v-btn 
+              color="primary" 
+              variant="outlined" 
+              size="small"
+              @click="selectAllWeeks"
+              class="mr-2"
+            >
+              Tout sélectionner
+            </v-btn>
+            <v-btn 
+              color="secondary" 
+              variant="outlined" 
+              size="small"
+              @click="deselectAllWeeks"
+            >
+              Tout désélectionner
+            </v-btn>
+          </div>
+          
+          <div v-if="availableWeeks.length === 0" class="text-center py-4">
+            <v-icon size="48" color="grey">mdi-calendar-remove</v-icon>
+            <div class="text-grey mt-2">Aucune facture trouvée</div>
+          </div>
+          
+          <div v-else class="max-h-400 overflow-y-auto">
+            <v-checkbox
+              v-for="week in availableWeeks"
+              :key="week.key"
+              v-model="selectedWeeks"
+              :value="week.key"
+              :label="week.label"
+              hide-details
+              density="compact"
+              class="mb-1"
+            />
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="primary" variant="text" @click="showWeekFilterDialog = false">
+            Fermer
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Delete Confirmation Dialog -->
     <v-dialog v-model="showDeleteDialog" max-width="500px">
       <v-card>
@@ -244,6 +328,89 @@ const invoiceToDelete = ref(null)
 const showErrorDialog = ref(false)
 const errorMessage = ref('')
 
+// Week filtering
+const showWeekFilterDialog = ref(false)
+const selectedWeeks = ref([])
+
+// Get the start of week (Monday) for a given date
+const getWeekStart = (date) => {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // adjust when day is Sunday
+  return new Date(d.setDate(diff))
+}
+
+// Get the end of week (Sunday) for a given date
+const getWeekEnd = (date) => {
+  const weekStart = getWeekStart(date)
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  return weekEnd
+}
+
+// Format week label in French
+const formatWeekLabel = (startDate, endDate) => {
+  const months = [
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+  ]
+  
+  const startDay = startDate.getDate()
+  const startMonth = months[startDate.getMonth()]
+  const startYear = startDate.getFullYear()
+  
+  const endDay = endDate.getDate()
+  const endMonth = months[endDate.getMonth()]
+  const endYear = endDate.getFullYear()
+  
+  if (startMonth === endMonth && startYear === endYear) {
+    return `Factures du lundi ${startDay} au dimanche ${endDay} ${startMonth} ${startYear}`
+  } else if (startYear === endYear) {
+    return `Factures du lundi ${startDay} ${startMonth} au dimanche ${endDay} ${endMonth} ${startYear}`
+  } else {
+    return `Factures du lundi ${startDay} ${startMonth} ${startYear} au dimanche ${endDay} ${endMonth} ${endYear}`
+  }
+}
+
+// Generate week key for comparison
+const getWeekKey = (date) => {
+  const weekStart = getWeekStart(date)
+  return weekStart.toISOString().split('T')[0]
+}
+
+// Available weeks computed property
+const availableWeeks = computed(() => {
+  if (!props.invoices.data || props.invoices.data.length === 0) {
+    return []
+  }
+
+  // Get all invoice dates
+  const dates = props.invoices.data
+    .map(invoice => new Date(invoice.created_at))
+    .sort((a, b) => a - b)
+
+  if (dates.length === 0) return []
+
+  const weeks = new Map()
+  
+  dates.forEach(date => {
+    const weekStart = getWeekStart(date)
+    const weekEnd = getWeekEnd(date)
+    const weekKey = getWeekKey(date)
+    
+    if (!weeks.has(weekKey)) {
+      weeks.set(weekKey, {
+        key: weekKey,
+        label: formatWeekLabel(weekStart, weekEnd),
+        start: weekStart,
+        end: weekEnd
+      })
+    }
+  })
+
+  return Array.from(weeks.values()).sort((a, b) => b.start - a.start)
+})
+
 const filteredInvoices = computed(() => {
   let filtered = props.invoices.data
 
@@ -262,6 +429,14 @@ const filteredInvoices = computed(() => {
     )
   }
 
+  // Apply week filter
+  if (selectedWeeks.value.length > 0) {
+    filtered = filtered.filter(invoice => {
+      const invoiceWeekKey = getWeekKey(new Date(invoice.created_at))
+      return selectedWeeks.value.includes(invoiceWeekKey)
+    })
+  }
+
   return filtered
 })
 
@@ -270,6 +445,19 @@ const totalRemainingAmount = computed(() => {
     return total + getRemainingAmount(invoice)
   }, 0)
 })
+
+// Week filter methods
+const selectAllWeeks = () => {
+  selectedWeeks.value = availableWeeks.value.map(week => week.key)
+}
+
+const deselectAllWeeks = () => {
+  selectedWeeks.value = []
+}
+
+const clearWeekFilter = () => {
+  selectedWeeks.value = []
+}
 
 const formatPrice = (price) => {
   return new Intl.NumberFormat('fr-FR', {
