@@ -200,6 +200,7 @@ const getNestedValue = (obj, path) => {
         <v-data-table
             :headers="headers"
             :items="items"
+            :items-per-page="20000"
             hide-default-footer
             class="elevation-1 mb-4"
         >

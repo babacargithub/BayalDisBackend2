@@ -178,7 +178,7 @@ class CarLoadService
             'inventory.items.product'
         ])
             ->orderBy('created_at', 'desc')
-            ->paginate(100);
+            ->paginate(1000);
     }
 
     public function getCurrentCarLoadItems()

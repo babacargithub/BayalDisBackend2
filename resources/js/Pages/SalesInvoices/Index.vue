@@ -10,6 +10,14 @@
             Nouvelle Facture
           </v-btn>
           <v-btn 
+            color="success" 
+            @click="exportFilteredInvoices"
+            :disabled="filteredInvoices.length === 0"
+          >
+            <v-icon>mdi-download</v-icon>
+            Exporter PDF ({{ filteredInvoices.length }})
+          </v-btn>
+          <v-btn 
             color="error" 
             :href="route('sales-invoices.unpaid-pdf')"
             target="_blank"
@@ -513,6 +521,34 @@ const confirmDelete = () => {
       refreshData()
     }
   })
+}
+
+const exportFilteredInvoices = () => {
+  // Prepare filter parameters
+  const params = new URLSearchParams()
+  
+  // Add payment status filter
+  if (filter.value !== 'all') {
+    params.append('filter', filter.value)
+  }
+  
+  // Add search query
+  if (searchQuery.value) {
+    params.append('search', searchQuery.value)
+  }
+  
+  // Add selected weeks
+  if (selectedWeeks.value.length > 0) {
+    selectedWeeks.value.forEach(week => {
+      params.append('weeks[]', week)
+    })
+  }
+  
+  // Create export URL
+  const exportUrl = route('sales-invoices.export-pdf') + '?' + params.toString()
+  
+  // Open PDF in new window
+  window.open(exportUrl, '_blank')
 }
 
 const refreshData = () => {

@@ -84,6 +84,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('sales-invoices', SalesInvoiceController::class);
     Route::get('/sales-invoices/{salesInvoice}/pdf', [SalesInvoiceController::class, 'exportPdf'])->name('sales-invoices.pdf');
     Route::get('/sales-invoices-unpaid/pdf', [SalesInvoiceController::class, 'exportUnpaidPdf'])->name('sales-invoices.unpaid-pdf');
+    Route::get('/sales-invoices-filtered/export-pdf', [SalesInvoiceController::class, 'exportFilteredPdf'])->name('sales-invoices.export-pdf');
     Route::post('/sales-invoices/{salesInvoice}/items', [SalesInvoiceController::class, 'addItem'])->name('sales-invoices.items.store');
     Route::put('/sales-invoices/{salesInvoice}/items/{item}', [SalesInvoiceController::class, 'updateProfit'])->name('sales-invoices.items.update');
     Route::delete('/sales-invoices/{salesInvoice}/items/{item}', [SalesInvoiceController::class, 'removeItem'])->name('sales-invoices.items.destroy');

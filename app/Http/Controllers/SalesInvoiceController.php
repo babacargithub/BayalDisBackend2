@@ -12,7 +12,8 @@ use Exception;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
-use PDF;
+use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class SalesInvoiceController extends Controller
 {
@@ -36,7 +37,8 @@ class SalesInvoiceController extends Controller
         // Get paginated results with optimized loading
         $invoices = $query->latest()
             ->orderByDesc("created_at")
-            ->paginate(2000)
+            ->where('paid', false)
+            ->paginate(4000)
             ->through(function ($invoice) {
                 // Add computed total to avoid N+1 queries
                 $invoice->total = $invoice->items->sum('subtotal');
@@ -502,13 +504,12 @@ class SalesInvoiceController extends Controller
             'items.product',
         ]);
 
-        // Calculate total if not already done
-        $salesInvoice->total = $salesInvoice->items->sum('subtotal');
+        // Total is calculated in the model or via relationships
 
 //        return view('pdf.invoice', [
 //            'invoice' => $salesInvoice
 //        ]);
-        $pdf = \PDF::loadView('pdf.invoice', [
+        $pdf = Pdf::loadView('pdf.invoice', [
             'invoice' => $salesInvoice
         ]);
 
@@ -526,11 +527,170 @@ class SalesInvoiceController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        $pdf = PDF::loadView('pdf.unpaid-invoices', [
+        $pdf = Pdf::loadView('pdf.unpaid-invoices', [
             'invoices' => $unpaidInvoices,
             'date' => now()->format('d/m/Y H:i')
         ]);
 
         return $pdf->download('factures_impayees_'.now()->format('d_m_Y').'.pdf');
+    }
+
+    public function exportFilteredPdf(Request $request)
+    {
+        // Base query with optimized eager loading
+        $query = SalesInvoice::query()
+            ->with(['customer', 'payments', 'items'])
+            ->select('sales_invoices.*')
+            ->selectRaw('(SELECT SUM(quantity * price) FROM ventes WHERE sales_invoice_id = sales_invoices.id AND type = "INVOICE_ITEM") as total')
+            ->selectRaw('COALESCE((SELECT SUM(amount) FROM payments WHERE sales_invoice_id = sales_invoices.id), 0) as total_paid');
+
+        // Apply payment status filter
+        if ($request->has('filter') && $request->filter !== 'all') {
+            if ($request->filter === 'paid') {
+                $query->havingRaw('total_paid >= total');
+            } elseif ($request->filter === 'unpaid') {
+                $query->havingRaw('total_paid < total OR total_paid IS NULL');
+            }
+        }
+
+        // Apply search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = '%' . strtolower($request->search) . '%';
+            $query->whereHas('customer', function ($customerQuery) use ($searchTerm) {
+                $customerQuery->whereRaw('LOWER(name) LIKE ?', [$searchTerm]);
+            });
+        }
+
+        // Apply week filter
+        if ($request->has('weeks') && is_array($request->weeks) && count($request->weeks) > 0) {
+            $query->where(function ($weekQuery) use ($request) {
+                foreach ($request->weeks as $weekKey) {
+                    $weekStart = \Carbon\Carbon::parse($weekKey);
+                    $weekEnd = $weekStart->copy()->endOfWeek();
+                    
+                    $weekQuery->orWhereBetween('created_at', [
+                        $weekStart->startOfDay(),
+                        $weekEnd->endOfDay()
+                    ]);
+                }
+            });
+        }
+
+        // Get filtered invoices
+        $filteredInvoices = $query->orderBy('created_at', 'desc')->get();
+
+        // Prepare filter description for PDF
+        $filterDescription = $this->buildFilterDescription($request);
+        $weekRangeTitle = $this->buildWeekRangeTitle($request);
+
+        $pdf = Pdf::loadView('pdf.filtered-invoices', [
+            'invoices' => $filteredInvoices,
+            'date' => now()->format('d/m/Y H:i'),
+            'filterDescription' => $filterDescription,
+            'weekRangeTitle' => $weekRangeTitle,
+            'totalAmount' => $filteredInvoices->sum('total'),
+            'totalPaid' => $filteredInvoices->sum('total_paid'),
+            'totalRemaining' => $filteredInvoices->sum('total') - $filteredInvoices->sum('total_paid')
+        ]);
+
+        $filename = 'factures_filtrees_' . now()->format('d_m_Y_H_i') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+    private function buildFilterDescription(Request $request)
+    {
+        $descriptions = [];
+
+        // Payment status filter
+        if ($request->has('filter') && $request->filter !== 'all') {
+            if ($request->filter === 'paid') {
+                $descriptions[] = 'Factures payées';
+            } elseif ($request->filter === 'unpaid') {
+                $descriptions[] = 'Factures non payées';
+            }
+        }
+
+        // Search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $descriptions[] = 'Client: "' . $request->search . '"';
+        }
+
+        // Week filter
+        if ($request->has('weeks') && is_array($request->weeks) && count($request->weeks) > 0) {
+            $weekCount = count($request->weeks);
+            $descriptions[] = $weekCount === 1 ? '1 semaine sélectionnée' : $weekCount . ' semaines sélectionnées';
+        }
+
+        return empty($descriptions) ? 'Toutes les factures' : implode(', ', $descriptions);
+    }
+
+    private function buildWeekRangeTitle(Request $request)
+    {
+        if (!$request->has('weeks') || !is_array($request->weeks) || count($request->weeks) === 0) {
+            return null;
+        }
+
+        $weeks = $request->weeks;
+        
+        // If only one week is selected
+        if (count($weeks) === 1) {
+            $weekStart = \Carbon\Carbon::parse($weeks[0]);
+            $weekEnd = $weekStart->copy()->endOfWeek();
+            
+            return $this->formatWeekRangeTitle($weekStart, $weekEnd);
+        }
+
+        // If multiple weeks are selected, check if they are consecutive
+        sort($weeks);
+        $firstWeek = \Carbon\Carbon::parse($weeks[0]);
+        $lastWeek = \Carbon\Carbon::parse($weeks[count($weeks) - 1]);
+        
+        // Check if weeks are consecutive
+        $areConsecutive = true;
+        for ($i = 1; $i < count($weeks); $i++) {
+            $currentWeek = \Carbon\Carbon::parse($weeks[$i]);
+            $previousWeek = \Carbon\Carbon::parse($weeks[$i - 1]);
+            
+            if ($currentWeek->diffInWeeks($previousWeek) !== 1) {
+                $areConsecutive = false;
+                break;
+            }
+        }
+
+        if ($areConsecutive) {
+            // Show range from first to last week
+            $firstWeekStart = $firstWeek->copy()->startOfWeek();
+            $lastWeekEnd = $lastWeek->copy()->endOfWeek();
+            
+            return $this->formatWeekRangeTitle($firstWeekStart, $lastWeekEnd);
+        } else {
+            // Non-consecutive weeks
+            return 'Semaines sélectionnées (' . count($weeks) . ' semaines)';
+        }
+    }
+
+    private function formatWeekRangeTitle($startDate, $endDate)
+    {
+        $months = [
+            1 => 'janvier', 2 => 'février', 3 => 'mars', 4 => 'avril',
+            5 => 'mai', 6 => 'juin', 7 => 'juillet', 8 => 'août',
+            9 => 'septembre', 10 => 'octobre', 11 => 'novembre', 12 => 'décembre'
+        ];
+        
+        $startDay = $startDate->day;
+        $startMonth = $months[$startDate->month];
+        $startYear = $startDate->year;
+        
+        $endDay = $endDate->day;
+        $endMonth = $months[$endDate->month];
+        $endYear = $endDate->year;
+        
+        if ($startMonth === $endMonth && $startYear === $endYear) {
+            return "Semaine du {$startDay} au {$endDay} {$startMonth} {$startYear}";
+        } else if ($startYear === $endYear) {
+            return "Semaine du {$startDay} {$startMonth} au {$endDay} {$endMonth} {$startYear}";
+        } else {
+            return "Semaine du {$startDay} {$startMonth} {$startYear} au {$endDay} {$endMonth} {$endYear}";
+        }
     }
 } 

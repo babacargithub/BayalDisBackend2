@@ -92,7 +92,7 @@ class SalesInvoiceService
     public function weeklyDebts(int $commercial_id)
     {
         $invoices = SalesInvoice::with(['customer', 'items.product', 'payments'])
-            >where('commercial_id', $commercial_id)
+            ->where('commercial_id', $commercial_id)
             ->get();
 
         $groupedInvoices = $invoices->groupBy(function ($invoice) {
