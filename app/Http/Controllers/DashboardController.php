@@ -41,7 +41,7 @@ class DashboardController extends Controller
     private function getDailyStats()
     {
         try {
-            $today = Carbon::today();
+            $today = \request()->query('date') ?? Carbon::today();
 
             $total_amount_paid_single = Vente::whereDate('created_at', $today)
                 ->where('paid', true)
@@ -63,11 +63,7 @@ class DashboardController extends Controller
 
             $total_profit = Vente::whereDate('created_at', $today)
                 ->sum('profit');
-            $total_net_profit =Vente::whereDate('created_at', $today)
-                ->where('paid', true)
-                ->where('type',Vente::TYPE_SINGLE)
-                ->sum('profit')
-                +  Payment::whereDate('created_at', $today)
+            $total_net_profit =  Payment::whereDate('created_at', $today)
                     ->get()->sum("total_profit");
 
             $total_payments = Payment::whereDate('created_at', $today)
@@ -106,11 +102,13 @@ class DashboardController extends Controller
                 ->where('paid', false)
                 ->sum(DB::raw('price * quantity'));
 
-            $total_profit = Vente::where('created_at', '>=', $startOfWeek)
-                ->sum('profit');
+
 
             $total_payments = Payment::where('created_at', '>=', $startOfWeek)
                 ->sum('amount');
+            $total_profit = Payment::where('created_at', '>=', $startOfWeek)
+                ->get()->sum('total_profit');
+
 
             return [
                 'total_customers' => Customer::where('created_at', '>=', $startOfWeek)->count(),
@@ -201,4 +199,5 @@ class DashboardController extends Controller
             return [];
         }
     }
+
 }

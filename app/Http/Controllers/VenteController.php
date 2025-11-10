@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\CarLoad;
+use App\Models\Payment;
 use App\Models\Vente;
 use App\Models\Product;
 use App\Models\Customer;
 use App\Models\Commercial;
 use App\Models\SalesInvoice;
 use Exception;
+use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +42,6 @@ class VenteController extends Controller
             ->whereHas('items', function ($q) {
                 $q->where('type', 'INVOICE_ITEM');
             })
-
             ->with([
                 'customer:id,name',
                 'commercial:id,name',
@@ -85,7 +87,7 @@ class VenteController extends Controller
         // Filter by date range
         if ($request->filled('date_debut')) {
             $query->whereDate('sales_invoices.created_at', '>=', $request->date_debut);
-        }else{
+        } else {
             $query->whereDate("created_at", "=", today());
         }
         if ($request->filled('date_fin')) {
@@ -223,35 +225,111 @@ class VenteController extends Controller
     public function destroy(Vente $vente)
     {
         try {
-           return  DB::transaction(function () use ($vente){
-               if ($vente->type !== 'SINGLE') {
-                   return redirect()->back()->with('error', 'Cannot delete invoice items directly');
-               }
-               $commercial = $vente->commercial;
-               // put stock back
-               if ($commercial){
-                   $carload = CarLoad::where("returned", false)
-                       ->where("team_id", $commercial->team_id)
-                       ->where("return_date",">", now()->toDateString())
-                       ->first();
-                   if ($carload){
-                       $carLoadItem = $carload->items()
-                           ->where("product_id", $vente->product_id)
-                           ->latest()
-                           ->first();
-                       if ($carLoadItem){
-                           $carLoadItem->quantity_left += $vente->quantity;
-                           $carLoadItem->save();
-                       }
-                   }
+            return DB::transaction(function () use ($vente) {
+                if ($vente->type !== 'SINGLE') {
+                    return redirect()->back()->with('error', 'Cannot delete invoice items directly');
+                }
+                $commercial = $vente->commercial;
+                // put stock back
+                if ($commercial) {
+                    $carload = CarLoad::where("returned", false)
+                        ->where("team_id", $commercial->team_id)
+                        ->where("return_date", ">", now()->toDateString())
+                        ->first();
+                    if ($carload) {
+                        $carLoadItem = $carload->items()
+                            ->where("product_id", $vente->product_id)
+                            ->latest()
+                            ->first();
+                        if ($carLoadItem) {
+                            $carLoadItem->quantity_left += $vente->quantity;
+                            $carLoadItem->save();
+                        }
+                    }
 
-               }
+                }
 
-               $vente->delete();
-               return redirect()->back()->with('success', 'Vente supprimée avec succès !');
-           });
+                $vente->delete();
+                return redirect()->back()->with('success', 'Vente supprimée avec succès !');
+            });
         } catch (Exception $e) {
             return redirect()->back()->with('error', 'Erreur lors de la suppression de la vente : ' . $e->getMessage());
         }
+    }
+
+    public function salesHistory(Request $request)
+    {
+        function filterAndGroup(EloquentBuilder $query, $dateStart, $dateEnd, bool $group = true): EloquentBuilder
+        {
+            $t = $query
+                ->whereBetween(DB::raw('DATE(created_at)'), [$dateStart, $dateEnd]);
+            if ($group) {
+               return $t->groupBy(DB::raw('DATE(created_at)'));
+
+            }
+            return $t;
+        }
+
+        $dateStart = $request->get('dateStart');
+        $dateEnd = $request->get('dateEnd');
+        /** @var EloquentBuilder $profitsQuery */
+        $profitsQuery = Payment::select(
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('SUM(profit) as total') // adjust field names as needed
+        );
+        $profits_history = filterAndGroup($profitsQuery, $dateStart, $dateEnd)
+            ->get()->map(function ($item) {
+                return ['date' => $item->date, 'total_profit' => $item->total];
+            })->toArray();
+        /** @var EloquentBuilder $salesQuery */
+       $salesQuery = Vente::select(
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('SUM(price * quantity) as total') // adjust field names as needed
+        );
+       $salesQuery = filterAndGroup($salesQuery, $dateStart, $dateEnd);
+             $sales_history = $salesQuery->get()->map(function ($item) use ($profits_history) {
+                $data = ['date' => $item->date, 'total_sales' => (int)$item->total];
+                if (array_key_exists($item->date, $profits_history)) {
+                    $data['total_profits'] = $profits_history[$item->date];
+                }
+                $key = array_search($item->date, array_column($profits_history, 'date'));
+
+                if ($key !== false) {
+                    $item_profit = $profits_history[$key];
+                    $data['total_profits'] = $item_profit['total_profit'];
+                }
+                return $data;
+
+            });
+
+        // averages
+
+        $average_profits = Payment::select(DB::raw('SUM(profit) as total'))
+            ->whereBetween(DB::raw('DATE(created_at)'), [$dateStart, $dateEnd])
+            ->groupBy(DB::raw('DATE(created_at)'))
+            ->get()->avg('total');
+
+        $average_sales = Vente::select(
+            DB::raw('DATE(created_at) as date'),
+            DB::raw('SUM(price * quantity) as total'))
+            ->whereBetween(DB::raw('DATE(created_at)'), [$dateStart, $dateEnd])
+            ->groupBy(DB::raw('DATE(created_at)'))
+            ->get()
+            ->avg('total');
+        /** @var EloquentBuilder $totalProfitsQuery */
+        $totalProfitsQuery = Payment::select(DB::raw('SUM(profit) as total'));
+        $total_profits = filterAndGroup($totalProfitsQuery, $dateStart, $dateEnd, group: false)->first()->total;
+        /** @var EloquentBuilder $salesTotalQuery */
+        $salesTotalQuery = Vente::select(DB::raw('SUM(price * quantity) as total'));
+        $total_sales = filterAndGroup($salesTotalQuery, $dateStart, $dateEnd, group: false)->first()->total;
+        return Inertia::render('Ventes/SalesHistory', [
+            'history' => [
+                "items" => $sales_history,
+                "totals"=> ["sales"=>(int)$total_sales, "profits"=>(int)$total_profits],
+
+                "averages" => ["sales_average" => (int)$average_sales, "profits_average" => (int)$average_profits]],
+        ]);
+
+
     }
 } 

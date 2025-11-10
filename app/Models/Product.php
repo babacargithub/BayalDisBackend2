@@ -68,14 +68,14 @@ class Product extends Model
         return is_null($this->parent_id);
     }
 
-    #[ArrayShape(['parent_quantity' => "int", 'remaining_variant_quantity' => "int"])]
+    #[ArrayShape(['parent_quantity' => "int", 'remaining_variant_quantity' => "int","decimal_parent_quantity" => "float"])]
     public  function convertQuantityToParentQuantity($quantity): array
     {
         // Get the ratio between parent and variant quantities
         if ($this->is_base_product) {
             return [
                 'parent_quantity' => 0,
-                'remaining_variant_quantity' => $quantity
+                'remaining_variant_quantity' => 0
             ];
         }
         $parent = $this->parent;
@@ -89,6 +89,7 @@ class Product extends Model
         
         return [
             'parent_quantity' => intval($parentUnits),
+            "decimal_parent_quantity" => $quantity / $ratio,
             'remaining_variant_quantity' => intval($remainingVariantUnits)
         ];
     }

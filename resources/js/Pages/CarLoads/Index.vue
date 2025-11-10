@@ -6,6 +6,7 @@ import { useForm } from '@inertiajs/vue3';
 import Swal from 'sweetalert2';
 import { formatAmount } from '@/helpers';
 import TableWithInlineEdit from '@/Components/TableWithInlineEditTemplate.vue';
+import moment from "moment";
 
 const props = defineProps({
     carLoads: {
@@ -21,11 +22,6 @@ const props = defineProps({
         required: true
     }
 });
-onMounted(() => {
-    console.log(props.carLoads)
-
-})
-
 const showNewDialog = ref(false);
 const showEditDialog = ref(false);
 const editingCarLoad = ref(null);
@@ -40,13 +36,15 @@ const form = useForm({
     comment: '',
     return_date: null,
 });
+const currentDate = moment().format('YYYY-MM-DD');
 
 const itemForm = useForm({
+
     items: [
         {
             product_id: null,
             quantity_loaded: null,
-            loaded_at: null,
+            loaded_at: currentDate,
             comment: ''
         }
     ]
@@ -143,10 +141,11 @@ const openItemsDialog = (carLoad) => {
 };
 
 const addItemRow = () => {
+  const currentDate = moment().format('YYYY-MM-DD');
     itemForm.items.push({
         product_id: null,
         quantity_loaded: null,
-        loaded_at: null,
+        loaded_at: currentDate,
         comment: ''
     });
 };
@@ -376,14 +375,17 @@ const closeInventory = (inventory) => {
     });
 };
 
-const addMissingProduct = (item) => {
+const addMissingProduct = (items) => {
     // Create a form with a single item
     const singleItemForm = useForm({
-        items: [{
+        items: items?.map((item) => {
+          return {
             product_id: item.id,
             total_returned: item.total_returned,
             comment: ''
-        }]
+
+          }
+        })
     });
 
     // Submit the form
@@ -565,7 +567,7 @@ const createNewCarLoadFromInventory = () => {
                             </template>
                         </v-data-table>
 
-                        <!-- New/Edit Dialog -->
+                        <!-- New/Edit Dialog of Car Load -->
                         <v-dialog
                             v-model="showNewDialog"
                             max-width="600px"
@@ -638,7 +640,7 @@ const createNewCarLoadFromInventory = () => {
                             </v-card>
                         </v-dialog>
 
-                        <!-- Items Dialog -->
+                        <!-- Show Carload Items Dialog -->
                         <v-dialog v-model="showItemsDialog" max-width="800px">
                             <v-card>
                                 <v-card-title class="text-h5">
@@ -648,8 +650,99 @@ const createNewCarLoadFromInventory = () => {
                                 </v-card-title>
 
                                 <v-card-text>
-                                    <!-- Existing Items Table -->
-                                  <p>Valeur stock : <span class="text-bold">{{selectedCarLoad?.stock_value}}</span></p>
+                                  <!-- Toggle button for add items form -->
+                                  <div v-if="selectedCarLoad?.items?.length && !selectedCarLoad?.inventory?.closed" class="d-flex justify-center mb-4">
+                                    <v-btn
+                                        color="primary"
+                                        variant="text"
+                                        @click="showAddItemsForm = !showAddItemsForm"
+                                    >
+                                      <v-icon>{{ showAddItemsForm ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
+                                      {{ showAddItemsForm ? 'Masquer le formulaire' : 'Ajouter des articles' }}
+                                    </v-btn>
+                                  </div>
+
+                                  <!-- Add New Items Form -->
+                                  <div v-if="(!selectedCarLoad?.items?.length || showAddItemsForm) && !selectedCarLoad?.inventory?.closed">
+                                    <div class="text-h6 mb-4">Ajouter des articles</div>
+                                    <v-form @submit.prevent="submitItems">
+                                      <div v-for="(item, index) in itemForm.items" :key="index" class="d-flex align-center mb-4">
+                                        <v-select
+                                            v-model="item.product_id"
+                                            :items="products"
+                                            item-title="name"
+                                            item-value="id"
+                                            label="Produit"
+                                            class="mr-2"
+                                            :error-messages="itemForm.errors[`items.${index}.product_id`]"
+                                            required
+                                        ></v-select>
+
+                                        <v-text-field
+                                            v-model="item.quantity_loaded"
+                                            type="number"
+                                            label="Quantité"
+                                            class="mr-2"
+                                            :error-messages="itemForm.errors[`items.${index}.quantity_loaded`]"
+                                            required
+                                        ></v-text-field>
+
+                                        <v-text-field
+                                            v-model="item.loaded_at"
+                                            type="date"
+                                            label="Chargé le "
+                                            class="mr-2"
+                                            :error-messages="itemForm.errors[`items.${index}.loaded_at`]"
+                                            required
+                                        ></v-text-field>
+
+                                        <v-text-field
+                                            v-model="item.comment"
+                                            label="Commentaire"
+                                            class="mr-2"
+                                            :error-messages="itemForm.errors[`items.${index}.comment`]"
+                                        ></v-text-field>
+
+                                        <v-btn
+                                            icon
+                                            small
+                                            density="comfortable"
+                                            variant="text"
+                                            color="error"
+                                            @click="removeItemRow(index)"
+                                            :disabled="itemForm.items.length === 1"
+                                        >
+                                          <v-icon>mdi-delete</v-icon>
+                                        </v-btn>
+                                      </div>
+
+                                      <div class="d-flex justify-end mb-4">
+                                        <v-btn
+                                            color="primary"
+                                            text
+                                            flat
+                                            @click="addItemRow"
+                                        >
+                                          <v-icon left>mdi-plus</v-icon>
+                                        </v-btn>
+                                      </div>
+                                      <div class="d-flex justify-end mb-4">
+                                        <v-btn
+                                            color="primary"
+                                            @click="submitItems"
+                                            v-if="!selectedCarLoad?.inventory?.closed"
+                                            :loading="itemForm.processing"
+                                        >
+                                          Enregistrer
+                                        </v-btn>
+                                      </div>
+                                    </v-form>
+                                  </div>
+
+                                  <!-- Existing Items Table -->
+                                  <p>Valeur stock :
+                                    <span class="font-bold ">{{selectedCarLoad?.stock_value?.toLocaleString()
+                                      }}FCFA</span></p>
                                     <v-data-table
                                         v-if="selectedCarLoad?.items?.length > 0"
                                         :headers="[
@@ -662,7 +755,6 @@ const createNewCarLoadFromInventory = () => {
                                         ]"
                                         :items="selectedCarLoad.items"
                                         :items-per-page="-1"
-                                        
                                         hide-default-footer
                                         class="elevation-1 mb-4"
                                     >
@@ -794,84 +886,7 @@ const createNewCarLoadFromInventory = () => {
 
                                     <v-divider class="my-4"></v-divider>
 
-                                    <!-- Toggle button for add items form -->
-                                    <div v-if="selectedCarLoad?.items?.length && !selectedCarLoad?.inventory?.closed" class="d-flex justify-center mb-4">
-                                        <v-btn
-                                            color="primary"
-                                            variant="text"
-                                            @click="showAddItemsForm = !showAddItemsForm"
-                                        >
-                                            <v-icon>{{ showAddItemsForm ? 'mdi-chevron-up' : 'mdi-chevron-down' }}</v-icon>
-                                            {{ showAddItemsForm ? 'Masquer le formulaire' : 'Ajouter des articles' }}
-                                        </v-btn>
-                                    </div>
 
-                                    <!-- Add New Items Form -->
-                                    <div v-if="(!selectedCarLoad?.items?.length || showAddItemsForm) && !selectedCarLoad?.inventory?.closed">
-                                        <div class="text-h6 mb-4">Ajouter des articles</div>
-                                        <v-form @submit.prevent="submitItems">
-                                            <div v-for="(item, index) in itemForm.items" :key="index" class="d-flex align-center mb-4">
-                                                <v-select
-                                                    v-model="item.product_id"
-                                                    :items="products"
-                                                    item-title="name"
-                                                    item-value="id"
-                                                    label="Produit"
-                                                    class="mr-2"
-                                                    :error-messages="itemForm.errors[`items.${index}.product_id`]"
-                                                    required
-                                                ></v-select>
-
-                                                <v-text-field
-                                                    v-model="item.quantity_loaded"
-                                                    type="number"
-                                                    label="Quantité"
-                                                    class="mr-2"
-                                                    :error-messages="itemForm.errors[`items.${index}.quantity_loaded`]"
-                                                    required
-                                                ></v-text-field>
-
-                                              <v-text-field
-                                                    v-model="item.loaded_at"
-                                                    type="date"
-                                                    label="Chargé le "
-                                                    class="mr-2"
-                                                    :error-messages="itemForm.errors[`items.${index}.loaded_at`]"
-                                                    required
-                                                ></v-text-field>
-
-                                                <v-text-field
-                                                    v-model="item.comment"
-                                                    label="Commentaire"
-                                                    class="mr-2"
-                                                    :error-messages="itemForm.errors[`items.${index}.comment`]"
-                                                ></v-text-field>
-
-                                                <v-btn
-                                                    icon
-                                                    small
-                                                    density="comfortable"
-                                                    variant="text"
-                                                    color="error"
-                                                    @click="removeItemRow(index)"
-                                                    :disabled="itemForm.items.length === 1"
-                                                >
-                                                    <v-icon>mdi-delete</v-icon>
-                                                </v-btn>
-                                            </div>
-
-                                            <div class="d-flex justify-end mb-4">
-                                                <v-btn
-                                                    color="primary"
-                                                    text
-                                                    @click="addItemRow"
-                                                >
-                                                    <v-icon left>mdi-plus</v-icon>
-                                                    Ajouter une ligne
-                                                </v-btn>
-                                            </div>
-                                        </v-form>
-                                    </div>
                                 </v-card-text>
 
                                 <v-card-actions>
@@ -883,14 +898,7 @@ const createNewCarLoadFromInventory = () => {
                                     >
                                         Annuler
                                     </v-btn>
-                                    <v-btn
-                                        color="primary"
-                                        @click="submitItems"
-                                        v-if="!selectedCarLoad?.inventory?.closed"
-                                        :loading="itemForm.processing"
-                                    >
-                                        Enregistrer
-                                    </v-btn>
+
                                 </v-card-actions>
                             </v-card>
                         </v-dialog>
@@ -1092,13 +1100,17 @@ const createNewCarLoadFromInventory = () => {
                                                                     :headers="[
                                                                         { title: 'Produit', key: 'name' },
                                                                         { title: 'Qté chargée', key: 'quantity_loaded' },
-                                                                        { title: 'Actions', key: 'actions', align: 'right' }
+                                                                        { title: 'Qt retourné', key:
+                                                                        'quantity_returned',
+                                                                        align:
+                                                                        'right' }
                                                                     ]"
                                                                     :items="selectedCarLoad.missing_products"
+                                                                    :items-per-page="selectedCarLoad.missing_products?.length"
                                                                     hide-default-footer
                                                                     class="elevation-1"
                                                                 >
-                                                                    <template v-slot:item.actions="{ item }">
+                                                                    <template v-slot:item.quantity_returned="{ item }">
 <!--                                                                      create input field for quantity returned-->
                                                                       <div class="v-row">
                                                                         <v-text-field
@@ -1108,18 +1120,22 @@ const createNewCarLoadFromInventory = () => {
                                                                             class="mr-2"
                                                                             :error-messages="itemForm.errors[`items.${index}.quantity_loaded`]"
                                                                             required/>
-                                                                        <v-btn
-                                                                            v-if="!inventory.closed"
-                                                                            color="primary"
-                                                                            variant="text"
-                                                                            size="small"
-                                                                            @click="addMissingProduct(item)"
-                                                                        >
-                                                                          <v-icon left>mdi-check</v-icon>Ajouter
-                                                                        </v-btn>
+
                                                                       </div>
                                                                     </template>
                                                                 </v-data-table>
+                                                              <div class="flex items-center">
+                                                                <v-btn
+                                                                    v-if="!inventory.closed"
+                                                                    color="primary"
+                                                                    variant="text"
+                                                                    size="small"
+                                                                    @click="addMissingProduct(selectedCarLoad.missing_products)"
+                                                                >
+                                                                  <v-icon left>mdi-check</v-icon>
+                                                                  Enregistrer
+                                                                </v-btn>
+                                                              </div>
                                                             </v-expansion-panel-text>
                                                         </v-expansion-panel>
                                                     </v-expansion-panels>

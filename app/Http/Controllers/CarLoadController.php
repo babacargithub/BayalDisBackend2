@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
 use App\Models\Team;
+use App\Models\Vente;
 use App\Services\CarLoadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ class CarLoadController extends Controller
 
     public function index()
     {
-        $carLoads = $this->carLoadService->getAllCarLoads();
+        $carLoads = $this->carLoadService->getCurrentCarLoad();
         $teams = Team::select('id', 'name')
             ->orderBy('name')
             ->get();
@@ -273,22 +274,49 @@ class CarLoadController extends Controller
         $validated = $request->validate([
             'items' => 'array',
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.total_returned' => 'required|integer|min:0',
+            'items.*.total_returned' => 'required|numeric',
             'items.*.comment' => 'nullable|string',
         ]);
+        $startDate = $carLoad->load_date->toDateString();
+        $endDate = $carLoad->return_date->toDateString();
+
+        /** @noinspection UnknownColumnInspection */
+        $salesByProduct = DB::select("
+            SELECT 
+                product_id,
+                SUM(quantity) AS total_quantity_sold
+            FROM ventes
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY product_id
+            ORDER BY total_quantity_sold DESC
+        ", [$startDate, $endDate]);
+        $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
+
+
         $items = collect($validated['items'])
-            ->map(function ($item) use ($inventory, $carLoad) {
-                return new CarLoadInventoryItem([
+            ->map(function ($item) use ($inventory, $carLoad, $salesByProductMap) {
+                $productId = $item['product_id'];
+                $prod = Product::where("id", $productId)->first();
+                if ($prod->parent_id == null) {
+                    $totalQuantitySold =  ($salesByProductMap->has($productId) ? $salesByProductMap->get($productId)
+                        ->total_quantity_sold :0) +
+                        $this->carLoadService->determineTotalSoldOfAParentProductFromChildren($carLoad, $prod);
+                } else {
+                    $totalQuantitySold = $salesByProductMap->has($productId) ? $salesByProductMap->get($productId)->total_quantity_sold : 0;
+                }
+
+
+                return [
                     'product_id' => $item['product_id'],
+                    "product"=> Product::where('id',$item['product_id'])->first()->name,
                     'total_returned' => $item['total_returned'],
                     'comment' => $item['comment'] ?? null,
                     "total_loaded" => $carLoad->items()->where('product_id', $item['product_id'])->sum('quantity_loaded'),
-                    // TODO find a way to get the total sold later
-                    "total_sold" => 0,
-                ]);
+                    "total_sold" => $totalQuantitySold,
+                ];
             });
 
-        $inventory->items()->saveMany($items);
+        $inventory->items()->createMany($items);
 
         return redirect()->back()
             ->with('success', 'Articles ajoutés avec succès');
@@ -334,11 +362,11 @@ class CarLoadController extends Controller
     public function exportInventoryPdf(CarLoad $carLoad, CarLoadInventory $inventory)
     {
         $inventory->load(['items.product', 'carLoad.team', 'user']);
-        
+
         $pdf = PDF::loadView('pdf.inventory', [
             'inventory' => $inventory,
             'carLoad' => $carLoad,
-            'items' => $inventory->items,
+            'items' => $inventory->items->filter(function ($item) use ($inventory) { return $item->product->is_base_product;}),
             'date' => now()->format('d/m/Y H:i')
         ]);
 
@@ -348,7 +376,7 @@ class CarLoadController extends Controller
     public function exportItemsPdf(CarLoad $carLoad)
     {
         $carLoad->load(['items.product', 'commercial']);
-        
+
         $pdf = PDF::loadView('pdf.car-load-items', [
             'carLoad' => $carLoad,
             'items' => $carLoad->items,

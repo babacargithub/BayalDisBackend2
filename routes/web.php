@@ -52,6 +52,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/commercials', [CommercialController::class, 'getCommercials'])->name('commercials.list');
     Route::resource('customers', CustomerController::class);
     Route::resource('produits', ProductController::class);
+    Route::get('ventes/sales_history', [VenteController::class, 'salesHistory']);
     Route::resource('ventes', VenteController::class);
     Route::resource('zones', ZoneController::class);
     Route::get('zones/{zone}/lignes', [ZoneController::class, 'lignes'])->name('zones.lignes');

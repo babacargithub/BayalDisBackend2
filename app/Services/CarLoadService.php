@@ -85,15 +85,15 @@ class CarLoadService
         return DB::transaction(function () use ($item) {
             $quantity_left = $item->quantity_left;
 
-             // increment stock
-             $product = Product::findOrFail($item->product_id);
-             $product->incrementStock($quantity_left, updateMainStock: true);
-             $product->save();
+            // increment stock
+            $product = Product::findOrFail($item->product_id);
+            $product->incrementStock($quantity_left, updateMainStock: true);
+            $product->save();
 //             dd($quantity_left, $product->stock_available);
 //             throw new \Exception('Cannot delete items from an unloaded car load');
-             $item->delete();
+            $item->delete();
 
-         });
+        });
     }
 
     public function activateCarLoad(CarLoad $carLoad): CarLoad
@@ -180,6 +180,20 @@ class CarLoadService
             ->orderBy('created_at', 'desc')
             ->paginate(1000);
     }
+    public function getCurrentCarLoad()
+    {
+        return CarLoad::with([
+            'items' => function($query) {
+                $query->orderBy('loaded_at', 'desc');
+            },
+            'items.product',
+            'team',
+            'inventory.items.product'
+        ])
+            ->orderBy('created_at', 'desc')
+            ->limit(2)
+            ->paginate(2);
+    }
 
     public function getCurrentCarLoadItems()
     {
@@ -229,7 +243,7 @@ class CarLoadService
             ->where("returned", false)
             ->exists();
         if ($carLoad) {
-                throw new \Exception('Cette équipe a déjà un chargement en cours et non retourné');
+            throw new \Exception('Cette équipe a déjà un chargement en cours et non retourné');
         }
 
         $carLoad = $inventory->carLoad;
@@ -248,18 +262,18 @@ class CarLoadService
             // Create items based on inventory differences
             foreach ($inventory->items as $item) {
                 $remainingQuantity = $item->total_returned;
-                
+
                 if ($remainingQuantity > 0) {
                     $newCarLoad->items()->create([
                         'product_id' => $item->product_id,
                         'quantity_loaded' => $remainingQuantity,
+                        "quantity_left" => $remainingQuantity,
                         'loaded_at' => Carbon::now()->toDateString(),
-                        'comment' => "Basé sur l'inventaire #{$inventory->id}"
                     ]);
                 }
             }
             // get missing items from the inventory by distinct product_id and sum the total_loaded
-        
+
 
             return $newCarLoad;
         });
@@ -281,7 +295,7 @@ class CarLoadService
         $parentItem = $currentCarLoad->items()
             ->where('product_id', $product->id)
             ->first();
-            
+
 
         if (!$parentItem) {
             throw new \Exception('Ce produit n\'est pas dans votre chargement');
@@ -299,7 +313,7 @@ class CarLoadService
             // Process each variant
             foreach ($data['items'] as $item) {
                 $variant = Product::findOrFail($item['product_id']);
-                
+
                 // Verify this is a valid parent-child relationship
                 if ($variant->parent_id !== $product->id) {
                     throw new \Exception('Le produit ' . $variant->name . ' n\'est pas un variant de ce produit');
@@ -323,8 +337,8 @@ class CarLoadService
 
     public function createItems(CarLoad $carLoad, array $items) : CarLoad
     {
-       return DB::transaction(function () use ($items, $carLoad) {
-           foreach ($items as $item) {
+        return DB::transaction(function () use ($items, $carLoad) {
+            foreach ($items as $item) {
                 $carLoad->items()->create([
                     'product_id' => $item['product_id'],
                     'quantity_loaded' => $item['quantity_loaded'],
@@ -335,7 +349,54 @@ class CarLoadService
                 $product = Product::find($item['product_id']);
                 $product->decrementStock($item['quantity_loaded'], updateMainStock: true);
             }
-           return $carLoad;
+            return $carLoad;
         });
+    }
+
+    public function determineTotalSoldOfAParentProductFromChildren(CarLoad $carLoad, Product $parentProduct)
+    {
+
+        // Get all variants (children) of the parent product
+        $children = Product::where('parent_id', $parentProduct->id)->get();
+
+        // Initialize total sold for parent (starting at 0)
+        $totalSoldOfParent = 0;
+        $startDate = $carLoad->load_date->toDateString();
+        $endDate = $carLoad->return_date->toDateString();
+        $productIds = $children->pluck('id')->toArray();
+
+        $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+        // TODO find a way to link ventes with car load
+        $salesByProduct = DB::select("
+                                        SELECT 
+                                            product_id,
+                                            SUM(quantity) AS total_quantity_sold
+                                        FROM ventes
+                                        WHERE DATE(created_at) BETWEEN ? AND ?
+                                        AND product_id IN ($placeholders)
+                                        GROUP BY product_id
+                                        ORDER BY total_quantity_sold DESC
+                                    ", array_merge([$startDate, $endDate], $productIds));
+//        $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
+        // For each variant, sum quantity from ventes between the car load dates
+        foreach ($salesByProduct as $child) {
+            // Sum quantity column from ventes between the car load dates
+            $totalSoldFromVentes = $child->total_quantity_sold;
+
+            // Skip if no quantity was sold
+            if ($totalSoldFromVentes <= 0) {
+                continue;
+            }
+
+            // Convert the variant quantity sold to parent quantity equivalent
+            $childProduct = Product::findOrFail($child->product_id);
+            $conversionResult = $childProduct->convertQuantityToParentQuantity($totalSoldFromVentes);
+
+            // Add the converted quantity to total sold of parent (using decimal for precision)
+            $totalSoldOfParent += $conversionResult['decimal_parent_quantity'];
+        }
+
+        // Return the total sold of parent product equivalent
+        return $totalSoldOfParent;
     }
 } 
