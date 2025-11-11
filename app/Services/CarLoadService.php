@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CarLoad;
+use App\Models\CarLoadInventoryItem;
 use App\Models\CarLoadItem;
 use App\Models\CarLoadInventory;
 use App\Models\Product;
@@ -399,4 +400,6 @@ class CarLoadService
         // Return the total sold of parent product equivalent
         return $totalSoldOfParent;
     }
+
+
 } 
