@@ -286,6 +286,10 @@ const exportCarLoadItemsPdf = (carLoadId) => {
     // () => window.open(route('car-loads.items.export-pdf', { carLoad: selectedCarLoad.id }))
     window.open(route('car-loads.items.export-pdf', { carLoad: carLoadId }));
 };
+const goToProductHistory = (carLoadId, productId) => {
+    // () => window.open(route('car-loads.items.export-pdf', { carLoad: selectedCarLoad.id }))
+    window.open(route('car-loads.product.history', { carLoad: carLoadId, product: productId }));
+};
 
 const deleteInventoryItem = async (item) => {
     inventoryItemToDelete.value = item;
@@ -963,6 +967,14 @@ const createNewCarLoadFromInventory = () => {
                                                             :error-messages="errors[`items.${index}.comment`]"
                                                         ></v-text-field>
                                                     </template>
+                                                  <template #item.product.name="{ item }">
+                                                    <div class="d-flex">
+                                                      <v-btn flat icon
+                                                             @click="goToProductHistory(selectedCarLoad.id,
+                                                             item.product?.id)">i</v-btn>
+                                                     {{item.product?.name}}
+                                                    </div>
+                                                  </template>
                                                     <template #item.result="{ item }">
                                                         <div class="d-flex align-center justify-center">
                                                             <v-icon
@@ -1142,7 +1154,7 @@ const createNewCarLoadFromInventory = () => {
                                                 </div>
 
                                                 <v-divider class="my-4"></v-divider>
-
+<!--                                              Buttons to act on inventory -->
                                               <v-btn-group divided rounded>
                                                 <v-btn
                                                     color="info"

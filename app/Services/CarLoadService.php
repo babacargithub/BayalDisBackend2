@@ -7,8 +7,11 @@ use App\Models\CarLoadInventoryItem;
 use App\Models\CarLoadItem;
 use App\Models\CarLoadInventory;
 use App\Models\Product;
+use App\Models\Vente;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use JetBrains\PhpStorm\ArrayShape;
 
 class CarLoadService
 {
@@ -186,14 +189,21 @@ class CarLoadService
         return CarLoad::with([
             'items' => function($query) {
                 $query->orderBy('loaded_at', 'desc');
+                $query->orderBy('id', 'desc');
             },
             'items.product',
             'team',
+            'inventory.items' => function($query) {
+                $query->join('products', 'car_load_inventory_items.product_id', '=', 'products.id')
+                    ->orderBy('products.name') // secondary sort for products with same parent
+                    ->orderBy('products.parent_id')
+                    ->select('car_load_inventory_items.*'); // important: select only inventory_items columns
+            },
             'inventory.items.product'
         ])
             ->orderBy('created_at', 'desc')
-            ->limit(2)
-            ->paginate(2);
+            ->limit(3)
+            ->paginate(3);
     }
 
     public function getCurrentCarLoadItems()
@@ -269,6 +279,7 @@ class CarLoadService
                         'product_id' => $item->product_id,
                         'quantity_loaded' => $remainingQuantity,
                         "quantity_left" => $remainingQuantity,
+                        "from_previous_car_load" => true,
                         'loaded_at' => Carbon::now()->toDateString(),
                     ]);
                 }
@@ -358,12 +369,13 @@ class CarLoadService
     {
 
         // Get all variants (children) of the parent product
-        $children = Product::where('parent_id', $parentProduct->id)->get();
+        $children = Product::select('id')
+            ->where('parent_id', $parentProduct->id)->get();
 
         // Initialize total sold for parent (starting at 0)
-        $totalSoldOfParent = 0;
-        $startDate = $carLoad->load_date->toDateString();
-        $endDate = $carLoad->return_date->toDateString();
+        $totalSoldOfParent = $carLoad->inventory->items()->where('product_id', $parentProduct->id)->sum('total_sold');
+        $startDate = $carLoad->load_date->toDateTime();
+        $endDate = $carLoad->return_date->toDateTime();
         $productIds = $children->pluck('id')->toArray();
 
         $placeholders = implode(',', array_fill(0, count($productIds), '?'));
@@ -373,7 +385,7 @@ class CarLoadService
                                             product_id,
                                             SUM(quantity) AS total_quantity_sold
                                         FROM ventes
-                                        WHERE DATE(created_at) BETWEEN ? AND ?
+                                        WHERE created_at BETWEEN ? AND ?
                                         AND product_id IN ($placeholders)
                                         GROUP BY product_id
                                         ORDER BY total_quantity_sold DESC
@@ -383,7 +395,6 @@ class CarLoadService
         foreach ($salesByProduct as $child) {
             // Sum quantity column from ventes between the car load dates
             $totalSoldFromVentes = $child->total_quantity_sold;
-
             // Skip if no quantity was sold
             if ($totalSoldFromVentes <= 0) {
                 continue;
@@ -396,9 +407,32 @@ class CarLoadService
             // Add the converted quantity to total sold of parent (using decimal for precision)
             $totalSoldOfParent += $conversionResult['decimal_parent_quantity'];
         }
-
         // Return the total sold of parent product equivalent
         return $totalSoldOfParent;
+    }
+    #[ArrayShape(["loadingsHistory" => "array", "product" => "array", "ventes" => "array"])]
+    public function productHistoryInCarLoad(Product $product, CarLoad $carLoad)
+    {
+        $ventes = Vente::where('product_id', $product->id)
+            ->join('sales_invoices', 'sales_invoices.id', '=', 'ventes.sales_invoice_id')
+            ->join('customers', 'customers.id', '=', 'sales_invoices.customer_id')
+            ->select('product_id','quantity','price','customers.name','ventes.created_at','sales_invoices.created_at as invoice_date','sales_invoices.id as invoice_number')
+            ->whereDate('ventes.created_at', ">=", $carLoad->load_date->toDateString())
+            ->orderBy('ventes.created_at', 'desc')
+            ->orderBy('sales_invoices.customer_id', )
+            ->orderBy('sales_invoices.created_at', 'desc')
+            ->whereDate('ventes.created_at', "<=", $carLoad->return_date->toDateString())
+            ->get();
+        $loadingsHistory = $carLoad->items()->where('product_id', $product->id)->get();
+//        $loadingsHistory = [];
+//        $ventes = [];
+
+        return  [
+            'loadingsHistory' => $loadingsHistory,
+            'product' => $product,
+            'ventes' => $ventes,
+
+        ];
     }
 
 

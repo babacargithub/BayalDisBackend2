@@ -16,14 +16,15 @@ class CarLoadItem extends Model
         'quantity_loaded',
         "quantity_left",
         'comment',
-        "loaded_at"
+        "loaded_at",
+        'from_previous_car_load'
     ];
 
     protected $casts = [
-        'quantity_loaded' => 'integer',
+//        'quantity_loaded' => 'integer',
         "created_at" => "datetime",
         "updated_at" => "datetime",
-        "loaded_at" => "date"
+        "loaded_at" => "datetime"
     ];
     protected $guarded = ['id',"quantity_left"];
 

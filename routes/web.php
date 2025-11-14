@@ -210,6 +210,9 @@ Route::middleware('auth')->group(function () {
         ->name('car-loads.inventories.close');
     Route::get('/car-loads/{carLoad}/items/export-pdf', [CarLoadController::class, 'exportItemsPdf'])
         ->name('car-loads.items.export-pdf');
+    Route::get('/car-loads/{carLoad}/{product}/history', [CarLoadController::class, 'productHistoryInCarLoad'])->name
+    ('car-loads.product.history');
+
 });
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/rapport', [AdminController::class, 'rapport'])->name('admin.rapport');

@@ -45,9 +45,9 @@ class Vente extends Model
         'order_id' => 'integer',
     ];
 
-    protected $with = ['product', 'order'];
+//    protected $with = ['product', 'order'];
 
-    protected $appends = ['subtotal', 'customer_name'];
+    protected $appends = [];
 
     public function getSubtotalAttribute(): int
     {

@@ -269,6 +269,9 @@ class CarLoadController extends Controller
             ->with('success', 'Inventaire créé avec succès');
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function addInventoryItems(Request $request, CarLoad $carLoad, CarLoadInventory $inventory)
     {
         $validated = $request->validate([
@@ -296,15 +299,7 @@ class CarLoadController extends Controller
         $items = collect($validated['items'])
             ->map(function ($item) use ($inventory, $carLoad, $salesByProductMap) {
                 $productId = $item['product_id'];
-                $prod = Product::where("id", $productId)->first();
-                if ($prod->parent_id == null) {
-                    $totalQuantitySold =  ($salesByProductMap->has($productId) ? $salesByProductMap->get($productId)
-                        ->total_quantity_sold :0) +
-                        $this->carLoadService->determineTotalSoldOfAParentProductFromChildren($carLoad, $prod);
-                } else {
-                    $totalQuantitySold = $salesByProductMap->has($productId) ? $salesByProductMap->get($productId)->total_quantity_sold : 0;
-                }
-
+                $totalQuantitySold = $salesByProductMap->has($productId) ? $salesByProductMap->get($productId)->total_quantity_sold : 0;
 
                 return [
                     'product_id' => $item['product_id'],
@@ -315,9 +310,10 @@ class CarLoadController extends Controller
                     "total_sold" => $totalQuantitySold,
                 ];
             });
+        DB::transaction(function () use ($inventory,  $items) {
 
-        $inventory->items()->createMany($items);
-
+            $inventory->items()->createMany($items);
+        });
         return redirect()->back()
             ->with('success', 'Articles ajoutés avec succès');
     }
@@ -366,16 +362,33 @@ class CarLoadController extends Controller
             'inventory' => $inventory,
             'carLoad' => $carLoad,
             'items' => $inventory->items
-                ->filter(function ($item) use ($inventory) { return $item->product->is_base_product;})
-            ->map(function ($item) use ($inventory) {
-                $children = CarLoadInventoryItem::join("products", "car_load_inventory_items.product_id", "=", "products.id")
-                    ->where('products.parent_id', $item->product_id)
-                    ->where("total_returned",">",1)
-                    ->where('car_load_inventory_items.car_load_inventory_id', $inventory->id)
-                    ->get();
-                $item['children'] = $children;
-                return $item;
-            })
+                ->filter(function ($item) use ($carLoad,$inventory) { return $item->product->is_base_product;})
+                ->map(function ($item) use ($carLoad, $inventory) {
+                    $item->total_sold = $this->carLoadService->determineTotalSoldOfAParentProductFromChildren($carLoad, $item->product);
+                    $calculatedTotalLoaded = $item->total_loaded;
+
+                    $fromPreviousItems  = $carLoad->items()
+                        ->join('products', 'products.id', '=', 'car_load_items.product_id')
+                        ->where('products.parent_id', $item->product->id)
+                        ->where('from_previous_car_load', true)
+                        ->get();
+                    $calculatedTotalFromPrevious = $calculatedTotalLoaded;
+                    foreach ($fromPreviousItems as $previousItem) {
+
+                        $calculatedTotalFromPrevious+= $previousItem->product->convertQuantityToParentQuantity($previousItem->quantity_loaded)['decimal_parent_quantity'];
+                    }
+                    $item->total_loaded = $calculatedTotalFromPrevious;
+
+
+//                    dump($item->product->name." is sold total of ".$item->total_sold);
+                    $children = CarLoadInventoryItem::join("products", "car_load_inventory_items.product_id", "=", "products.id")
+                        ->where('products.parent_id', $item->product_id)
+//                    ->where("total_returned",">",1)
+                        ->where('car_load_inventory_items.car_load_inventory_id', $inventory->id)
+                        ->get();
+                    $item['children'] = $children;
+                    return $item;
+                })
             ,
             'date' => now()->format('d/m/Y H:i')
         ]);
@@ -420,5 +433,12 @@ class CarLoadController extends Controller
             // For regular requests, redirect back with error
             return back()->withErrors(['error' => $e->getMessage()]);
         }
+    }
+
+    public function productHistoryInCarLoad(CarLoad $carLoad, Product $product )
+    {
+
+        return Inertia::render('CarLoad/ProductHistory', $this->carLoadService->productHistoryInCarLoad($product, $carLoad));
+
     }
 } 

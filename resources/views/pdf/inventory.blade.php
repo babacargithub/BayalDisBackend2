@@ -100,47 +100,70 @@
     @endphp
     @foreach($items as $item)
         @php
-            $total_returned = $item->total_returned;
+            $totalReturned = $item->total_returned;
             foreach ($item->children as $childItem) {
                 /** @var  CarLoadInventoryItem $childItem*/
-                $total_returned+= $childItem->product->convertQuantityToParentQuantity($childItem->total_returned)
+                $totalReturned += $childItem->product->convertQuantityToParentQuantity($childItem->total_returned)
                 ['decimal_parent_quantity'];
+//                dump($total_returned);
+            }
 
+            // Result as decimal number of parent cartons (sold + returned - loaded)
+            $result = $item->total_sold + $totalReturned - $item->total_loaded;
+
+            // Split result into cartons and packets using first child as packet unit (if any)
+            $first_variant = $item->children->first();
+            $packets_per_carton = null;
+            if ($first_variant) {
+                $child_base_qty = $first_variant->product->base_quantity;
+                $parent_base_qty = $item->product->base_quantity;
+                $packets_per_carton = (int) floor($parent_base_qty / $child_base_qty);
+                if ($packets_per_carton < 1) { $packets_per_carton = 1; }
             }
-            $result = $item->total_sold + $total_returned - $item->total_loaded;
-            $result_parent = intval($item->total_sold);
-            $result_variants = $item->total_sold - floor($item->total_sold);
-            $price = 0;
-            if (intval($result) > 0){
-                $price = intval($result) * $item->product->price;
-            }else if ($result > 0){
-                $first_variant = $item->children->first();
-                if ($first_variant != null){
-                    $price =  ($result_variants * ($item->product->base_quantity /
-                ($first_variant?->product->base_quantity ?? 1))
-                ?? 1) * $first_variant->price ;
-                }else{
-                    //TODO fix this
-                $price = 0;
+
+            $absResult = abs($result);
+            $result_cartons = (int) floor($absResult);
+            $fraction = $absResult - $result_cartons;
+            $result_packets = 0;
+            if ($packets_per_carton) {
+                $result_packets = (int) round($fraction * $packets_per_carton);
+                // Normalize carryover if rounding produced a full carton in packets
+                if ($result_packets >= $packets_per_carton) {
+                    $result_cartons += 1;
+                    $result_packets = 0;
                 }
-            }else{
-                $price = $result * $item->product->price;
             }
-//            $totalLoaded += $item->total_loaded;
-//            $totalSold += $item->total_sold;
-//            $totalReturned += $item->total_returned;
-//            $totalResult += $result;
+
+            // Price: number_of_cartons * price_carton + number_of_packets * price_packet (from first child)
+            $price_per_carton = $item->product->price ?? 0;
+            $price_per_packet = $first_variant?->price ?? 0;
+
+            $price_abs = ($result_cartons * $price_per_carton) + ($result_packets * $price_per_packet);
+
+            $price = ($item->total_sold + $totalReturned - $item->total_loaded ) * $item->product->price;
             $totalPrice += $price;
+
         @endphp
         <tr>
             <td>{{ $item->product->name }}</td>
             <td class="text-right">{{ $item->total_loaded }}</td>
             <td class="text-right">
-                {{round($item->totalSold,2)}}
-                Cartons <br>
-                @if($item->children->first())
-                    {{round( $result_variants * ($item->product->base_quantity / $item->children->first()
-                ?->product->base_quantity ?? 0))}} paquets
+                @php
+                    $sold = $item->total_sold;
+                    $sold_cartons = (int) floor($sold);
+                    $sold_fraction = $sold - $sold_cartons;
+                    $sold_packets = 0;
+                    if (isset($packets_per_carton) && $packets_per_carton) {
+                        $sold_packets = (int) round($sold_fraction * $packets_per_carton);
+                        if ($sold_packets >= $packets_per_carton) {
+                            $sold_cartons += 1;
+                            $sold_packets = 0;
+                        }
+                    }
+                @endphp
+                {{ intval($sold) }} cartons<br>
+                @if(isset($packets_per_carton) && $packets_per_carton)
+                    {{ $sold_packets }} paquets
                 @endif
             </td>
             <td class="text-right">{{ $item->total_returned }}
@@ -150,7 +173,12 @@
                 @endforeach
             </td>
             <td class="text-right result {{ $result < 0 ? 'negative' : 'success' }}">
-                {{  $result >0? "+":""}}{{ $result * 50 }}
+                @php $sign = $result < 0 ? '-' : '+'; @endphp
+                @if($result_cartons == 0 && $result_packets == 0)
+                    <span class="success" style="color: #00c853">Conforme</span>
+                    @else
+                    {{ $sign }} {{ $result_cartons }} cartons{{ isset($packets_per_carton) && $packets_per_carton ? ' et ' . $result_packets . ' paquets' : '' }}
+                @endif
             </td>
             <td class="text-right price {{ $price < 0 ? 'negative' : 'success' }}">
                 {{ number_format($price, 0, ',', ' ') }} F
