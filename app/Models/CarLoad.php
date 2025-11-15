@@ -26,7 +26,6 @@ class CarLoad extends Model
         'return_date' => 'datetime',
         'returned' => 'boolean'
     ];
-    protected $appends = ['stock_value'];
 
     public function team(): BelongsTo
     {
@@ -43,15 +42,7 @@ class CarLoad extends Model
         return $this->hasOne(CarLoadInventory::class);
     }
 
-    public function previousCarLoad(): BelongsTo
-    {
-        return $this->belongsTo(CarLoad::class, 'previous_car_load_id');
-    }
 
-    public function nextCarLoad(): HasMany
-    {
-        return $this->hasMany(CarLoad::class, 'previous_car_load_id');
-    }
     public function getTotalQuantityLoadedOfProduct(Product $product){
         return $this->items()->where('product_id', $product->id)->sum('quantity_loaded');
     }
@@ -105,9 +96,8 @@ class CarLoad extends Model
     public function getStockValueAttribute(): int
     {
     
-        $items = $this->items()->get();
         $totalValue = 0;
-        foreach ($items as $item) {
+        foreach ($this->items as $item) {
             $totalValue += $item->quantity_left * $item->product->cost_price;
         }
         return $totalValue;
