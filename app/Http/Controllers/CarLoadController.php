@@ -358,7 +358,7 @@ class CarLoadController extends Controller
     public function exportInventoryPdf(CarLoad $carLoad, CarLoadInventory $inventory)
     {
         $inventory->load(['items.product', 'carLoad.team', 'user']);
-        return view('pdf.inventory', [
+        $pdf = PDF::loadView('pdf.inventory', [
             'inventory' => $inventory,
             'carLoad' => $carLoad,
             'items' => $inventory->items
@@ -389,17 +389,10 @@ class CarLoadController extends Controller
                     $item['children'] = $children;
                     return $item;
                 })
-            ,
-            'date' => now()->format('d/m/Y H:i')
-        ]);
-        $pdf = PDF::loadView('pdf.inventory', [
-            'inventory' => $inventory,
-            'carLoad' => $carLoad,
-            'items' => $inventory->items->filter(function ($item) use ($inventory) { return $item->product->is_base_product;}),
-            'date' => now()->format('d/m/Y H:i')
+            ,'date' => now()->format('d/m/Y H:i')
         ]);
 
-        return $pdf->download("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
+//        return $pdf->download("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
         return $pdf->download("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
     }
 
