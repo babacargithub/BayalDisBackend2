@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Exception;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use JetBrains\PhpStorm\ArrayShape;
@@ -53,12 +54,12 @@ class Product extends Model
             ->value('value') ?? 0;
     }
 
-    public function parent()
+    public function parent(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'parent_id');
     }
 
-    public function variants()
+    public function variants(): \Illuminate\Database\Eloquent\Builder|HasMany|Product
     {
         return $this->hasMany(Product::class, 'parent_id');
     }
@@ -208,4 +209,6 @@ class Product extends Model
         }
 
     }
+
+
 }

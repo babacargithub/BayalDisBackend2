@@ -358,12 +358,34 @@ class CarLoadController extends Controller
     public function exportInventoryPdf(CarLoad $carLoad, CarLoadInventory $inventory)
     {
         $inventory->load(['items.product', 'carLoad.team', 'user']);
-        $pdf = PDF::loadView('pdf.inventory', [
+        $parent_product_ids = $inventory->items
+            ->filter(function ($item) use ($carLoad,$inventory) { return $item->product->is_base_product;})->pluck('product_id')->toArray();
+
+        $viewData = [
             'inventory' => $inventory,
             'carLoad' => $carLoad,
             'items' => $inventory->items
-                ->filter(function ($item) use ($carLoad,$inventory) { return $item->product->is_base_product;})
+                ->filter(function ($item) use ($carLoad,$inventory, $parent_product_ids) { return
+                    $item->product->is_base_product ||
+                    !in_array($item->product->parent_id, $parent_product_ids);})
                 ->map(function ($item) use ($carLoad, $inventory) {
+                    if (!$item->product->is_base_product) {
+                        $totalLoadedAsParentQuantity = $item->product->convertQuantityToParentQuantity($item->total_loaded)['decimal_parent_quantity'];
+                        $totalSoldAsParentQuantity = $item->product->convertQuantityToParentQuantity
+                        ($item->total_sold)['decimal_parent_quantity'];
+                        $totalReturnedAsParentQuantity = $item->product->convertQuantityToParentQuantity
+                        ($item->total_returned)['decimal_parent_quantity'];
+
+                        $parent = $item->product->parent;
+//                        $item->total_loaded = $totalLoadedAsParentQuantity;
+//                        $item->total_returned = $totalReturnedAsParentQuantity;
+//                        $item->total_sold = $totalSoldAsParentQuantity;
+                        $item->total_loaded = 0;
+                        $item->total_returned = 0;
+                        $item->total_sold = 0;
+                        $item->product = $parent;
+                        $item->product_id =$parent->id;
+                    }
                     $item->total_sold = $this->carLoadService->determineTotalSoldOfAParentProductFromChildren($carLoad, $item->product);
                     $calculatedTotalLoaded = $item->total_loaded;
 
@@ -390,7 +412,10 @@ class CarLoadController extends Controller
                     return $item;
                 })
             ,'date' => now()->format('d/m/Y H:i')
-        ]);
+        ];
+
+//        return view('pdf.inventory', $viewData);
+        $pdf = PDF::loadView('pdf.inventory', $viewData);
 
 //        return $pdf->download("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
         return $pdf->download("inventaire_{$inventory->id}_{$carLoad->name}.pdf");

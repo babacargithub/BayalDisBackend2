@@ -166,7 +166,7 @@
                     {{ $sold_packets }} paquets
                 @endif
             </td>
-            <td class="text-right">{{ $item->total_returned }}
+            <td class="text-right">{{ $item->total_returned }} Cartons <br>
                 @foreach($item->children as $child)
                     {{ $child->product->name }} :
                     {{ $child->total_returned }}<br>
