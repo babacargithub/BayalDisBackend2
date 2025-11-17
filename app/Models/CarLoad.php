@@ -68,8 +68,8 @@ class CarLoad extends Model
     public function decreaseStockOfProduct(Product $product, int $quantity): void
     {
         if ($this->getTotalQuantityLeftOfProduct($product) < $quantity) {
-            throw new \Exception('Stock insuffisant pour le produit ' . $product->name . ' dans le véhicule '
-                . $this->name.'. Qté restante : '.$this->getTotalQuantityLeftOfProduct($product));
+            throw new \Exception('Stock insuffisant pour le produit ' . $product->name . ' dans le véhicule'
+                . $this->name.'. Quantité restante : '.$this->getTotalQuantityLeftOfProduct($product));
         }
         // use the items to decrease the stock using the FIFO method, if the qunatity is not enough, loop through the
         // items until the quantity is enough, if list is exhausted, throw an exception
@@ -95,9 +95,9 @@ class CarLoad extends Model
 
     public function getStockValueAttribute(): int
     {
-    
+        // Use a fresh query to avoid stale cached relations when items are modified
         $totalValue = 0;
-        foreach ($this->items as $item) {
+        foreach ($this->items()->with('product')->get() as $item) {
             $totalValue += $item->quantity_left * $item->product->cost_price;
         }
         return $totalValue;
