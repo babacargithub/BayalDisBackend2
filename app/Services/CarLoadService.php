@@ -7,6 +7,7 @@ use App\Models\CarLoadInventoryItem;
 use App\Models\CarLoadItem;
 use App\Models\CarLoadInventory;
 use App\Models\Product;
+use App\Models\Team;
 use App\Models\Vente;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -433,6 +434,15 @@ class CarLoadService
             'ventes' => $ventes,
 
         ];
+    }
+
+    public function getCurrentCarLoadForTeam(Team $team): ?CarLoad
+    {
+        return CarLoad::where('team_id', $team->id)
+            ->where('return_date',">=", now())
+            ->orderBy('return_date', 'desc')
+            ->limit(1)
+            ->first();
     }
 
 

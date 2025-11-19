@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\PurchaseInvoice;
+use App\Models\PurchaseInvoiceItem;
 use App\Models\Supplier;
 use App\Models\Product;
 use App\Models\StockEntry;
+use App\Models\Team;
+use App\Services\CarLoadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -185,8 +188,9 @@ class PurchaseInvoiceController extends Controller
 
         try {
             DB::beginTransaction();
-
+            $items = [];
             foreach ($purchaseInvoice->items as $item) {
+                /** @var  PurchaseInvoiceItem $item */
                 StockEntry::create([
                     'product_id' => $item->product_id,
                     'purchase_invoice_item_id' => $item->id,
@@ -194,11 +198,26 @@ class PurchaseInvoiceController extends Controller
                     'quantity_left' => $item->quantity,
                     'unit_price' => $item->unit_price
                 ]);
+                $items[]=[
+                    'product_id' => $item->product_id,
+                    'quantity_loaded' => $item->quantity,
+                    'quantity_left' => $item->quantity,
+                    'loaded_at' => now(),
+                    'comment'=>"Chargée depuis facture ".$purchaseInvoice->invoice_number." du "
+                        .$purchaseInvoice->invoice_date->format('d/m/Y H:s:i'),
+                ];
             }
 
-            $purchaseInvoice->update([
-                'is_stocked' => true
-            ]);
+            $purchaseInvoice->update(['is_stocked' => true]);
+
+            $carLoadService = app(CarLoadService::class);
+            //TODO make this dynamic later
+            $team = Team::firstOrFail();
+            $carLoad = $carLoadService->getCurrentCarLoadForTeam($team);
+            if ($carLoad == null) {
+                throw new \Exception('CarLoad not found for team ' . $team->name);
+            }
+            $carLoadService->createItems($carLoad, $items);
 
             DB::commit();
             return redirect()->back()->with('success', 'Articles mis en stock avec succès');

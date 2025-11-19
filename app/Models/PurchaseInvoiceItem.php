@@ -30,14 +30,14 @@ class PurchaseInvoiceItem extends Model
         return $this->quantity * $this->unit_price;
     }
 
-    public function purchaseInvoice(): BelongsTo
-    {
-        return $this->belongsTo(PurchaseInvoice::class);
-    }
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseInvoice::class);
     }
 
     public function stockEntry(): HasOne
