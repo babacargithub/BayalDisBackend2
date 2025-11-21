@@ -373,11 +373,19 @@ class CarLoadService
         $children = Product::select('id')
             ->where('parent_id', $parentProduct->id)->get();
 
-        // Initialize total sold for parent (starting at 0)
-        $totalSoldOfParent = $carLoad->inventory->items()->where('product_id', $parentProduct->id)->sum('total_sold');
+        // Initialize total sold for parent computed strictly from ventes (avoid inventory duplicates)
         $startDate = $carLoad->load_date->toDateTime();
         $endDate = $carLoad->return_date->toDateTime();
+        $totalSoldOfParent = (float) DB::table('ventes')
+            ->where('product_id', $parentProduct->id)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->sum('quantity');
         $productIds = $children->pluck('id')->toArray();
+
+        // If there are no child variants, we can return the parent ventes sum directly
+        if (empty($productIds)) {
+            return $totalSoldOfParent;
+        }
 
         $placeholders = implode(',', array_fill(0, count($productIds), '?'));
         // TODO find a way to link ventes with car load
