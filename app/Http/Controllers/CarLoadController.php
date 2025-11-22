@@ -357,128 +357,74 @@ class CarLoadController extends Controller
 
     public function exportInventoryPdf(CarLoad $carLoad, CarLoadInventory $inventory)
     {
-        $inventory->load(['items.product', 'carLoad.team', 'user']);
-        $parent_product_ids = $inventory->items
-            ->filter(function ($item) { return $item->product->is_base_product; })
-            ->pluck('product_id')->toArray();
-
-        // Build items with all computed fields needed by the Blade view
-        $processedItems = $inventory->items
-            ->filter(function ($item) use ($parent_product_ids) {
-                return $item->product->is_base_product || !in_array($item->product->parent_id, $parent_product_ids);
-            })
-            ->map(function ($item) use ($parent_product_ids,$carLoad, $inventory) {
-                // Normalize to parent product row
-                if (!$item->product->is_base_product && !in_array($item->product->parent_id, $parent_product_ids)) {
-                    $parent = $item->product->parent;
-                    $item->total_loaded = 0;
-                    $item->total_returned = 0;
-                    $item->total_sold = 0;
-                    $item->product = $parent;
-                    $item->product_id = $parent->id;
+        // Delegate calculations to the service (raw totals only)
+        $result = $this->carLoadService->getCalculatedQuantitiesOfProductsInInventory($carLoad, $inventory);
+        $items = collect($result['items'])->map(function (array $item) {
+            $packetsPerCarton = null;
+            $children = $item['children'];
+            $firstVariant = $children->first();
+            if ($firstVariant) {
+                $childBaseQty = $firstVariant->product->base_quantity ?? null;
+                $parentBaseQty = $item['product']->base_quantity ?? null;
+                if ($childBaseQty && $parentBaseQty) {
+                    $packetsPerCarton = (int) floor($parentBaseQty / $childBaseQty);
+                    if ($packetsPerCarton < 1) { $packetsPerCarton = 1; }
                 }
+            }
 
-                // Total sold in parent units across children
-                $totalSold = $this->carLoadService->determineTotalSoldOfAParentProductFromChildren($carLoad, $item->product);
-
-                // Loaded including previous car load items of children converted to parent units
-                $calculatedTotalLoaded = $item->total_loaded;
-                $fromPreviousItems = $carLoad->items()
-                    ->join('products', 'products.id', '=', 'car_load_items.product_id')
-                    ->where('products.parent_id', $item->product->id)
-                    ->where('from_previous_car_load', true)
-                    ->get();
-                foreach ($fromPreviousItems as $previousItem) {
-                    $calculatedTotalLoaded += $previousItem->product
-                        ->convertQuantityToParentQuantity($previousItem->quantity_loaded)['decimal_parent_quantity'];
+            // Result breakdown
+            $resultDecimal = $item['result'];
+            $absResult = abs($resultDecimal);
+            $resultCartons = (int) floor($absResult);
+            $fraction = $absResult - $resultCartons;
+            $resultPackets = 0;
+            if ($packetsPerCarton) {
+                $resultPackets = (int) round($fraction * $packetsPerCarton);
+                if ($resultPackets >= $packetsPerCarton) {
+                    $resultCartons += 1;
+                    $resultPackets = 0;
                 }
+            }
+            $resultSign = $resultDecimal < 0 ? '-' : '+';
 
-                // Children (variants) within this inventory for display of returns
-                $children = CarLoadInventoryItem::join('products', 'car_load_inventory_items.product_id', '=', 'products.id')
-                    ->where('products.parent_id', $item->product_id)
-                    ->where('car_load_inventory_items.car_load_inventory_id', $inventory->id)
-                    ->get();
-
-                // Total returned in parent units (parent returns + children returns converted)
-                $totalReturnedParent = $item->total_returned;
-                foreach ($children as $childItem) {
-                    /** @var CarLoadInventoryItem $childItem */
-                    $totalReturnedParent += $childItem->product
-                        ->convertQuantityToParentQuantity($childItem->total_returned)['decimal_parent_quantity'];
+            // Sold breakdown (packets only needed by blade; cartons shown via intval(total_sold))
+            $soldPackets = 0;
+            if ($packetsPerCarton) {
+                $soldCartons = (int) floor($item['total_sold']);
+                $soldPackets = (int) round(($item['total_sold'] - $soldCartons) * $packetsPerCarton);
+                if ($soldPackets >= $packetsPerCarton) {
+                    $soldCartons += 1;
+                    $soldPackets = 0;
                 }
+            }
 
-                // Result in parent decimal units
-                $resultDecimal = $totalSold + $totalReturnedParent - $calculatedTotalLoaded;
+            // Price using parent product price
+            $price = $item['result'] * ($item['product']->price ?? 0);
 
-                // Packets per carton based on first child (if any)
-                $firstVariant = $children->first();
-                $packetsPerCarton = null;
-                if ($firstVariant) {
-                    $childBaseQty = $firstVariant->product->base_quantity;
-                    $parentBaseQty = $item->product->base_quantity;
-                    if ($childBaseQty && $parentBaseQty) {
-                        $packetsPerCarton = (int) floor($parentBaseQty / $childBaseQty);
-                        if ($packetsPerCarton < 1) { $packetsPerCarton = 1; }
-                    }
-                }
+            // Enrich item for the view
+            $item['packets_per_carton'] = $packetsPerCarton;
+            $item['result_cartons'] = $resultCartons;
+            $item['result_packets'] = $resultPackets;
+            $item['result_sign'] = $resultSign;
+            $item['sold_packets'] = $soldPackets;
+            $item['price'] = $price;
 
-                // Split absolute result into cartons and packets
-                $absResult = abs($resultDecimal);
-                $resultCartons = (int) floor($absResult);
-                $fraction = $absResult - $resultCartons;
-                $resultPackets = 0;
-                if ($packetsPerCarton) {
-                    $resultPackets = (int) round($fraction * $packetsPerCarton);
-                    if ($resultPackets >= $packetsPerCarton) {
-                        $resultCartons += 1;
-                        $resultPackets = 0;
-                    }
-                }
-                $resultSign = $resultDecimal < 0 ? '-' : '+';
+            return $item;
+        });
 
-                // Sold breakdown for display
-                $soldCartons = (int) floor($totalSold);
-                $soldPackets = 0;
-                if ($packetsPerCarton) {
-                    $soldPackets = (int) round(($totalSold - $soldCartons) * $packetsPerCarton);
-                    if ($soldPackets >= $packetsPerCarton) {
-                        $soldCartons += 1;
-                        $soldPackets = 0;
-                    }
-                }
-
-                // Price using parent price as in original blade
-                $price = $resultDecimal * ($item->product->price ?? 0);
-
-                return [
-                    'product_name' => $item->product->name,
-                    'product' => $item->product,
-                    'total_loaded' => $calculatedTotalLoaded,
-                    'total_sold' => $totalSold,
-                    'total_returned' => $item->total_returned, // parent cartons only, children listed separately
-                    'children' => $children,
-                    'result' => $resultDecimal,
-                    'result_sign' => $resultSign,
-                    'result_cartons' => $resultCartons,
-                    'result_packets' => $resultPackets,
-                    'packets_per_carton' => $packetsPerCarton,
-                    'sold_cartons' => $soldCartons,
-                    'sold_packets' => $soldPackets,
-                    'price' => $price,
-                ];
-            });
-
-        $totalPrice = $processedItems->sum('price');
+        $totalPrice = $items->sum('price');
 
         $viewData = [
             'inventory' => $inventory,
             'carLoad' => $carLoad,
-            'items' => $processedItems,
+            'items' => $items,
             'totalPrice' => $totalPrice,
             'date' => now()->format('d/m/Y H:i'),
         ];
 
+       return view('pdf.inventory', $viewData);
         $pdf = PDF::loadView('pdf.inventory', $viewData)->setPaper('a4', 'landscape');
+        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
         return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
     }
 

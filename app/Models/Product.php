@@ -209,6 +209,28 @@ class Product extends Model
         }
 
     }
+    #[ArrayShape(['cartons' => "integer",'paquets'=>'integer','first_variant_name'=>'string'])]
+    public function getFormattedDisplayOfCartonAndParquets(float $quantity): array
+    {
+
+        $result = [
+            'cartons' => intval($quantity),
+            'paquets' => 0,
+            'first_variant_name'=>''
+        ];
+        /** @var Product $firstVariant */
+        $firstVariant = $this->variants()->first();
+        if ($firstVariant) {
+            $number = $quantity;
+            $decimal = $number - floor($number);
+            $result['paquets'] = (int)number_format(($decimal * ($this->base_quantity / $firstVariant->base_quantity))
+                ,0);
+            $result['first_variant_name'] = $firstVariant->name;
+        }
+
+        return $result;
+
+    }
 
 
 }

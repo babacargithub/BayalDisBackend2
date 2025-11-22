@@ -16,6 +16,7 @@
         .total-row { background-color: #f5f5f5; font-weight: bold; }
         .text-right { text-align: right; }
         .price { text-align: right; }
+        .small { font-size: 0.85em; }
     </style>
 </head>
 <body>
@@ -49,30 +50,61 @@
     @foreach($items as $item)
         <tr>
             <td>{{ $item['product_name'] }}</td>
-            <td class="text-right">{{ $item['total_loaded'] }}</td>
             <td class="text-right">
-                {{ intval($item['total_sold']) }} cartons<br>
-                @if(!empty($item['packets_per_carton']))
-                    {{ $item['sold_packets'] }} paquets
+                @php($loadedDisplay = $item['product']->getFormattedDisplayOfCartonAndParquets($item['total_loaded']))
+                {{ $loadedDisplay['cartons'] }} cartons<br>
+                @if(($loadedDisplay['paquets'] ?? 0) > 0)
+                    <span class="small">{{ $loadedDisplay['paquets'] }} paquets
+{{--                        @if(!empty($loadedDisplay['first_variant_name'])) de {{ $loadedDisplay['first_variant_name'] }} @endif--}}
+                    </span>
                 @endif
             </td>
             <td class="text-right">
-                {{ $item['total_returned'] }} Cartons <br>
-                @foreach($item['children'] as $child)
-                    {{ $child->product->name }} : {{ $child->total_returned }}<br>
-                @endforeach
+                @php($soldDisplay = $item['product']->getFormattedDisplayOfCartonAndParquets($item['total_sold']))
+                {{ $soldDisplay['cartons'] }} cartons<br>
+                @if(($soldDisplay['paquets'] ?? 0) > 0)
+                    <span class="small">{{ $soldDisplay['paquets'] }} paquets
+{{--                        @if(!empty($soldDisplay['first_variant_name'])) de {{ $soldDisplay['first_variant_name'] }} @endif--}}
+                    </span>
+                @endif
+            </td>
+            <td class="text-right">
+
+
+                    <table class="nested-table">
+                        @foreach($item['children'] as $child)
+                            <tr><td class="highlight-a">{{ $child->product->name }} </td>
+                                <td>
+                                    {{ $child->total_returned }}
+                                </td>
+                            </tr>
+                        @endforeach
+                    </table>
+                {{'sois'}}<br>
+                @php($returnedDisplay = $item['product']->getFormattedDisplayOfCartonAndParquets($item['total_returned']))
+                {{ $returnedDisplay['cartons'] }} cartons<br>
+                @if(($returnedDisplay['paquets'] ?? 0) > 0)
+                    <span class="small">{{ $returnedDisplay['paquets'] }} paquets
+{{--                        @if(!empty($returnedDisplay['first_variant_name'])) de {{ $returnedDisplay['first_variant_name'] }} @endif--}}
+                    </span>
+                @endif
             </td>
             <td class="text-right result {{ $item['result'] < 0 ? 'negative' : 'success' }}">
-                @if($item['result_cartons'] == 0 && $item['result_packets'] == 0)
+                @php($absResult = abs($item['result']))
+                @php($resultDisplay = $item['product']->getFormattedDisplayOfCartonAndParquets($absResult))
+                @if(($resultDisplay['cartons'] ?? 0) == 0 && ($resultDisplay['paquets'] ?? 0) == 0)
                     <span class="success" style="color: #00c853">Décompte OK</span>
                 @else
-                    {{ $item['result_sign'] =='-'?'Manque ':'Surplus de ' }} {{ $item['result_cartons'] > 0
-                    ?'cartons':''
-                     }}
-                    @isset($item['packets_per_carton'])
-                        @if($item['packets_per_carton']) et {{ $item['result_packets'] }} paquets
+                    {{ $item['result'] < 0 ? 'Manque ' : 'Surplus de ' }}
+                    @if(($resultDisplay['cartons'] ?? 0) > 0)
+                        {{ $resultDisplay['cartons'] }} cartons
+                    @endif
+                    @if(($resultDisplay['paquets'] ?? 0) > 0)
+                        @if(($resultDisplay['cartons'] ?? 0) > 0)
+                            et
                         @endif
-                    @endisset
+                        <span class="small">{{ $resultDisplay['paquets'] }} paquets @if(!empty($resultDisplay['first_variant_name'])) de {{ $resultDisplay['first_variant_name'] }} @endif</span>
+                    @endif
                 @endif
             </td>
             <td class="text-right price {{ $item['price'] < 0 ? 'negative' : 'success' }}">

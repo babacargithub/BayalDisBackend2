@@ -376,10 +376,7 @@ class CarLoadService
         // Initialize total sold for parent computed strictly from ventes (avoid inventory duplicates)
         $startDate = $carLoad->load_date->toDateTime();
         $endDate = $carLoad->return_date->toDateTime();
-        $totalSoldOfParent = (float) DB::table('ventes')
-            ->where('product_id', $parentProduct->id)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->sum('quantity');
+        $totalSoldOfParent = 0;
         $productIds = $children->pluck('id')->toArray();
 
         // If there are no child variants, we can return the parent ventes sum directly
@@ -402,6 +399,7 @@ class CarLoadService
 //        $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
         // For each variant, sum quantity from ventes between the car load dates
         foreach ($salesByProduct as $child) {
+            dump($child->total_quantity_sold.' is quantity sold of '.$child->product_id);
             // Sum quantity column from ventes between the car load dates
             $totalSoldFromVentes = $child->total_quantity_sold;
             // Skip if no quantity was sold
@@ -415,8 +413,11 @@ class CarLoadService
 
             // Add the converted quantity to total sold of parent (using decimal for precision)
             $totalSoldOfParent += $conversionResult['decimal_parent_quantity'];
+            dump($conversionResult['decimal_parent_quantity'].' is the conversion result of '.$child->product_id);
+
         }
         // Return the total sold of parent product equivalent
+        dump($totalSoldOfParent.' is the total sold of '.$parentProduct->name.' in method determineTotalSoldOfParentProductFromChildren');
         return $totalSoldOfParent;
     }
     #[ArrayShape(["loadingsHistory" => "array", "product" => "array", "ventes" => "array"])]
@@ -451,6 +452,81 @@ class CarLoadService
             ->orderBy('return_date', 'desc')
             ->limit(1)
             ->first();
+    }
+    #[ArrayShape(["items" => "array"])]
+    public function getCalculatedQuantitiesOfProductsInInventory(CarLoad $carLoad, CarLoadInventory $inventory): array
+    {
+        // Ensure required relations are loaded
+        $inventory->loadMissing(['items.product', 'carLoad.team', 'user']);
+
+        // Fetch all parent products (products without a parent)
+        // TODO load parent products from car load items
+        $parentProducts = Product::whereNull('parent_id')->get();
+
+        // Build items with all computed fields needed by the Blade view
+        $processedItems = $parentProducts->map(function (Product $parentProduct) use ($carLoad, $inventory) {
+            // Find the inventory item for the parent (if any)
+            $parentItem = $inventory->items->firstWhere('product_id', $parentProduct->id);
+
+            // Find all child inventory items for this parent
+            $childrenItems = $inventory->items->filter(function ($invItem) use ($parentProduct) {
+                return optional($invItem->product)->parent_id === $parentProduct->id;
+            });
+
+            // If neither the parent nor any child is inventoried, skip this parent
+            if (!$parentItem && $childrenItems->isEmpty()) {
+                return null;
+            }
+
+            // Total sold in parent units across children
+            $totalSold = $parentItem?->total_sold ?? 0;
+
+            foreach ($childrenItems as $childItem) {
+                /** @var CarLoadInventoryItem $childItem */
+                $totalSold += $childItem->product
+                    ->convertQuantityToParentQuantity($childItem->total_sold)['decimal_parent_quantity'];
+            }
+            // Loaded including previous car load items of children converted to parent units
+            $calculatedTotalLoaded = $parentItem?->total_loaded ?? 0;
+            $fromPreviousItems = $carLoad->items()
+                ->join('products', 'products.id', '=', 'car_load_items.product_id')
+                ->where('products.parent_id', $parentProduct->id)
+                ->where('from_previous_car_load', true)
+                ->get();
+
+            foreach ($fromPreviousItems as $previousItem) {
+                $calculatedTotalLoaded += $previousItem->product
+                    ->convertQuantityToParentQuantity($previousItem->quantity_loaded)['decimal_parent_quantity'];
+            }
+            // Children (variants) within this inventory for display of returns
+            $children = CarLoadInventoryItem::join('products', 'car_load_inventory_items.product_id', '=', 'products.id')
+                ->where('products.parent_id', $parentProduct->id)
+                ->where('car_load_inventory_items.car_load_inventory_id', $inventory->id)
+                ->get();
+
+            // Total returned in parent units (parent returns + children returns converted)
+            $totalReturnedParent = $parentItem?->total_returned ?? 0;
+            foreach ($children as $childItem) {
+                /** @var CarLoadInventoryItem $childItem */
+                $totalReturnedParent += $childItem->product
+                    ->convertQuantityToParentQuantity($childItem->total_returned)['decimal_parent_quantity'];
+            }
+
+            // Result in parent decimal units
+            $resultDecimal = $totalSold + $totalReturnedParent - $calculatedTotalLoaded;
+
+            return [
+                'product_name' => $parentProduct->name,
+                'product' => $parentProduct,
+                'total_loaded' => $calculatedTotalLoaded,
+                'total_sold' => $totalSold,
+                'total_returned' => $totalReturnedParent, // parent cartons only, children listed separately
+                'children' => $children,
+                'result' => $resultDecimal,
+            ];
+        })->filter()->values();
+
+        return ['items' => $processedItems];
     }
 
 
