@@ -399,7 +399,6 @@ class CarLoadService
 //        $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
         // For each variant, sum quantity from ventes between the car load dates
         foreach ($salesByProduct as $child) {
-            dump($child->total_quantity_sold.' is quantity sold of '.$child->product_id);
             // Sum quantity column from ventes between the car load dates
             $totalSoldFromVentes = $child->total_quantity_sold;
             // Skip if no quantity was sold
@@ -413,11 +412,9 @@ class CarLoadService
 
             // Add the converted quantity to total sold of parent (using decimal for precision)
             $totalSoldOfParent += $conversionResult['decimal_parent_quantity'];
-            dump($conversionResult['decimal_parent_quantity'].' is the conversion result of '.$child->product_id);
 
         }
         // Return the total sold of parent product equivalent
-        dump($totalSoldOfParent.' is the total sold of '.$parentProduct->name.' in method determineTotalSoldOfParentProductFromChildren');
         return $totalSoldOfParent;
     }
     #[ArrayShape(["loadingsHistory" => "array", "product" => "array", "ventes" => "array"])]
