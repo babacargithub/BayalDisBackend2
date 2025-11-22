@@ -210,18 +210,23 @@ class PurchaseInvoiceController extends Controller
 
             $purchaseInvoice->update(['is_stocked' => true]);
 
-            $carLoadService = app(CarLoadService::class);
-            //TODO make this dynamic later
-            $team = Team::firstOrFail();
-            $carLoad = $carLoadService->getCurrentCarLoadForTeam($team);
-            if ($carLoad == null) {
-                throw new \Exception('CarLoad not found for team ' . $team->name);
+            if (request()->input('put_in_current_car_load')== true) {
+                $carLoadService = app(CarLoadService::class);
+                //TODO make this dynamic later
+                $team = Team::firstOrFail();
+                $carLoad = $carLoadService->getCurrentCarLoadForTeam($team);
+                if ($carLoad == null) {
+                    throw new \Exception('CarLoad not found for team ' . $team->name);
+                }// Do NOT decrement main stock here since we just created StockEntry from the purchase invoice
+                $carLoadService->createItems($carLoad, $items, false);
             }
-            $carLoadService->createItems($carLoad, $items);
 
             DB::commit();
             return redirect()->back()->with('success', 'Articles mis en stock avec succès');
         } catch (\Exception $e) {
+            if (app()->environment('testing')) {
+                dump($e->getMessage());
+            }
             DB::rollBack();
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise en stock des articles ' . $e->getMessage()]);
         }

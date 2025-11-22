@@ -109,7 +109,8 @@ class PurchaseInvoicePutInStockTest extends TestCase
 
         $this->app->instance(CarLoadService::class, $mock);
 
-        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']));
+        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),
+            ["put_in_current_car_load"=>true]);
 
         $response->assertRedirect();
         $response->assertSessionHas('success');
@@ -145,7 +146,9 @@ class PurchaseInvoicePutInStockTest extends TestCase
         $mock->expects($this->never())->method('createItems');
         $this->app->instance(CarLoadService::class, $mock);
 
-        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']));
+        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),[
+            "put_in_current_car_load"=>true
+        ]);
 
         $response->assertRedirect();
         $response->assertSessionHasErrors();
@@ -168,7 +171,8 @@ class PurchaseInvoicePutInStockTest extends TestCase
         $mock->expects($this->never())->method('createItems');
         $this->app->instance(CarLoadService::class, $mock);
 
-        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']));
+        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),
+            ['put_in_current_car_load'=>true]);
 
         $response->assertRedirect();
         $response->assertSessionHasErrors();

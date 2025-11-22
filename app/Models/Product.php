@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CarLoadService;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -29,7 +30,7 @@ class Product extends Model
         'base_quantity' => 'integer',
     ];
 
-    protected $appends = ['stock_available', 'stock_value', 'is_base_product'];
+    protected $appends = ['is_base_product'];
 
     public function ventes(): HasMany
     {
@@ -102,11 +103,11 @@ class Product extends Model
     /**
      * @throws Exception
      */
-    public function decrementStock(int $quantity, bool $updateMainStock = false): self
+    public function decrementStock(int $quantity, bool $updateMainStock = false, ?Commercial $commercial): self
     {
-        $commercial = auth()->user()->commercial;
+
         if ($commercial && !$updateMainStock) {
-            self::decreaseStockForProductInCarLoad($this, $quantity);
+            self::decreaseStockForProductInCarLoad($this, $quantity, $commercial);
             return  $this;
         }
         $totalAvailableStock = $this->stockEntries()->sum('quantity_left');
@@ -170,15 +171,11 @@ class Product extends Model
     /**
      * @throws \Exception
      */
-    public static  function decreaseStockForProductInCarLoad(Product $product, int $quantity)
+    public static  function decreaseStockForProductInCarLoad(Product $product, int $quantity, Commercial $commercial)
     {
         // check if user is commercial
-        $commercial = auth()->user()->commercial;
-        if ($commercial) {
-            $carLoad = CarLoad::where("team_id", $commercial->team_id)
-                ->where("return_date", ">=", now())
-                ->where("returned", false)
-                ->first();
+        $carLoadService = app(CarLoadService::class);
+            $carLoad = $carLoadService->getCurrentCarLoadForTeam($commercial->team);
             if ($carLoad == null) {
                 throw new UnprocessableEntityHttpException('Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !',
                 );
@@ -188,17 +185,16 @@ class Product extends Model
                 );
             }
             $carLoad->decreaseStockOfProduct($product, $quantity);
-        }
 
-    } public static  function increaseQuantityLeftOfProductInCarLoad(Product $product, int $quantity): void
-{
+
+    } public static  function increaseQuantityLeftOfProductInCarLoad(Product $product, int $quantity, Commercial $commercial)
+        {
         // check if user is commercial
-        $commercial = auth()->user()->commercial;
-        if ($commercial) {
-            $carLoad = CarLoad::where("team_id", $commercial->team_id)
-                ->where("return_date", ">=", now())
-                ->where("returned", false)
-                ->first();
+        $carLoadService = app(CarLoadService::class);
+
+         if ($commercial) {
+            $carLoad = $carLoadService->getCurrentCarLoadForTeam($commercial->team);
+
             if ($carLoad == null) {
                 throw new UnprocessableEntityHttpException('Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !',
                 );

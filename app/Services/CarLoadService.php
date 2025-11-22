@@ -360,7 +360,7 @@ class CarLoadService
                     'comment' => $item['comment'] ?? null,
                 ]);
                 $product = Product::find($item['product_id']);
-                $product->decrementStock($item['quantity_loaded'], updateMainStock: true);
+                $product->decrementStock($item['quantity_loaded'], updateMainStock: true,commercial: null);
             }
             return $carLoad;
         });
@@ -445,7 +445,7 @@ class CarLoadService
     public function getCurrentCarLoadForTeam(Team $team): ?CarLoad
     {
         return CarLoad::where('team_id', $team->id)
-            ->where('return_date',">=", now())
+            ->whereDate('return_date',">=", now()->toDateString())
             ->orderBy('return_date', 'desc')
             ->limit(1)
             ->first();
@@ -524,6 +524,13 @@ class CarLoadService
         })->filter()->values();
 
         return ['items' => $processedItems];
+    }
+
+    public function getAvailableStockOfProductInCarLoad(CarLoad $carLoad, Product $product)
+    {
+        return $carLoad->items()->where('product_id', $product->id)->sum('quantity_left');
+
+
     }
 
 

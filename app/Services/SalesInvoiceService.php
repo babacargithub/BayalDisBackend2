@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CarLoad;
 use App\Models\CustomerVisit;
 use App\Models\SalesInvoice;
 use App\Models\Customer;
@@ -19,13 +20,16 @@ class SalesInvoiceService
     {
         return DB::transaction(function () use ($data) {
             // Create the sales invoice
+            $user = auth()->user();
+            $user->load('commercial');
+
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
                 "invoice_number" => "INV-" . date('Ymd') . "-" . str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
                 "label" => "Facture Vente",
                 'paid' => $data['paid'] ?? false,
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
-                "commercial_id" => request()->user()->commercial->id,
+                "commercial_id" => $user->commercial->id,
             ]);
             $salesInvoice->save();
             $salesInvoice->refresh();
@@ -43,15 +47,13 @@ class SalesInvoiceService
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     "type" => "INVOICE_ITEM",
-                    "created_at"=>now(),
                     "commercial_id" => request()->user()->commercial->id,
-                    "updated_at"=>now(),
                 ]);
                 $itemsArray[] = $vente;
 
                     // Update product stock using the decrementStock method
                $product = Product::findOrFail($item['product_id']);
-               $product->decrementStock($item['quantity']);
+               $product->decrementStock($item['quantity'], updateMainStock: false, commercial: $user->commercial);
             }
             $itemsArray = collect($itemsArray);
                 $salesInvoice->items()->saveMany($itemsArray);

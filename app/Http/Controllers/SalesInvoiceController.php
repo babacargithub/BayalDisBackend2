@@ -94,7 +94,8 @@ class SalesInvoiceController extends Controller
             // update stock of products
             foreach ($ventes as $vente) {
                 $product = Product::findOrFail($vente['product_id']);
-                $product->decrementStock($vente['quantity']);
+                $product->decrementStock($vente['quantity'], updateMainStock: false,commercial: auth()
+                    ->user->commercial);
             }
             // check if customer is prospect
             $customer = Customer::findOrFail($request->customer_id);    

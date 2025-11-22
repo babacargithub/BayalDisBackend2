@@ -181,7 +181,8 @@ class ProductController extends Controller
 
                 // Decrement parent stock
                 $parentStockEntry = $product->getStockEntry();
-                $product->decrementStock($totalPiecesNeeded);
+                $product->decrementStock($totalPiecesNeeded, updateMainStock: false, commercial: auth()
+                    ->user->commercial);
 
                 // Increment variant stock
                 // create a new stock entry for the variant

@@ -232,7 +232,7 @@ class SalespersonController extends Controller
             // check if customer has visit planned if yes we mark it as completed
             $this->terminateVisitIfCustomerHasOne($customer);
 
-            $product->decrementStock($validated['quantity']);
+            $product->decrementStock($validated['quantity'],updateMainStock: false, commercial: $commercial);
 
             // Load the relationships
             $vente->load(['customer', 'product']);
