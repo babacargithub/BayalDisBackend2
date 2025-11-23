@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\InsufficientStockException;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerVisitResource;
 use App\Models\CarLoad;
@@ -912,8 +913,13 @@ class SalespersonController extends Controller
         ]);
 
 
-             $salesInvoiceService->createSalesInvoice($validated);
-            return response()->json([
+        try {
+            $salesInvoiceService->createSalesInvoice($validated);
+        } catch (InsufficientStockException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+
+        }
+        return response()->json([
                 'message' => 'Facture créée avec succès',
             ], 201);
         

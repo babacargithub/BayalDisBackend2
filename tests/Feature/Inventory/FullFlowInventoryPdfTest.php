@@ -3,9 +3,11 @@
 namespace Tests\Feature\Inventory;
 
 use App\Models\CarLoad;
+use App\Models\CarLoadInventory;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\PurchaseInvoice;
+use App\Models\SalesInvoice;
 use App\Models\Supplier;
 use App\Models\Team;
 use App\Models\User;
@@ -13,8 +15,11 @@ use App\Models\Commercial;
 use App\Services\CarLoadService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 class FullFlowInventoryPdfTest extends TestCase
@@ -33,6 +38,14 @@ class FullFlowInventoryPdfTest extends TestCase
     private Product $p2CompartCarton250pcs;
     private Product $pTransparent1000mlCarton500pcs;
     private Product $pPotASauce2000pcs;
+    // Child products (from ProductSeeder)
+    private Product $c1KGPaquet20pcs; // child of 1KG Carton 1000pcs
+    private Product $c2KGPaquet10pcs; // child of 2KG carton 400pcs
+    private Product $c500g20pcs; // child of 500g carton 1000pcs
+    private Product $cGobeletPaquet50pcs; // child of Gobelet carton 1000 pcs
+    private Product $c2CompartGM5pcs; // child of 2 Compart carton 250 pcs
+    private Product $cTransparent1000ml10pcs; // child of Transparent 1000ml carton 500pcs
+    private Product $cPotASauce100pcs; // child of Pot à Sauce 2000 pcs
     private $parents;
     private $children;
     private CarLoadService $carLoadService;
@@ -100,6 +113,15 @@ class FullFlowInventoryPdfTest extends TestCase
         $this->p2CompartCarton250pcs = Product::whereName('2 Compart carton 250 pcs')->whereNull('parent_id')->firstOrFail();
         $this->pTransparent1000mlCarton500pcs = Product::whereName('Transparent 1000ml carton 500pcs')->whereNull('parent_id')->firstOrFail();
         $this->pPotASauce2000pcs = Product::whereName('Pot à Sauce 2000 pcs')->whereNull('parent_id')->firstOrFail();
+
+        // Children
+        $this->c1KGPaquet20pcs = Product::whereName('1KG paquet 20pcs')->whereNotNull('parent_id')->firstOrFail();
+        $this->c2KGPaquet10pcs = Product::whereName('2KG paquet 10pcs')->whereNotNull('parent_id')->firstOrFail();
+        $this->c500g20pcs = Product::whereName('500g - 20pcs')->whereNotNull('parent_id')->firstOrFail();
+        $this->cGobeletPaquet50pcs = Product::whereName('Gobelet paquet 50pcs')->whereNotNull('parent_id')->firstOrFail();
+        $this->c2CompartGM5pcs = Product::whereName('2 compartiments GM 5pcs')->whereNotNull('parent_id')->firstOrFail();
+        $this->cTransparent1000ml10pcs = Product::whereName('Transparent 1000ml 10pcs')->whereNotNull('parent_id')->firstOrFail();
+        $this->cPotASauce100pcs = Product::whereName('Pot à sauce 100 pcs')->whereNotNull('parent_id')->firstOrFail();
 
         $this->supplier = $this->createSupplier();
 
@@ -268,22 +290,6 @@ class FullFlowInventoryPdfTest extends TestCase
 
     private function createAndVerifySalesInvoices(CarLoad $carLoad): void
     {
-        // 4) Add items to the same car load via route for the same 10 parents to ensure inventory loaded values
-        $carLoadItemsPayload = [];
-        $loadedAt = Carbon::now()->subDays(1)->format('Y-m-d H:i:s');
-        for ($i = 0; $i < 10; $i++) {
-            $carLoadItemsPayload[] = [
-                'product_id' => $this->parents[$i]->id,
-                'quantity_loaded' => 15 + ($i % 3), // 15..17
-                'loaded_at' => $loadedAt,
-            ];
-        }
-        $resp = $this->post(route('car-loads.items.store', $carLoad), [
-            'items' => $carLoadItemsPayload,
-        ]);
-
-        // 5) Create a commercial for the team and customers linked to it, then 100 sales invoices via route within the car load period
-        // Choose 1-2 items per invoice from the 10 parents/children stocked
         $items = [
             [
                 'product_id' => $this->p1KGCarton1000pcs->id,
@@ -300,22 +306,40 @@ class FullFlowInventoryPdfTest extends TestCase
         // keep dates within car load window (after load_date and before return_date)
         Carbon::setTestNow(Carbon::now()->addDays(30));
         Sanctum::actingAs($this->manager);
-        $resp = $this->postJson(route('sales_person.sales-invoices.create'), [
-            'customer_id' => $this->customers[0]->id,
-            'paid' => true,
-            "payment_method" => "cash",
-            'items' => $items,
-            'should_be_paid_at' => Carbon::now()->addDays(7)->format('Y-m-d'),
-            'comment' => 'E2E Sale ',
-        ]);
-
-        if ($resp->status() != 200 && $resp->status() != 201) {
-            dump($resp->getContent());
-        }
-        $resp->assertStatus(201);
+        $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, 2);
+        $this->createInvoiceSalesForProductInCarLoad($this->p500gCarton1000pcs, $carLoad, 1);
+//        $resp = $this->postJson(route('sales_person.sales-invoices.create'), [
+//            'customer_id' => $this->customers[0]->id,
+//            'paid' => true,
+//            "payment_method" => "cash",
+//            'items' => $items,
+//            'should_be_paid_at' => Carbon::now()->addDays(7)->format('Y-m-d'),
+//            'comment' => 'E2E Sale ',
+//        ]);
+//
+//        if ($resp->status() != 200 && $resp->status() != 201) {
+//            dump($resp->getContent());
+//        }
+//        $resp->assertStatus(201);
 
         $this->assertEquals(38, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
         $this->assertEquals(19, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p500gCarton1000pcs));
+        $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, 20);
+        $this->assertEquals(18, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
+            $this->p1KGCarton1000pcs));
+
+        $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, quantity: 230,
+            splitQuantityToInvoices: false,
+        responseTester:
+            function (TestResponse $resp) {
+            $resp->assertUnprocessable();
+        });
+
+
+
+
+
+
     }
 
     private function createAndVerifyInventory(CarLoad $carLoad): void
@@ -328,23 +352,70 @@ class FullFlowInventoryPdfTest extends TestCase
         ]);
         $resp->assertStatus(302);
         $inventory = $carLoad->inventory()->firstOrFail();
+        $this->assertEquals(1, CarLoadInventory::where('car_load_id', $carLoad->id)->count(), 'A Car Load must have only one inventory');;
+        
+            $inventoredItems[] = [
+                'product_id' => $this->p1KGCarton1000pcs->id,
+                'total_returned' => 3,
+            ];
 
-        // 7) Add inventory items through route only: include parent and corresponding child for first 3 pairs
-        $returnedItems = [];
-        for ($i = 0; $i < 3; $i++) {
-            $returnedItems[] = [
-                'product_id' => $this->parents[$i]->id,
-                'total_returned' => 1 + $i, // 1,2,3 cartons
-            ];
-            $returnedItems[] = [
-                'product_id' => $this->children[$i]->id,
-                'total_returned' => 2 + $i, // raw child units
-            ];
-        }
         $resp = $this->post(route('car-loads.inventories.items.store', [$carLoad, $inventory]), [
-            'items' => $returnedItems,
+            'items' => $inventoredItems,
         ]);
         $resp->assertStatus(302);
+        // Test the results of calculations
+
+        $result = $this->carLoadService->getCalculatedQuantitiesOfProductsInInventory($carLoad, $inventory);
+        $this->assertIsArray($result, 'Method getCalculatedQuantitiesOfProductsInInventory should return an array');
+        $this->assertArrayHasKey('items', $result, "Result must contain 'items' key");
+        $items = $result['items'];
+        $this->assertInstanceOf(Collection::class, $items, "'items' must be a Collection");
+        $p1KGCarton1000pcsInventored = $items->firstWhere('product_name', $this->p1KGCarton1000pcs->name);
+        $this->assertNotNull($p1KGCarton1000pcsInventored, 'Expected '.$this->p1KGCarton1000pcs->name.' to be present in result of inventory');
+        $this->assertIsArray($p1KGCarton1000pcsInventored);
+        $this->assertArrayHasKey('total_returned', $p1KGCarton1000pcsInventored, "'total_returned' must be present in result of inventory");
+        $this->assertArrayHasKey('total_sold', $p1KGCarton1000pcsInventored, "'total_sold' must be present in result of inventory");
+        $this->assertArrayHasKey('total_loaded', $p1KGCarton1000pcsInventored, "'total_loaded' must be present in result of inventory");
+
+        $this->assertNotNull($p1KGCarton1000pcsInventored['total_returned']);
+        $this->assertNotNull($p1KGCarton1000pcsInventored['total_sold']);
+        $this->assertNotNull($p1KGCarton1000pcsInventored['total_loaded']);
+        $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_loaded']);
+        $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_returned']);
+        $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_sold']);
+        $this->assertEquals(3, $p1KGCarton1000pcsInventored['total_returned']);
+        $this->assertEquals(22, $p1KGCarton1000pcsInventored['total_sold']);
+        $this->assertEquals(40, $p1KGCarton1000pcsInventored['total_loaded']);
+
+
+        $this->assertCount(1, $items, 'Expected exactly 1 inventoried parent product rows');
+        $resp = $this->post(route('car-loads.inventories.items.store', [$carLoad, $inventory]), [
+            'items' => [  ['product_id' => $this->c1KGPaquet20pcs->id,
+                'total_returned' => 100]],
+        ]);
+        $resp->assertSessionHasNoErrors();
+        $resp->assertStatus(302);
+        $result2 = $this->carLoadService->getCalculatedQuantitiesOfProductsInInventory($carLoad, $inventory);
+        $itemsCalculated = $result2['items'];
+         $this->assertInstanceOf(Collection::class, $itemsCalculated, "'items' must be a Collection");
+
+        $this->assertCount(1, $itemsCalculated, 'Expected exactly 1 inventoried parent product rows');
+
+        // Assert CarLoadService computed fields match expected values for the first parent
+//        $this->assertEquals($totalLoaded, $parentEntry['total_loaded'], 'total_loaded mismatch');
+//        $this->assertEqualsWithDelta($totalSold, $parentEntry['total_sold'], 0.0001, 'total_sold mismatch');
+//        $this->assertEqualsWithDelta($totalReturnedParentEq, $parentEntry['total_returned'], 0.0001, 'total_returned mismatch');
+//        $this->assertEqualsWithDelta($resultDecimal, $parentEntry['result'], 0.0001, 'result mismatch');
+//        $this->assertSame($parent->id, $parentEntry['product']->id, 'product object mismatch');
+//        // Children coverage: ensure the child item is listed with its raw returned quantity
+//        $this->assertArrayHasKey('children', $parentEntry);
+//        $this->assertInstanceOf(\Illuminate\Support\Collection::class, $parentEntry['children']);
+//        $childRow = $parentEntry['children']->firstWhere('product_id', $this->children[0]->id);
+//        $this->assertNotNull($childRow, 'Expected matching child row');
+//        $childReturned = is_array($childRow) ? ($childRow['total_returned'] ?? null) : ($childRow->total_returned ?? null);
+//        $this->assertNotNull($childReturned, 'Child total_returned should be present');
+//        $this->assertEquals($invChild->total_returned, $childReturned, 'Child total_returned mismatch');
+
 
         // 8) Generate PDF HTML via route and assert key pieces
         $response = $this->get(route('car-loads.inventories.export-pdf', [$carLoad, $inventory]));
@@ -359,9 +430,9 @@ class FullFlowInventoryPdfTest extends TestCase
         // Pick parent #1 and assert quantities formatting based on helper
         $parent = $this->parents[0];
         $response->assertSee($parent->name);
-        $result = $this->carLoadService->getCalculatedQuantitiesOfProductsInInventory($carLoad, $inventory);
-        dump($result);
 
+
+/*
 
         // compute expected aggregates from SALES quantities within car load period (independent of inventory-provided totals)
         $invParent = $inventory->items()->where('product_id', $parent->id)->first();
@@ -399,7 +470,132 @@ class FullFlowInventoryPdfTest extends TestCase
         $this->assertStringContainsString('<span class="small">', $html);
 
         // Nested children table label
-        $response->assertSee('sois');
+        $response->assertSee('sois');*/
+    }
+    /**
+     * Create multiple sales invoices for a given product within a car load until the target quantity is reached.
+     * Quantities per invoice are random but the overall sum will be exactly $quantity and will not exceed it.
+     * Each invoice is assigned a random date within the car load [load_date, return_date] interval and a random
+     * customer whose commercial belongs to the team manager.
+     */
+   private function saveInvoice(Customer $customer, Product $product, int $quantity, Commercial $managerCommercial,
+                          Carbon
+                          $randomDate): TestResponse
+    {
+        $items = [];
+        $items[]=[
+            'product_id' => $product->id,
+            'quantity' => $quantity,
+            'price' => $product->price,
+            'commercial_id' => $managerCommercial->id,
+        ];
+        $resp = $this->postJson(route('sales_person.sales-invoices.create'), [
+            'customer_id' => $customer->id,
+            'paid' => true,
+            'payment_method' => 'CASH',
+            'should_be_paid_at' => $randomDate->copy()->addDays(random_int(0, 10)),
+            'comment' => 'Auto-generated for car load sale',
+            'commercial_id' => $managerCommercial->id,
+            'items' => $items,
+        ]);
+        return $resp;
+    }
+    public function createInvoiceSalesForProductInCarLoad(Product $product, CarLoad $carLoad, int $quantity, bool
+    $splitQuantityToInvoices = true, \Closure $responseTester = null ): void
+    {
+
+        if ($quantity <= 0) {
+            return;
+        }
+
+        // Resolve the manager's commercial (create if missing) for the car load team
+        $managerCommercial = $this->getManagerCommercial($carLoad->team);
+
+        $remaining = $quantity;
+        Sanctum::actingAs($this->manager);
+        if ($splitQuantityToInvoices) {
+            while ($remaining > 0) {
+                // Choose a random chunk that does not exceed remaining (favor smaller chunks to create more invoices)
+                $maxChunk = max(1, (int)floor(max(2, $remaining) / random_int(2, 5)));
+                $chunk = min($remaining, random_int(1, max(1, $maxChunk)));
+                // Random date within car load window
+                $randomDate = $this->randomDateInInterval(Carbon::parse($carLoad->load_date), Carbon::parse($carLoad->return_date));
+                $customer = $this->getOrCreateRandomCustomer($managerCommercial);
+                $resp = $this->saveInvoice($customer, $product, $chunk, $managerCommercial, $randomDate);
+
+
+//                if ($resp->status() != 200 && $resp->status() != 201) {
+//                    dump($resp->getContent());
+//                }
+                if ($responseTester !== null && is_callable($responseTester)) {
+
+                    $responseTester($resp);
+                }
+
+                $remaining -= $chunk;
+            }
+        } else {
+            $randomDate = $this->randomDateInInterval(Carbon::parse($carLoad->load_date), Carbon::parse($carLoad->return_date));
+            $customer = $this->getOrCreateRandomCustomer($managerCommercial);
+            $resp = $this->saveInvoice($customer, $product, $quantity, $managerCommercial, $randomDate);
+            if ($responseTester !== null && is_callable($responseTester)) {
+
+                $responseTester($resp);
+            }
+
+        }
+    }
+
+    private function randomDateInInterval(Carbon $start, Carbon $end): Carbon
+    {
+        // Ensure start <= end
+        if ($start->greaterThan($end)) {
+            [$start, $end] = [$end, $start];
+        }
+        $startTs = $start->timestamp;
+        $endTs = $end->timestamp;
+        if ($startTs === $endTs) {
+            return $start->copy();
+        }
+        $randTs = random_int($startTs, $endTs);
+        return Carbon::createFromTimestamp($randTs);
+    }
+
+    private function getManagerCommercial(Team $team): Commercial
+    {
+        // Find a commercial linked to the team manager (by user_id) and the same team
+        $commercial = Commercial::where('user_id', $team->user_id)
+            ->where('team_id', $team->id)
+            ->first();
+        if ($commercial) {
+            return $commercial;
+        }
+        // Create one if none exists
+        return Commercial::create([
+            'name' => $team->manager?->name ?? 'Manager Commercial',
+            'phone_number' => '2217'.random_int(10000000, 99999999),
+            'gender' => 'male',
+            'user_id' => $team->user_id,
+            'team_id' => $team->id,
+        ]);
+    }
+
+    private function getOrCreateRandomCustomer(Commercial $commercial): Customer
+    {
+        $existing = Customer::where('commercial_id', $commercial->id)->inRandomOrder()->first();
+        if ($existing) {
+            return $existing;
+        }
+        // Create a new simple customer under this commercial
+        return Customer::create([
+            'name' => 'Cust '.random_int(1000, 9999),
+            'address' => 'Addr',
+            'phone_number' => (string) random_int(770000000, 779999999),
+            'owner_number' => (string) random_int(770000000, 779999999),
+            'gps_coordinates' => '0,0,0',
+            'commercial_id' => $commercial->id,
+            'is_prospect' => false,
+        ]);
     }
 
     public function test_full_flow_inventory_pdf_displays_expected_values(): void

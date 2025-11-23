@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Exceptions\InsufficientStockException;
 use App\Services\CarLoadService;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
@@ -113,7 +114,7 @@ class Product extends Model
         $totalAvailableStock = $this->stockEntries()->sum('quantity_left');
 
         if ($totalAvailableStock < $quantity) {
-            throw new Exception("Stock insuffisant pour ".$this->name." . Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}");
+            throw new InsufficientStockException("Stock insuffisant pour ".$this->name." . Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}");
         }
         // decrement stock using FIFO method
         $stockEntries = $this->stockEntries()->orderBy('created_at', 'asc')->get();
@@ -181,7 +182,8 @@ class Product extends Model
                 );
             }
             if ($carLoad->getTotalQuantityLeftOfProduct($product) < $quantity) {
-                throw new UnprocessableEntityHttpException('Stock insuffisant pour le produit ' . $product->name . " dans le véhicule " . $carLoad->name.'. Qté restante : '.$carLoad->getTotalQuantityLeftOfProduct($product),
+                throw new InsufficientStockException('Stock insuffisant pour le produit ' . $product->name . " dans le véhicule " .
+                    $carLoad->name.'. Qté restante : '.$carLoad->getTotalQuantityLeftOfProduct($product),
                 );
             }
             $carLoad->decreaseStockOfProduct($product, $quantity);

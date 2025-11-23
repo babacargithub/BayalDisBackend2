@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\InsufficientStockException;
 use App\Models\CarLoad;
 use App\Models\CustomerVisit;
 use App\Models\SalesInvoice;
@@ -16,6 +17,7 @@ use Illuminate\Support\Facades\Auth;
 
 class SalesInvoiceService
 {
+    /** @throws  InsufficientStockException|\Throwable */
     public function createSalesInvoice(array $data): SalesInvoice
     {
         return DB::transaction(function () use ($data) {
