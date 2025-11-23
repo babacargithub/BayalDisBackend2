@@ -286,46 +286,64 @@ class FullFlowInventoryPdfTest extends TestCase
         $this->assertEquals(40, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
         $this->assertEquals(20, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p2KGCarton400pcs));
         $this->assertEquals(6, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->pGobeletCarton1000pcs));
+
+        // Test transformToVariants via API (CarLoadService::transformToVariants)
+        // Arrange current stocks in the car load for parent and a variant (child)
+        $parent = $this->p1KGCarton1000pcs;
+        $child = $this->c1KGPaquet20pcs;
+        $beforeParentAvail = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $parent);
+        $beforeChildAvail = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $child);
+
+        // We'll transform 3 parent cartons into child packets; provide two variant lines with some unused quantity
+        $quantityOfBaseProductToTransform = 3;
+        $payload = [
+            'quantityOfBaseProductToTransform' => $quantityOfBaseProductToTransform,
+            'items' => [
+                [
+                    'product_id' => $child->id,
+                    'quantity' => ($parent->base_quantity / $child->base_quantity) * $quantityOfBaseProductToTransform,            // propose 12
+                    // packets
+        // created
+                    'unused_quantity' => 0,
+                ],
+            ],
+        ];
+        $expectedActualChildIncrease = ($parent->base_quantity / $child->base_quantity) * $quantityOfBaseProductToTransform; // 17
+
+        // Act: call the API as an authenticated user (sanctum)
+        Sanctum::actingAs($this->manager);
+        $resp = $this->postJson('/api/salesperson/car-loads/' . $parent->id . '/transform', $payload);
+        if (!in_array($resp->status(), [200, 201])) {
+            // Dump errors to help debugging if it fails locally
+            // dump($resp->getContent());
+        }
+        $resp->assertOk();
+        $resp->assertJson(['message' => 'Transformation effectuée avec succès']);
+
+        // Assert: parent decreased and child increased with correct amounts in the car load available stock
+        $afterParentAvail = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $parent);// should
+        // be 17
+        $afterChildAvail = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $child); // should be
+        // 150
+
+        $this->assertEquals($beforeParentAvail - $payload['quantityOfBaseProductToTransform'], $afterParentAvail, 'Parent available stock should decrease by transformed quantity');
+        $this->assertEquals($beforeChildAvail + $expectedActualChildIncrease, $afterChildAvail, 'Child available stock should increase by sum(actual quantities)');
     }
 
     private function createAndVerifySalesInvoices(CarLoad $carLoad): void
     {
-        $items = [
-            [
-                'product_id' => $this->p1KGCarton1000pcs->id,
-                'quantity' => 2,
-                'price' => $this->p1KGCarton1000pcs->price,
-            ],
-            [
-                'product_id' => $this->p500gCarton1000pcs->id,
-                'quantity' => 1,
-                'price' => $this->p500gCarton1000pcs->price,
-            ],
-        ];
-
         // keep dates within car load window (after load_date and before return_date)
         Carbon::setTestNow(Carbon::now()->addDays(30));
         Sanctum::actingAs($this->manager);
         $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, 2);
         $this->createInvoiceSalesForProductInCarLoad($this->p500gCarton1000pcs, $carLoad, 1);
-//        $resp = $this->postJson(route('sales_person.sales-invoices.create'), [
-//            'customer_id' => $this->customers[0]->id,
-//            'paid' => true,
-//            "payment_method" => "cash",
-//            'items' => $items,
-//            'should_be_paid_at' => Carbon::now()->addDays(7)->format('Y-m-d'),
-//            'comment' => 'E2E Sale ',
-//        ]);
-//
-//        if ($resp->status() != 200 && $resp->status() != 201) {
-//            dump($resp->getContent());
-//        }
-//        $resp->assertStatus(201);
 
-        $this->assertEquals(38, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
+        $this->assertEquals(35, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
+            $this->p1KGCarton1000pcs));
         $this->assertEquals(19, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p500gCarton1000pcs));
+
         $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, 20);
-        $this->assertEquals(18, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
+        $this->assertEquals(15, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
             $this->p1KGCarton1000pcs));
 
         $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, quantity: 230,
@@ -334,10 +352,6 @@ class FullFlowInventoryPdfTest extends TestCase
             function (TestResponse $resp) {
             $resp->assertUnprocessable();
         });
-
-
-
-
 
 
     }
@@ -614,5 +628,53 @@ class FullFlowInventoryPdfTest extends TestCase
 
         // Test 4: Create and verify inventory with PDF export
         $this->createAndVerifyInventory($carLoad);
+    }
+
+    public function test_product_history_totals_in_car_load(): void
+    {
+        // Arrange
+        $this->setupTestData();
+        $carLoad = $this->createCarLoad();
+        $this->createAndVerifyPurchaseInvoices($carLoad);
+
+        // We will test with the 1KG parent product
+        $product = $this->p1KGCarton1000pcs;
+
+        // Create deterministic sales totals within the car load window
+        // First sell 2, then sell 20 more (total 22 as used in previous assertions)
+        Carbon::setTestNow(Carbon::parse($carLoad->load_date)->addDays(1));
+        $this->createInvoiceSalesForProductInCarLoad($product, $carLoad, 2);
+        Carbon::setTestNow(Carbon::parse($carLoad->load_date)->addDays(2));
+        $this->createInvoiceSalesForProductInCarLoad($product, $carLoad, 20);
+        Carbon::setTestNow(null);
+
+        // Act: fetch history from service
+        $history = $this->carLoadService->productHistoryInCarLoad($product, $carLoad);
+
+        // Assert structure
+        $this->assertIsArray($history);
+        $this->assertArrayHasKey('loadingsHistory', $history);
+        $this->assertArrayHasKey('product', $history);
+        $this->assertArrayHasKey('ventes', $history);
+        $this->assertGreaterThan(0, count($history['loadingsHistory']));;
+        $this->assertGreaterThan(0, count($history['ventes']));;
+        $this->assertSame($product->id, $history['product']->id);
+
+        // Compute totals as the vue does
+        $totalLoaded = collect($history['loadingsHistory'])->sum(function ($it) {
+            return (int) ($it->quantity_loaded ?? $it['quantity_loaded'] ?? 0);
+        });
+        $totalSold = collect($history['ventes'])->sum(function ($v) {
+            return (int) ($v->quantity ?? $v['quantity'] ?? 0);
+        });
+
+        // Expect loaded equals purchase quantity for this product (20 + 20 = 40)
+        $this->assertEquals(40, $totalLoaded, 'Total loaded in history should match car load items sum');
+        // Expect sold equals created sales (2 + 20 = 22)
+        $this->assertEquals(22, $totalSold, 'Total sold in history should match ventes sum');
+
+        // Optional: also hit the route and ensure page loads
+        $resp = $this->get('/car-loads/' . $carLoad->id . '/' . $product->id . '/history');
+        $resp->assertOk();
     }
 }
