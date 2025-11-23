@@ -677,4 +677,103 @@ class FullFlowInventoryPdfTest extends TestCase
         $resp = $this->get('/car-loads/' . $carLoad->id . '/' . $product->id . '/history');
         $resp->assertOk();
     }
+    public function test_transform_to_variants_throws_when_no_current_car_load(): void
+    {
+        // Arrange: seed data and auth, but do NOT create a car load
+        $this->setupTestData();
+        Sanctum::actingAs($this->manager);
+
+        $parent = $this->p1KGCarton1000pcs; // any base product
+        $child = $this->c1KGPaquet20pcs;   // a valid child of the parent from seeder
+
+        $payload = [
+            'quantityOfBaseProductToTransform' => 1,
+            'items' => [
+                [
+                    'product_id' => $child->id,
+                    'quantity' => 1,
+                    'unused_quantity' => 0,
+                ],
+            ],
+        ];
+
+        // Act
+        $resp = $this->postJson('/api/salesperson/car-loads/' . $parent->id . '/transform', $payload);
+
+        // Assert
+        $resp->assertStatus(422);
+        $this->assertStringContainsString(
+            'Aucun chargement actif trouvé pour votre équipe',
+            $resp->json('message') ?? ''
+        );
+    }
+
+    public function test_transform_to_variants_throws_when_product_not_in_car_load(): void
+    {
+        // Arrange: create an active car load but do NOT load the product
+        $this->setupTestData();
+        $carLoad = $this->createCarLoad();
+        Sanctum::actingAs($this->manager);
+
+        $parent = $this->p1KGCarton1000pcs; // not put in this car load
+        $child = $this->c1KGPaquet20pcs;
+
+        $payload = [
+            'quantityOfBaseProductToTransform' => 1,
+            'items' => [
+                [
+                    'product_id' => $child->id,
+                    'quantity' => 1,
+                    'unused_quantity' => 0,
+                ],
+            ],
+        ];
+
+        // Act
+        $resp = $this->postJson('/api/salesperson/car-loads/' . $parent->id . '/transform', $payload);
+
+        // Assert
+        $resp->assertStatus(422);
+        $this->assertStringContainsString(
+            "Ce produit n'est pas dans votre chargement",
+            $resp->json('message') ?? ''
+        );
+    }
+
+    public function test_transform_to_variants_throws_when_insufficient_stock(): void
+    {
+        // Arrange: create active car load and load some stock, then request too much
+        $this->setupTestData();
+        $carLoad = $this->createCarLoad();
+        $this->createAndVerifyPurchaseInvoices($carLoad); // loads parent products into current car load
+        Sanctum::actingAs($this->manager);
+
+        $parent = $this->p1KGCarton1000pcs;
+        $child = $this->c1KGPaquet20pcs;
+
+        $available = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $parent);
+        $this->assertGreaterThan(0, $available);
+
+        // Request more than available to trigger insufficient stock
+        $payload = [
+            'quantityOfBaseProductToTransform' => $available + 1,
+            'items' => [
+                [
+                    'product_id' => $child->id,
+                    'quantity' => 1,
+                    'unused_quantity' => 0,
+                ],
+            ],
+        ];
+
+        // Act
+        $resp = $this->postJson('/api/salesperson/car-loads/' . $parent->id . '/transform', $payload);
+
+        // Assert
+        $resp->assertStatus(422);
+        $this->assertStringContainsString(
+            'Stock insuffisant dans le chargement. Stock disponible',
+            $resp->json('message') ?? ''
+        );
+    }
 }
