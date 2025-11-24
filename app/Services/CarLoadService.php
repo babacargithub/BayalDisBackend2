@@ -454,14 +454,14 @@ class CarLoadService
     public function getCalculatedQuantitiesOfProductsInInventory(CarLoad $carLoad, CarLoadInventory $inventory): array
     {
         // Ensure required relations are loaded
-        $inventory->loadMissing(['items.product', 'carLoad.team', 'user']);
+            $inventory->loadMissing(['items.product', 'carLoad.team', 'user']);
 
         // Fetch all parent products (products without a parent)
         // TODO load parent products from car load items
-        $parentProducts = Product::whereNull('parent_id')->get();
+            $parentProducts = Product::whereNull('parent_id')->get();
 
         // Build items with all computed fields needed by the Blade view
-        $processedItems = $parentProducts->map(function (Product $parentProduct) use ($carLoad, $inventory) {
+            $processedItems = $parentProducts->map(function (Product $parentProduct) use ($carLoad, $inventory) {
             // Find the inventory item for the parent (if any)
             $parentItem = $inventory->items->firstWhere('product_id', $parentProduct->id);
 
@@ -508,7 +508,6 @@ class CarLoadService
                 $totalReturnedParent += $childItem->product
                     ->convertQuantityToParentQuantity($childItem->total_returned)['decimal_parent_quantity'];
             }
-
             // Result in parent decimal units
             $resultDecimal = $totalSold + $totalReturnedParent - $calculatedTotalLoaded;
 
@@ -529,8 +528,6 @@ class CarLoadService
     public function getAvailableStockOfProductInCarLoad(CarLoad $carLoad, Product $product)
     {
         return $carLoad->items()->where('product_id', $product->id)->sum('quantity_left');
-
-
     }
 
 

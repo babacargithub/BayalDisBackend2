@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "laravel-boost": {
+            "command": "/Users/macm22023/.config/herd-lite/bin/php",
+            "args": [
+                "/Users/macm22023/Documents/Projects/Bayal/BayalDisBackend2/artisan",
+                "boost:mcp"
+            ]
+        }
+    }
+}
