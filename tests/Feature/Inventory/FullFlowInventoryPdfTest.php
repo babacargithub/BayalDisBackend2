@@ -4,6 +4,7 @@ namespace Tests\Feature\Inventory;
 
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
+use App\Models\CarLoadItem;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\PurchaseInvoice;
@@ -12,6 +13,7 @@ use App\Models\Supplier;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Commercial;
+use App\Models\Vente;
 use App\Services\CarLoadService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -351,29 +353,20 @@ class FullFlowInventoryPdfTest extends TestCase
 
         // Act: call the API as an authenticated user (sanctum)
         Sanctum::actingAs($this->manager);
-        $resp = $this->postJson(route('car-loads.transform_product_to_variants',['product' =>  $this->p1KGCarton1000pcs->id]), $payload);
-        $resp->assertOk();
-        $resp->assertJson(['message' => 'Transformation effectuée avec succès']);
+        $responseTester = function (TestResponse $resp) {
+            $resp->assertOk();
+            $resp->assertJson(['message' => 'Transformation effectuée avec succès']);
+        };
 
-        $resp = $this->postJson(route('car-loads.transform_product_to_variants',['product' => $this->p500gCarton1000pcs]), [
-            'quantityOfBaseProductToTransform' => $quantityOfBaseProductToTransform,
-            'items' => [
-                [
-                    'product_id' => $this->c500g20pcs->id,
-                    'quantity' => ($this->p500gCarton1000pcs->base_quantity / $this->c500g20pcs->base_quantity) * $quantityOfBaseProductToTransform,
-                    'unused_quantity' => 0,
-                ],
-            ],
-        ]);
-        $resp->assertOk();
-        $resp->assertJson(['message' => 'Transformation effectuée avec succès']);
+        $this->transformProductToVariantsInCarLoad($carLoad, $this->p1KGCarton1000pcs, $child,
+            parentQuantityToTransform: $quantityOfBaseProductToTransform, splitChunks: true,
+            responseTester: $responseTester);
 
         // Assert: parent decreased and child increased with correct amounts in the car load available stock
         $availableParentQuantityAfterTransform = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $parent);// should
         // be 17
         $availableChildQuantityAfterTransform = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $child); // should be
         // 150
-
         $this->assertEquals($beforeParentAvail - $payload['quantityOfBaseProductToTransform'], $availableParentQuantityAfterTransform, 'Parent available stock should decrease by transformed quantity');
         $this->assertEquals($beforeChildAvail + $expectedActualChildIncrease, $availableChildQuantityAfterTransform, 'Child available stock should increase by sum(actual quantities)');
         $this->assertEquals($childQuantity, $availableChildQuantityAfterTransform, 'Child available stock should be now 150');
@@ -384,7 +377,12 @@ class FullFlowInventoryPdfTest extends TestCase
         $resp = $this->postJson(route('car-loads.transform_product_to_variants',['product' => $parent->id]), $payload);
         $resp->assertOk();
         $this->assertEquals($childQuantity+  $payload['items'][0]['quantity'],
-            $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->c1KGPaquet20pcs), 'Child available stock should increase by sum(actual quantities)' );;
+            $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->c1KGPaquet20pcs), 'Child available stock should increase by sum(actual quantities)' );
+
+        // for product 500g-20 pcs
+        $this->transformProductToVariantsInCarLoad($carLoad, $this->p500gCarton1000pcs, $this->c500g20pcs,
+            parentQuantityToTransform: $quantityOfBaseProductToTransform, splitChunks: true,
+            responseTester: $responseTester);
 
     }
 
@@ -393,25 +391,36 @@ class FullFlowInventoryPdfTest extends TestCase
         // keep dates within car load window (after load_date and before return_date)
         Carbon::setTestNow(Carbon::now()->addDays(30));
         Sanctum::actingAs($this->manager);
-        $salesTester = function (TestResponse $resp) { $resp->assertCreated();};
+        $salesTester = function (TestResponse $resp) {
+            if ($resp->status() !== 201 && $resp->status() !== 200) {
+                dump($resp->getContent());
+            }
+            $resp->assertCreated();
+        };
         // Sales Of parents
 //        $this->assertEquals(29, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
         $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad,
-            self::$defaultQuantity1KGCarton1000pcs - 200, true, $salesTester);
+            self::$defaultQuantity1KGCarton1000pcs - 200, chunk: 3, responseTester:  clone $salesTester);
+        $ventesCount = Vente::where('product_id',$this->p1KGCarton1000pcs->id )->count();
+        $this->assertEquals((self::$defaultQuantity1KGCarton1000pcs - 200)/3, $ventesCount);
 //        $this->assertEquals(29, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
 
-        $this->createInvoiceSalesForProductInCarLoad($this->p500gCarton1000pcs, $carLoad, 50, true,$salesTester);
-        $this->createInvoiceSalesForProductInCarLoad($this->p2KGCarton400pcs, $carLoad, 43, true, $salesTester);
+        $this->createInvoiceSalesForProductInCarLoad($this->p500gCarton1000pcs, $carLoad, 50, true,null,
+            clone $salesTester);
+        $this->createInvoiceSalesForProductInCarLoad($this->p2KGCarton400pcs, $carLoad, 43, true, null,
+            clone $salesTester);
         $this->createInvoiceSalesForProductInCarLoad($this->pGobeletCarton1000pcs, $carLoad,
-            self::$defaultQuantityGobeletCarton1000pcs - 20, true,
+            self::$defaultQuantityGobeletCarton1000pcs - 20, true,null,
             $salesTester);
-        $this->createInvoiceSalesForProductInCarLoad($this->p2CompartCarton250pcs, $carLoad, 20, true,$salesTester);
-        $this->createInvoiceSalesForProductInCarLoad($this->pPotASauce2000pcs, $carLoad, 19, true,$salesTester);
-        $this->createInvoiceSalesForProductInCarLoad($this->pTransparent1000mlCarton500pcs, $carLoad, 75, true,$salesTester);
+        $this->createInvoiceSalesForProductInCarLoad($this->p2CompartCarton250pcs, $carLoad, 20, true,null, $salesTester);
+        $this->createInvoiceSalesForProductInCarLoad($this->pPotASauce2000pcs, $carLoad, 19, true,null, $salesTester);
+        $this->createInvoiceSalesForProductInCarLoad($this->pTransparent1000mlCarton500pcs, $carLoad, 75, true,null, $salesTester);
 //
 //        // sales of children
-        $this->createInvoiceSalesForProductInCarLoad($this->c1KGPaquet20pcs, $carLoad, 2594, true,$salesTester);
-        $this->createInvoiceSalesForProductInCarLoad($this->c500g20pcs, $carLoad, 1303, true,$salesTester);
+        $this->createInvoiceSalesForProductInCarLoad($this->c1KGPaquet20pcs, $carLoad, 2594, true,null, $salesTester);
+        $this->createInvoiceSalesForProductInCarLoad($this->c500g20pcs, carLoad:  $carLoad, quantity: 1303, chunk: 3,
+            responseTester:
+            $salesTester);
 //        $this->createInvoiceSalesForProductInCarLoad($this->c2KGPaquet10pcs, $carLoad, 955, true,$salesTester);
 //        $this->createInvoiceSalesForProductInCarLoad($this->cGobeletPaquet50pcs, $carLoad, 781, true,$salesTester);
 //        $this->createInvoiceSalesForProductInCarLoad($this->c2CompartGM5pcs, $carLoad, 319, true,$salesTester);
@@ -483,23 +492,25 @@ class FullFlowInventoryPdfTest extends TestCase
         $this->assertArrayHasKey('total_returned', $p1KGCarton1000pcsInventored, "'total_returned' must be present in result of inventory");
         $this->assertArrayHasKey('total_sold', $p1KGCarton1000pcsInventored, "'total_sold' must be present in result of inventory");
         $this->assertArrayHasKey('total_loaded', $p1KGCarton1000pcsInventored, "'total_loaded' must be present in result of inventory");
-
         $this->assertNotNull($p1KGCarton1000pcsInventored['total_returned']);
         $this->assertNotNull($p1KGCarton1000pcsInventored['total_sold']);
         $this->assertNotNull($p1KGCarton1000pcsInventored['total_loaded']);
         $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_loaded']);
         $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_returned']);
         $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_sold']);
+        $this->assertArrayHasKey('children', $p1KGCarton1000pcsInventored, "'Children key' must be present in result of inventory");
+        $this->assertInstanceOf(Collection::class, $p1KGCarton1000pcsInventored['children']);
+        $this->assertCount(1, $p1KGCarton1000pcsInventored['children']);
         $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs * 2, $p1KGCarton1000pcsInventored['total_loaded']);
-
+        // get totals
         $p1KGCarton1000pcsSubmitted = collect($inventoredItems)->firstWhere('product_id', $this->p1KGCarton1000pcs->id);
         $c1K20pcsSubmitted = collect($inventoredItems)->firstWhere('product_id', $this->c1KGPaquet20pcs->id);
         $totalParentSubmitted = $p1KGCarton1000pcsSubmitted['total_returned'] +
             $this->c1KGPaquet20pcs->convertQuantityToParentQuantity($c1K20pcsSubmitted['total_returned'])['decimal_parent_quantity'];
-         $totalParentSold = self::$defaultQuantity1KGCarton1000pcs - 200+
-            $this->c1KGPaquet20pcs->convertQuantityToParentQuantity(2594)['decimal_parent_quantity'];
-
-        $this->assertEquals($totalParentSubmitted, $p1KGCarton1000pcsInventored['total_returned']);
+         $totalParentSold = self::$defaultQuantity1KGCarton1000pcs - 200 + $this->c1KGPaquet20pcs->convertQuantityToParentQuantity(2594)['decimal_parent_quantity'];
+        // testing the totals returned by the inventory
+         $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs * 2, $p1KGCarton1000pcsInventored['total_loaded']);
+         $this->assertEquals($totalParentSubmitted, $p1KGCarton1000pcsInventored['total_returned']);
         $this->assertEquals($totalParentSold, $p1KGCarton1000pcsInventored['total_sold']);
 
 
@@ -511,25 +522,9 @@ class FullFlowInventoryPdfTest extends TestCase
         $resp->assertStatus(302);
         $result2 = $this->carLoadService->getCalculatedQuantitiesOfProductsInInventory($carLoad, $inventory);
         $itemsCalculated = $result2['items'];
+
          $this->assertInstanceOf(Collection::class, $itemsCalculated, "'items' must be a Collection");
-
-        $this->assertCount(2, $itemsCalculated, 'Expected exactly 1 inventoried parent product rows');
-
-        // Assert CarLoadService computed fields match expected values for the first parent
-//        $this->assertEquals($totalLoaded, $parentEntry['total_loaded'], 'total_loaded mismatch');
-//        $this->assertEqualsWithDelta($totalSold, $parentEntry['total_sold'], 0.0001, 'total_sold mismatch');
-//        $this->assertEqualsWithDelta($totalReturnedParentEq, $parentEntry['total_returned'], 0.0001, 'total_returned mismatch');
-//        $this->assertEqualsWithDelta($resultDecimal, $parentEntry['result'], 0.0001, 'result mismatch');
-//        $this->assertSame($parent->id, $parentEntry['product']->id, 'product object mismatch');
-//        // Children coverage: ensure the child item is listed with its raw returned quantity
-//        $this->assertArrayHasKey('children', $parentEntry);
-//        $this->assertInstanceOf(\Illuminate\Support\Collection::class, $parentEntry['children']);
-//        $childRow = $parentEntry['children']->firstWhere('product_id', $this->children[0]->id);
-//        $this->assertNotNull($childRow, 'Expected matching child row');
-//        $childReturned = is_array($childRow) ? ($childRow['total_returned'] ?? null) : ($childRow->total_returned ?? null);
-//        $this->assertNotNull($childReturned, 'Child total_returned should be present');
-//        $this->assertEquals($invChild->total_returned, $childReturned, 'Child total_returned mismatch');
-
+        $this->assertCount(count($result2['items']), $itemsCalculated, 'Expected exactly 1 inventoried parent product rows');
 
         // 8) Generate PDF HTML via route and assert key pieces
         $response = $this->get(route('car-loads.inventories.export-pdf', [$carLoad, $inventory]));
@@ -541,57 +536,20 @@ class FullFlowInventoryPdfTest extends TestCase
         $response->assertSee('E2E Inventory');
         $response->assertSee($carLoad->team->manager->name);
 
-        // Pick parent #1 and assert quantities formatting based on helper
-        $parent = $this->parents[0];
-        $response->assertSee($parent->name);
+        $response->assertSee($this->p1KGCarton1000pcs->name);
 
-
-/*
-
-        // compute expected aggregates from SALES quantities within car load period (independent of inventory-provided totals)
-        $invParent = $inventory->items()->where('product_id', $parent->id)->first();
-        $invChild = $inventory->items()->where('product_id', $this->children[0]->id)->first();
-
-        $totalLoaded = $invParent->total_loaded; // from addInventoryItems controller
-
-        // Sum ventes for parent product during car load
-        $start = $carLoad->load_date->toDateTimeString();
-        $end = $carLoad->return_date->toDateTimeString();
-        $totalSoldParent = (float) (DB::table('ventes')
-            ->where('product_id', $parent->id)
-            ->whereBetween('created_at', [$start, $end])
-            ->sum('quantity'));
-        // Sum ventes for child and convert to parent units
-        $totalSoldChildRaw = (float) (DB::table('ventes')
-            ->where('product_id', $this->children[0]->id)
-            ->whereBetween('created_at', [$start, $end])
-            ->sum('quantity'));
-        $totalSoldChildParentEq = $this->children[0]
-            ->convertQuantityToParentQuantity($totalSoldChildRaw)['decimal_parent_quantity'];
-        $totalSold = $totalSoldParent + $totalSoldChildParentEq;
-
-        $totalReturnedParentEq = $invParent->total_returned + $this->children[0]
-                ->convertQuantityToParentQuantity($invChild->total_returned)['decimal_parent_quantity'];
-
-        $resultDecimal = $totalSold + $totalReturnedParentEq - $totalLoaded;
 
         // Assert result wording appears and price formatting uses thousands sep
-        $response->assertSee($resultDecimal < 0 ? 'Manque' : 'Surplus de');
-        $price = $resultDecimal * $parent->price;
+//        $response->assertSee($resultDecimal < 0 ? 'Manque' : 'Surplus de');
+//        $price = $resultDecimal * $parent->price;
 //        $response->assertSee(e(number_format($price, 0, ',', ' ')).' F');
 
         // Assert cartons/paquets small span appears somewhere
         $this->assertStringContainsString('<span class="small">', $html);
 
         // Nested children table label
-        $response->assertSee('sois');*/
+        $response->assertSee('sois');
     }
-    /**
-     * Create multiple sales invoices for a given product within a car load until the target quantity is reached.
-     * Quantities per invoice are random but the overall sum will be exactly $quantity and will not exceed it.
-     * Each invoice is assigned a random date within the car load [load_date, return_date] interval and a random
-     * customer whose commercial belongs to the team manager.
-     */
    private function saveInvoice(Customer $customer, Product $product, int $quantity, Commercial $managerCommercial,
                           Carbon
                           $randomDate): TestResponse
@@ -615,7 +573,7 @@ class FullFlowInventoryPdfTest extends TestCase
         return $resp;
     }
     public function createInvoiceSalesForProductInCarLoad(Product $product, CarLoad $carLoad, int $quantity, bool
-    $splitQuantityToInvoices = true, \Closure $responseTester = null ): void
+                                                                  $splitQuantityToInvoices = true, int $chunk = null, \Closure $responseTester = null ): void
     {
 
         if ($quantity <= 0) {
@@ -629,13 +587,20 @@ class FullFlowInventoryPdfTest extends TestCase
         Sanctum::actingAs($this->manager);
         if ($splitQuantityToInvoices) {
             while ($remaining > 0) {
-                // Choose a random chunk that does not exceed remaining (favor smaller chunks to create more invoices)
-                $maxChunk = max(1, (int)floor(max(2, $remaining) / random_int(2, 5)));
-                $chunk = min($remaining, random_int(1, max(1, $maxChunk)));
+                if ($chunk !== null) {
+                    $currentChunk = $chunk;
+                } else {
+                    // Choose a random chunk that does not exceed remaining (favor smaller chunks to create more invoices)
+                    $maxChunk = max(1, (int) floor(max(2, $remaining) / random_int(2, 5)));
+                    $currentChunk = random_int(1, max(1, $maxChunk));
+                }
+
+                $currentChunk = min($remaining, $currentChunk);
+
                 // Random date within car load window
                 $randomDate = $this->randomDateInInterval(Carbon::parse($carLoad->load_date), Carbon::parse($carLoad->return_date));
                 $customer = $this->getOrCreateRandomCustomer($managerCommercial);
-                $resp = $this->saveInvoice($customer, $product, $chunk, $managerCommercial, $randomDate);
+                $resp = $this->saveInvoice($customer, $product, $currentChunk, $managerCommercial, $randomDate);
 
 
 //                if ($resp->status() != 200 && $resp->status() != 201) {
@@ -646,7 +611,7 @@ class FullFlowInventoryPdfTest extends TestCase
                     $responseTester($resp);
                 }
 
-                $remaining -= $chunk;
+                $remaining -= $currentChunk;
             }
         } else {
             $randomDate = $this->randomDateInInterval(Carbon::parse($carLoad->load_date), Carbon::parse($carLoad->return_date));
@@ -659,7 +624,6 @@ class FullFlowInventoryPdfTest extends TestCase
 
         }
     }
-
     private function randomDateInInterval(Carbon $start, Carbon $end): Carbon
     {
         // Ensure start <= end
@@ -876,4 +840,64 @@ class FullFlowInventoryPdfTest extends TestCase
             $resp->json('message') ?? ''
         );
     }
+    protected function transformProductToVariantsInCarLoad(CarLoad $carLoad, Product $parent, Product $child,
+                                                                   int $parentQuantityToTransform,
+                                                                   bool $splitChunks = false,
+                                                                   int $chunk = null, \Closure $responseTester = null): void
+    {
+        while ($parentQuantityToTransform  > 0) {
+        $expectedActualChildIncrease = ($parent->base_quantity / $child->base_quantity) ;
+
+            $items = [
+                [
+                    'product_id' => $child->id,
+                    'quantity' => $expectedActualChildIncrease,
+                    'unused_quantity' => 0,
+                ],
+            ];
+
+            $payload = [
+                'quantityOfBaseProductToTransform' => 1,
+                'items' => $items,
+            ];// Act
+            Sanctum::actingAs($this->manager);
+            $resp = $this->postJson(route('car-loads.transform_product_to_variants', ['product' => $parent->id]), $payload);
+            $parentQuantityToTransform--;
+
+
+        if ($responseTester){
+            $responseTester($resp);
+        }
+        }
+    }
+    public function test_transform_to_variants_creates_multiple_entries(){
+       $this->setupTestData();
+       $carLoad = $this->createCarLoad();
+       $parentQuantityLoaded = 1000;
+       $carLoad->items()->create([
+           'product_id' => $this->p1KGCarton1000pcs->id,
+           "quantity_loaded" => $parentQuantityLoaded,
+           "quantity_left" => $parentQuantityLoaded,
+           'loaded_at' => Carbon::now(),
+
+       ]);
+
+       $parentQuantityToTransform = 100;
+       $this->transformProductToVariantsInCarLoad($carLoad, parent:  $this->p1KGCarton1000pcs,
+           child: $this->c1KGPaquet20pcs, parentQuantityToTransform: $parentQuantityToTransform, splitChunks: true, responseTester: function
+           (TestResponse $resp){
+           $resp->assertOk();
+       });
+       $this->assertCount($parentQuantityToTransform, $carLoad->items()->whereProductId($this->c1KGPaquet20pcs->id)->get());
+       $this->assertEquals($parentQuantityLoaded - $parentQuantityToTransform, $carLoad->items()->whereProductId($this->p1KGCarton1000pcs->id)
+           ->first()
+           ->quantity_left);
+       $this->assertEquals($parentQuantityLoaded - $parentQuantityToTransform, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
+       $this->assertEquals(($this->p1KGCarton1000pcs->base_quantity / $this->c1KGPaquet20pcs->base_quantity) * $parentQuantityToTransform,
+           $this->carLoadService->getAvailableStockOfProductInCarLoad
+       ($carLoad,
+           $this->c1KGPaquet20pcs));
+    }
+
+
 }

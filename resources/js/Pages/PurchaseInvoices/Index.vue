@@ -540,7 +540,7 @@ function closeDialog() {
 
 const putInStock = (invoice) => {
     if (confirm('Êtes-vous sûr de vouloir mettre les articles de cette facture en stock ?')) {
-        router.post(route('purchase-invoices.put-in-stock', invoice.id));
+        router.post(route('purchase-invoices.put-in-stock', invoice.id),{'put_in_car_current_car_load': true});
     }
 };
 </script> 
