@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
@@ -359,56 +360,16 @@ class CarLoadController extends Controller
     {
         // Delegate calculations to the service (raw totals only)
         $result = $this->carLoadService->getCalculatedQuantitiesOfProductsInInventory($carLoad, $inventory);
-        $items = collect($result['items'])->map(function (array $item) {
-            $packetsPerCarton = null;
-            $children = $item['children'];
-            $firstVariant = $children->first();
-            if ($firstVariant) {
-                $childBaseQty = $firstVariant->product->base_quantity ?? null;
-                $parentBaseQty = $item['product']->base_quantity ?? null;
-                if ($childBaseQty && $parentBaseQty) {
-                    $packetsPerCarton = (int) floor($parentBaseQty / $childBaseQty);
-                    if ($packetsPerCarton < 1) { $packetsPerCarton = 1; }
-                }
-            }
+        $items = collect($result['items'])->map(function (CarLoadInventoryResultItemDTO $item) {
 
             // Result breakdown
-            $resultDecimal = $item['result'];
-            $absResult = abs($resultDecimal);
-            $resultCartons = (int) floor($absResult);
-            $fraction = $absResult - $resultCartons;
-            $resultPackets = 0;
-            if ($packetsPerCarton) {
-                $resultPackets = (int) round($fraction * $packetsPerCarton);
-                if ($resultPackets >= $packetsPerCarton) {
-                    $resultCartons += 1;
-                    $resultPackets = 0;
-                }
-            }
-            $resultSign = $resultDecimal < 0 ? '-' : '+';
-
-            // Sold breakdown (packets only needed by blade; cartons shown via intval(total_sold))
-            $soldPackets = 0;
-            if ($packetsPerCarton) {
-                $soldCartons = (int) floor($item['total_sold']);
-                $soldPackets = (int) round(($item['total_sold'] - $soldCartons) * $packetsPerCarton);
-                if ($soldPackets >= $packetsPerCarton) {
-                    $soldCartons += 1;
-                    $soldPackets = 0;
-                }
-            }
+            $resultDecimal = $item->resultOfComputation;
 
             // Price using parent product price
-            $price = $item['result'] * ($item['product']->price ?? 0);
-
-            // Enrich item for the view
-            $item['packets_per_carton'] = $packetsPerCarton;
-            $item['result_cartons'] = $resultCartons;
-            $item['result_packets'] = $resultPackets;
-            $item['result_sign'] = $resultSign;
-            $item['sold_packets'] = $soldPackets;
-            $item['price'] = $price;
-
+            $resultSign = $resultDecimal < 0 ? '-' : '+';
+            $price = $item->priceOfResultComputation;
+            $item->resultSign = $resultSign;
+            $item->price = $price;
             return $item;
         });
 

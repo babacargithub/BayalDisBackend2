@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Cache;
 use JetBrains\PhpStorm\ArrayShape;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
@@ -210,24 +211,56 @@ class Product extends Model
     #[ArrayShape(['cartons' => "integer",'paquets'=>'integer','first_variant_name'=>'string'])]
     public function getFormattedDisplayOfCartonAndParquets(float $quantity): array
     {
+        // Create unique cache key for this product and quantity
 
-        $result = [
-            'cartons' => intval($quantity),
-            'paquets' => 0,
-            'first_variant_name'=>''
-        ];
-        /** @var Product $firstVariant */
-        $firstVariant = $this->variants()->first();
-        if ($firstVariant) {
-            $number = $quantity;
-            $decimal = $number - floor($number);
-            $result['paquets'] = (int)number_format(($decimal * ($this->base_quantity / $firstVariant->base_quantity))
-                ,0);
-            $result['first_variant_name'] = $firstVariant->name;
-        }
+            $result = [
+                'cartons' => intval($quantity),
+                'paquets' => 0,
+                'first_variant_name' => ''
+            ];
 
-        return $result;
+            /** @var Product $firstVariant */
+            $firstVariant = Cache::remember(
+                "product.{$this->id}.first_variant",
+                now()->addHours(36),
+                fn() => $this->variants()->first()
+            );
+            if ($firstVariant) {
+                $number = $quantity;
+                $decimal = $number - floor($number);
+                $result['paquets'] = (int)number_format(
+                    ($decimal * ($this->base_quantity / $firstVariant->base_quantity)),
+                    0
+                );
+                $result['first_variant_name'] = $firstVariant->name;
+            }
 
+            return $result;
+
+    }
+
+// Clear cache when product or variants are updated
+    protected static function booted()
+    {
+        // Clear cache when product is updated
+        static::updated(function (Product $product) {
+            $product->clearFormattedDisplayCache();
+        });
+
+        // Clear cache when product is deleted
+        static::deleted(function (Product $product) {
+            $product->clearFormattedDisplayCache();
+        });
+    }
+
+// Helper method to clear all cached values for this product
+    public function clearFormattedDisplayCache(): void
+    {
+        // Clear all cache keys for this product
+        Cache::forget("product.{$this->id}.formatted_display.*");
+
+        // Or use tags if using Redis/Memcached
+        // Cache::tags("product.{$this->id}")->flush();
     }
 
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadItem;
@@ -486,22 +487,23 @@ class FullFlowInventoryPdfTest extends TestCase
         $items = $result['items'];
         $this->assertCount(2, $items, 'Expected exactly 2 inventoried parent product rows');;
         $this->assertInstanceOf(Collection::class, $items, "'items' must be a Collection");
-        $p1KGCarton1000pcsInventored = $items->firstWhere('product_name', $this->p1KGCarton1000pcs->name);
+        /** @var CarLoadInventoryResultItemDTO $p1KGCarton1000pcsInventored */
+        $p1KGCarton1000pcsInventored = $items->firstWhere('parent.name', $this->p1KGCarton1000pcs->name);
         $this->assertNotNull($p1KGCarton1000pcsInventored, 'Expected '.$this->p1KGCarton1000pcs->name.' to be present in result of inventory');
-        $this->assertIsArray($p1KGCarton1000pcsInventored);
-        $this->assertArrayHasKey('total_returned', $p1KGCarton1000pcsInventored, "'total_returned' must be present in result of inventory");
-        $this->assertArrayHasKey('total_sold', $p1KGCarton1000pcsInventored, "'total_sold' must be present in result of inventory");
-        $this->assertArrayHasKey('total_loaded', $p1KGCarton1000pcsInventored, "'total_loaded' must be present in result of inventory");
-        $this->assertNotNull($p1KGCarton1000pcsInventored['total_returned']);
-        $this->assertNotNull($p1KGCarton1000pcsInventored['total_sold']);
-        $this->assertNotNull($p1KGCarton1000pcsInventored['total_loaded']);
-        $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_loaded']);
-        $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_returned']);
-        $this->assertIsNumeric($p1KGCarton1000pcsInventored['total_sold']);
-        $this->assertArrayHasKey('children', $p1KGCarton1000pcsInventored, "'Children key' must be present in result of inventory");
-        $this->assertInstanceOf(Collection::class, $p1KGCarton1000pcsInventored['children']);
-        $this->assertCount(1, $p1KGCarton1000pcsInventored['children']);
-        $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs * 2, $p1KGCarton1000pcsInventored['total_loaded']);
+        $this->assertInstanceOf(CarLoadInventoryResultItemDTO::class, $p1KGCarton1000pcsInventored);
+        $this->assertObjectHasProperty('totalReturned', $p1KGCarton1000pcsInventored, "'total_returned' must be present in result of inventory");
+        $this->assertObjectHasProperty('totalSold', $p1KGCarton1000pcsInventored, "'total_sold' must be present in result of inventory");
+        $this->assertObjectHasProperty('totalLoaded', $p1KGCarton1000pcsInventored, "'total_loaded' must be present in result of inventory");
+        $this->assertNotNull($p1KGCarton1000pcsInventored->totalReturnedConverted);
+        $this->assertNotNull($p1KGCarton1000pcsInventored->totalSoldConverted);
+        $this->assertNotNull($p1KGCarton1000pcsInventored->totalLoadedConverted);
+        $this->assertIsNumeric($p1KGCarton1000pcsInventored->totalReturnedConverted->parentQuantity);
+        $this->assertIsNumeric($p1KGCarton1000pcsInventored->totalReturnedConverted->childQuantity);
+        $this->assertIsString($p1KGCarton1000pcsInventored->totalReturnedConverted->childName);
+        $this->assertObjectHasProperty('children', $p1KGCarton1000pcsInventored, "'Children key' must be present in result of inventory");
+        $this->assertInstanceOf(Collection::class, $p1KGCarton1000pcsInventored->children);
+        $this->assertCount(1, $p1KGCarton1000pcsInventored->children);
+        $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs * 2, $p1KGCarton1000pcsInventored->totalLoaded);
         // get totals
         $p1KGCarton1000pcsSubmitted = collect($inventoredItems)->firstWhere('product_id', $this->p1KGCarton1000pcs->id);
         $c1K20pcsSubmitted = collect($inventoredItems)->firstWhere('product_id', $this->c1KGPaquet20pcs->id);
@@ -509,9 +511,9 @@ class FullFlowInventoryPdfTest extends TestCase
             $this->c1KGPaquet20pcs->convertQuantityToParentQuantity($c1K20pcsSubmitted['total_returned'])['decimal_parent_quantity'];
          $totalParentSold = self::$defaultQuantity1KGCarton1000pcs - 200 + $this->c1KGPaquet20pcs->convertQuantityToParentQuantity(2594)['decimal_parent_quantity'];
         // testing the totals returned by the inventory
-         $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs * 2, $p1KGCarton1000pcsInventored['total_loaded']);
-         $this->assertEquals($totalParentSubmitted, $p1KGCarton1000pcsInventored['total_returned']);
-        $this->assertEquals($totalParentSold, $p1KGCarton1000pcsInventored['total_sold']);
+         $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs * 2, $p1KGCarton1000pcsInventored->totalLoaded);
+         $this->assertEquals($totalParentSubmitted, $p1KGCarton1000pcsInventored->totalReturned);
+        $this->assertEquals($totalParentSold, $p1KGCarton1000pcsInventored->totalSold);
 
 
         $resp = $this->post(route('car-loads.inventories.items.store', [$carLoad, $inventory]), [

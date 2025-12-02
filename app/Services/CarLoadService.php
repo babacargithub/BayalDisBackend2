@@ -2,16 +2,18 @@
 
 namespace App\Services;
 
+use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
+use App\Data\CarLoadInventory\ConvertedQuantityDTO;
+use App\Data\CarLoadInventory\InventoryParentProductDTO;
 use App\Models\CarLoad;
+use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
 use App\Models\CarLoadItem;
-use App\Models\CarLoadInventory;
 use App\Models\Product;
 use App\Models\Team;
 use App\Models\Vente;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Inertia\Inertia;
 use JetBrains\PhpStorm\ArrayShape;
 
 class CarLoadService
@@ -426,7 +428,7 @@ class CarLoadService
             ->select('product_id','quantity','price','customers.name','ventes.created_at','sales_invoices.created_at as invoice_date','sales_invoices.id as invoice_number')
             ->whereDate('ventes.created_at', ">=", $carLoad->load_date->toDateString())
             ->orderBy('ventes.created_at', 'desc')
-            ->orderBy('sales_invoices.customer_id', )
+            ->orderBy('sales_invoices.customer_id')
             ->orderBy('sales_invoices.created_at', 'desc')
             ->whereDate('ventes.created_at', "<=", $carLoad->return_date->toDateString())
             ->get();
@@ -449,6 +451,13 @@ class CarLoadService
             ->orderBy('return_date', 'desc')
             ->limit(1)
             ->first();
+    }
+    private function convertQuantity(Product $product, float|int $quantity) : ConvertedQuantityDTO
+    {
+        $convertedDisplay = $product->getFormattedDisplayOfCartonAndParquets($quantity);
+        return new ConvertedQuantityDTO(parentQuantity: $convertedDisplay['cartons'], childQuantity:
+        $convertedDisplay['paquets'], childName: $convertedDisplay['first_variant_name']);
+
     }
     #[ArrayShape(["items" => "array"])]
     public function getCalculatedQuantitiesOfProductsInInventory(CarLoad $carLoad, CarLoadInventory $inventory): array
@@ -476,13 +485,14 @@ class CarLoadService
             }
 
             // Total sold in parent units across children
-            $totalSold = $parentItem?->total_sold ?? 0;
+            $calculatedTotalSold = $parentItem?->total_sold ?? 0;
 
             foreach ($childrenItems as $childItem) {
                 /** @var CarLoadInventoryItem $childItem */
-                $totalSold += $childItem->product
+                $calculatedTotalSold += $childItem->product
                     ->convertQuantityToParentQuantity($childItem->total_sold)['decimal_parent_quantity'];
             }
+
             // Loaded including previous car load items of children converted to parent units
             $calculatedTotalLoaded = $parentItem?->total_loaded ?? 0;
             $fromPreviousItems = $carLoad->items()
@@ -502,28 +512,43 @@ class CarLoadService
                 ->get();
 
             // Total returned in parent units (parent returns + children returns converted)
-            $totalReturnedParent = $parentItem?->total_returned ?? 0;
+            $calculatedTotalReturnedParent = $parentItem?->total_returned ?? 0;
             foreach ($children as $childItem) {
                 /** @var CarLoadInventoryItem $childItem */
-                $totalReturnedParent += $childItem->product
+                $calculatedTotalReturnedParent += $childItem->product
                     ->convertQuantityToParentQuantity($childItem->total_returned)['decimal_parent_quantity'];
             }
             // Result in parent decimal units
-            $resultDecimal = $totalSold + $totalReturnedParent - $calculatedTotalLoaded;
+            $resultDecimal = $calculatedTotalSold + $calculatedTotalReturnedParent - $calculatedTotalLoaded;
 
-            return [
-                'product_name' => $parentProduct->name,
-                'product' => $parentProduct,
-                'total_loaded' => $calculatedTotalLoaded,
-                'total_sold' => $totalSold,
-                'total_returned' => $totalReturnedParent, // parent cartons only, children listed separately
-                'children' => $children,
-                'result' => $resultDecimal,
-            ];
+//            return [
+//                'product_name' => $parentProduct->name,
+//                'product' => $parentProduct,
+//                'total_loaded' => $calculatedTotalLoaded,
+//                'total_sold' => $totalSold,
+//                'total_returned' => $totalReturnedParent, // parent cartons only, children listed separately
+//                'children' => $children,
+//                'result' => $resultDecimal,
+//            ];
+
+                return new CarLoadInventoryResultItemDTO(
+                    parent: InventoryParentProductDTO::fromProduct($parentProduct),
+                    totalLoaded: $calculatedTotalLoaded,
+                    totalReturned: $calculatedTotalReturnedParent,
+                    totalSold: $calculatedTotalSold,
+                    children: $children->map(fn($item)=> InventoryParentProductDTO::fromProduct($item->product)),
+                    totalLoadedConverted: $this->convertQuantity($parentProduct, $calculatedTotalLoaded),
+                    totalSoldConverted: $this->convertQuantity($parentProduct, $calculatedTotalSold),
+                    totalReturnedConverted: $this->convertQuantity($parentProduct, $calculatedTotalReturnedParent),
+                    resultConverted: $this->convertQuantity($parentProduct, $resultDecimal),
+                    resultOfComputation: $resultDecimal,
+                    priceOfResultComputation: $parentProduct->price * $resultDecimal,
+
+                );
         })->filter()->values();
-
         return ['items' => $processedItems];
     }
+
 
     public function getAvailableStockOfProductInCarLoad(CarLoad $carLoad, Product $product)
     {
