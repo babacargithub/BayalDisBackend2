@@ -16,7 +16,7 @@ class CarLoadInventoryResultItemDTO
         public ConvertedQuantityDTO      $totalSoldConverted,
         public ConvertedQuantityDTO      $totalReturnedConverted,
         public ConvertedQuantityDTO $resultConverted,
-        public int $resultOfComputation = 0,
+        public float $resultOfComputation = 0,
         public int $priceOfResultComputation = 0
     )
     {
