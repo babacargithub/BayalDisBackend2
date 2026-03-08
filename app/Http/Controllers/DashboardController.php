@@ -2,202 +2,58 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Customer;
-use App\Models\SalesInvoice;
-use App\Models\User;
-use App\Models\Vente;
-use App\Models\Payment;
-use App\Models\Commercial;
+use App\Data\Dashboard\DashboardStats;
+use App\Services\SalesInvoiceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
+use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function index()
-    {
-        try {
-            $stats = [
-                'dailyStats' => $this->getDailyStats(),
-                'weeklyStats' => $this->getWeeklyStats(),
-                'monthlyStats' => $this->getMonthlyStats(),
-                'overallStats' => $this->getOverallStats(),
-            ];
+    public function __construct(private readonly SalesInvoiceService $salesInvoiceService) {}
 
-            return Inertia::render('Dashboard', $stats);
-        } catch (\Exception $e) {
-            Log::error('Error fetching dashboard stats: ' . $e->getMessage());
+    public function index(Request $request): Response
+    {
+        $selectedDate = Carbon::parse($request->query('date', Carbon::today()->toDateString()));
             return Inertia::render('Dashboard', [
-                'dailyStats' => [],
-                'weeklyStats' => [],
-                'monthlyStats' => [],
-                'overallStats' => [],
+                'selectedDate' => $selectedDate->toDateString(),
+                'dailyStats' => $this->getDailyStats($selectedDate)->toSnakeCaseArray(),
+                'weeklyStats' => $this->getWeeklyStats($selectedDate)->toSnakeCaseArray(),
+                'monthlyStats' => $this->getMonthlyStats($selectedDate)->toSnakeCaseArray(),
+                'overallStats' => $this->getOverallStats()->toSnakeCaseArray(),
             ]);
-        }
+
     }
 
-    private function getDailyStats()
+    private function getDailyStats(Carbon $date): DashboardStats
     {
-        try {
-            $today = \request()->query('date') ?? Carbon::today();
-
-            $total_amount_paid_single = Vente::whereDate('created_at', $today)
-                ->where('paid', true)
-                ->where("type",Vente::TYPE_SINGLE)
-                ->sum(DB::raw('price * quantity'));
-
-            $total_paid_invoices = 0;
-
-            $total_amount_paid_single = $total_amount_paid_single + $total_paid_invoices;
-
-            $total_amount_unpaid = Vente::whereDate('created_at', $today)
-                ->where('paid', false)
-                ->where('type',Vente::TYPE_SINGLE)
-                ->sum(DB::raw('price * quantity'))
-                +
-                SalesInvoice::whereDate("created_at",now()->toDateString())
-                    ->get()->sum("total_remaining");
-
-
-            $total_profit = Vente::whereDate('created_at', $today)
-                ->sum('profit');
-            $total_net_profit =  Payment::whereDate('created_at', $today)
-                    ->get()->sum("total_profit");
-
-            $total_payments = Payment::whereDate('created_at', $today)
-                ->sum('amount');
-
-            return [
-                'total_customers' => Customer::whereDate('created_at', $today)->count(),
-                'total_prospects' => Customer::whereDate('created_at', $today)->prospects()->count(),
-                'total_confirmed_customers' => Customer::whereDate('created_at', $today)->nonProspects()->count(),
-                'total_ventes' => Vente::whereDate('created_at', $today)->count(),
-                'total_ventes_paid' => Vente::whereDate('created_at', $today)->where('paid', true)->count(),
-                'total_ventes_unpaid' => Vente::whereDate('created_at', $today)->where('paid', false)->count(),
-                'total_amount_paid' => $total_amount_paid_single,
-                'total_amount_unpaid' => $total_amount_unpaid,
-                'total_amount_gross' => $total_amount_paid_single + $total_amount_unpaid,
-                'total_profit' => $total_profit,
-                'total_net_profit' => $total_net_profit,
-                'total_payments' => $total_payments,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Error getting daily stats: ' . $e->getMessage());
-            return [];
-        }
+        return $this->salesInvoiceService->buildStatsForPeriod(
+            startDate: $date->copy()->startOfDay(),
+            endDate: $date->copy()->endOfDay(),
+        );
     }
 
-    private function getWeeklyStats()
+    private function getWeeklyStats(Carbon $date): DashboardStats
     {
-        try {
-            $startOfWeek = Carbon::now()->startOfWeek();
-
-            $total_amount_paid = Vente::where('created_at', '>=', $startOfWeek)
-                ->where('paid', true)
-                ->sum(DB::raw('price * quantity'));
-
-            $total_amount_unpaid = Vente::where('created_at', '>=', $startOfWeek)
-                ->where('paid', false)
-                ->sum(DB::raw('price * quantity'));
-
-
-
-            $total_payments = Payment::where('created_at', '>=', $startOfWeek)
-                ->sum('amount');
-            $total_profit = Payment::where('created_at', '>=', $startOfWeek)
-                ->get()->sum('total_profit');
-
-
-            return [
-                'total_customers' => Customer::where('created_at', '>=', $startOfWeek)->count(),
-                'total_prospects' => Customer::where('created_at', '>=', $startOfWeek)->prospects()->count(),
-                'total_confirmed_customers' => Customer::where('created_at', '>=', $startOfWeek)->nonProspects()->count(),
-                'total_ventes' => Vente::where('created_at', '>=', $startOfWeek)->count(),
-                'total_ventes_paid' => Vente::where('created_at', '>=', $startOfWeek)->where('paid', true)->count(),
-                'total_ventes_unpaid' => Vente::where('created_at', '>=', $startOfWeek)->where('paid', false)->count(),
-                'total_amount_paid' => $total_amount_paid,
-                'total_amount_unpaid' => $total_amount_unpaid,
-                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
-                'total_profit' => $total_profit,
-                'total_payments' => $total_payments,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Error getting weekly stats: ' . $e->getMessage());
-            return [];
-        }
+        return $this->salesInvoiceService->buildStatsForPeriod(
+            startDate: $date->copy()->startOfWeek(),
+            endDate: $date->copy()->endOfWeek(),
+        );
     }
 
-    private function getMonthlyStats()
+    private function getMonthlyStats(Carbon $date): DashboardStats
     {
-        try {
-            $startOfMonth = Carbon::now()->startOfMonth();
-
-            $total_amount_paid = Vente::where('created_at', '>=', $startOfMonth)
-                ->where('paid', true)
-                ->sum(DB::raw('price * quantity'));
-
-            $total_amount_unpaid = Vente::where('created_at', '>=', $startOfMonth)
-                ->where('paid', false)
-                ->sum(DB::raw('price * quantity'));
-
-            $total_profit = Vente::where('created_at', '>=', $startOfMonth)
-                ->sum('profit');
-
-            $total_payments = Payment::where('created_at', '>=', $startOfMonth)
-                ->sum('amount');
-
-            return [
-                'total_customers' => Customer::where('created_at', '>=', $startOfMonth)->count(),
-                'total_prospects' => Customer::where('created_at', '>=', $startOfMonth)->prospects()->count(),
-                'total_confirmed_customers' => Customer::where('created_at', '>=', $startOfMonth)->nonProspects()->count(),
-                'total_ventes' => Vente::where('created_at', '>=', $startOfMonth)->count(),
-                'total_ventes_paid' => Vente::where('created_at', '>=', $startOfMonth)->where('paid', true)->count(),
-                'total_ventes_unpaid' => Vente::where('created_at', '>=', $startOfMonth)->where('paid', false)->count(),
-                'total_amount_paid' => $total_amount_paid,
-                'total_amount_unpaid' => $total_amount_unpaid,
-                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
-                'total_profit' => $total_profit,
-                'total_payments' => $total_payments,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Error getting monthly stats: ' . $e->getMessage());
-            return [];
-        }
+        return $this->salesInvoiceService->buildStatsForPeriod(
+            startDate: $date->copy()->startOfMonth(),
+            endDate: $date->copy()->endOfMonth(),
+        );
     }
 
-    private function getOverallStats()
+    private function getOverallStats(): DashboardStats
     {
-        try {
-            $total_amount_paid = Vente::where('paid', true)
-                ->sum(DB::raw('price * quantity'));
-
-            $total_amount_unpaid = Vente::where('paid', false)
-                ->sum(DB::raw('price * quantity'));
-
-            $total_profit = Vente::where("paid", true)->sum('profit');
-
-            $total_payments = Payment::sum('amount');
-
-            return [
-                'total_customers' => Customer::count(),
-                'total_prospects' => Customer::prospects()->count(),
-                'total_confirmed_customers' => Customer::nonProspects()->count(),
-                'ventes_count' => SalesInvoice::count(),
-                'total_ventes_paid' => SalesInvoice::where('paid', true)->count(),
-                'total_ventes_unpaid' => SalesInvoice::where('paid', false)->count(),
-                'total_amount_paid' => $total_amount_paid,
-                'total_amount_unpaid' => $total_amount_unpaid,
-                'total_amount_gross' => $total_amount_paid + $total_amount_unpaid,
-                'total_profit' => $total_profit,
-                'total_ventes' => (int) Vente::select(DB::raw("SUM(price * quantity) as total"))->first()->total,
-                'total_payments' => $total_payments,
-            ];
-        } catch (\Exception $e) {
-            Log::error('Error getting overall stats: ' . $e->getMessage());
-            return [];
-        }
+        return $this->salesInvoiceService->buildStatsForPeriod(startDate: null, endDate: null);
     }
+
 
 }

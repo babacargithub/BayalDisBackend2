@@ -3,24 +3,23 @@
 namespace Tests\Unit;
 
 use App\Models\CarLoad;
-use App\Models\CarLoadItem;
 use App\Models\Product;
 use App\Models\Team;
 use App\Models\User;
 use Carbon\Carbon;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class CarLoadStockTest extends TestCase
 {
-    use DatabaseTransactions;
+    use RefreshDatabase;
 
     private function makeBaseProduct(string $name = 'Base Product'): Product
     {
         return Product::create([
-            'name'          => $name,
-            'price'         => 1000,
-            'cost_price'    => 500,
+            'name' => $name,
+            'price' => 1000,
+            'cost_price' => 500,
             'base_quantity' => 12,
         ]);
     }
@@ -30,17 +29,17 @@ class CarLoadStockTest extends TestCase
         $user = User::factory()->create();
 
         $team = Team::create([
-            'name'    => "Team {$teamId}",
+            'name' => "Team {$teamId}",
             'user_id' => $user->id,
         ]);
 
         return CarLoad::create([
-            'name'        => "Team {$team->id} Load",
-            'team_id'     => $team->id,
-            'status'      => 'ACTIVE',
-            'load_date'   => Carbon::now()->subDay(),
+            'name' => "Team {$team->id} Load",
+            'team_id' => $team->id,
+            'status' => 'ACTIVE',
+            'load_date' => Carbon::now()->subDay(),
             'return_date' => Carbon::now()->addDay(),
-            'returned'    => false,
+            'returned' => false,
         ]);
     }
 
@@ -52,17 +51,17 @@ class CarLoadStockTest extends TestCase
         $now = Carbon::now();
 
         $older = $carLoad->items()->create([
-            'product_id'      => $product->id,
+            'product_id' => $product->id,
             'quantity_loaded' => 10,
-            'quantity_left'   => 10,
-            'loaded_at'       => $now->copy()->subHours(5),
+            'quantity_left' => 10,
+            'loaded_at' => $now->copy()->subHours(5),
         ]);
 
         $newer = $carLoad->items()->create([
-            'product_id'      => $product->id,
+            'product_id' => $product->id,
             'quantity_loaded' => 8,
-            'quantity_left'   => 8,
-            'loaded_at'       => $now->copy()->subHours(1),
+            'quantity_left' => 8,
+            'loaded_at' => $now->copy()->subHours(1),
         ]);
 
         $carLoad->decreaseStockOfProduct($product, 12);
@@ -91,17 +90,17 @@ class CarLoadStockTest extends TestCase
         $now = Carbon::now();
 
         $carLoad->items()->create([
-            'product_id'      => $product->id,
+            'product_id' => $product->id,
             'quantity_loaded' => 5,
-            'quantity_left'   => 0,
-            'loaded_at'       => $now->copy()->subHours(3),
+            'quantity_left' => 0,
+            'loaded_at' => $now->copy()->subHours(3),
         ]);
 
         $last = $carLoad->items()->create([
-            'product_id'      => $product->id,
+            'product_id' => $product->id,
             'quantity_loaded' => 7,
-            'quantity_left'   => 1,
-            'loaded_at'       => $now->copy()->subHour(),
+            'quantity_left' => 1,
+            'loaded_at' => $now->copy()->subHour(),
         ]);
 
         $carLoad->increaseStockOfProduct($product, 3);

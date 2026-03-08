@@ -1,10 +1,10 @@
 <?php
 
+use App\Models\OrderItem;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
-use App\Models\OrderItem;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -33,8 +33,8 @@ return new class extends Migration
             $table->foreignId('product_id')->nullable()->change();
             if (DB::getDriverName() !== 'sqlite') {
                 $table->dropForeign(['product_id']);
+                $table->dropColumn(['product_id', 'quantity']);
             }
-            $table->dropColumn(['product_id', 'quantity']);
         });
     }
 
@@ -60,4 +60,4 @@ return new class extends Migration
                 ]);
         }
     }
-}; 
+};

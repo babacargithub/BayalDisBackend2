@@ -1,102 +1,58 @@
+<script>
+// Module-scope definition so defineProps() (which is hoisted) can reference it.
+// Single source of truth for the stats object shape — reused by all four period props.
+const emptyStats = () => ({
+    total_customers: 0,
+    total_prospects: 0,
+    total_confirmed_customers: 0,
+    sales_invoices_count: 0,
+    fully_paid_sales_invoices_count: 0,
+    partially_paid_sales_invoices_count: 0,
+    unpaid_sales_invoices_count: 0,
+    total_sales: 0,
+    total_estimated_profit: 0,
+    total_realized_profit: 0,
+    total_payments_received: 0,
+    total_expenses: 0,
+});
+</script>
+
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { ref, watch, computed } from 'vue';
+import { ref, computed } from 'vue';
 
-const tab = ref('daily');
+const activePeriodTab = ref('daily');
 const menu = ref(false);
 const datePickerKey = ref(0);
 
 const props = defineProps({
-    dailyStats: {
-        type: Object,
-        default: () => ({
-            total_customers: 0,
-            total_prospects: 0,
-            total_confirmed_customers: 0,
-            total_ventes: 0,
-            total_ventes_paid: 0,
-            total_ventes_unpaid: 0,
-            total_amount_gross: 0,
-            total_amount_paid: 0,
-            total_amount_unpaid: 0,
-            total_profit: 0,
-            total_net_profit: 0,
-            total_payments: 0
-        })
-    },
-    weeklyStats: {
-        type: Object,
-        default: () => ({
-            total_customers: 0,
-            total_prospects: 0,
-            total_confirmed_customers: 0,
-            total_ventes: 0,
-            total_ventes_paid: 0,
-            total_ventes_unpaid: 0,
-            total_amount_gross: 0,
-            total_amount_paid: 0,
-            total_amount_unpaid: 0,
-            total_profit: 0,
-            total_net_profit: 0,
-            total_payments: 0
-        })
-    },
-    monthlyStats: {
-        type: Object,
-        default: () => ({
-            total_customers: 0,
-            total_prospects: 0,
-            total_confirmed_customers: 0,
-            total_ventes: 0,
-            total_ventes_paid: 0,
-            total_ventes_unpaid: 0,
-            total_amount_gross: 0,
-            total_amount_paid: 0,
-            total_amount_unpaid: 0,
-            total_profit: 0,
-            total_payments: 0,
-            total_net_profit: 0,
-        })
-    },
-    overallStats: {
-        type: Object,
-        default: () => ({
-            total_customers: 0,
-            total_prospects: 0,
-            total_confirmed_customers: 0,
-            total_ventes: 0,
-            total_ventes_paid: 0,
-            total_ventes_unpaid: 0,
-            total_amount_gross: 0,
-            total_amount_paid: 0,
-            total_amount_unpaid: 0,
-            total_profit: 0,
-            total_commerciaux: 0,
-            total_payments: 0,
-            total_net_profit: 0
-        })
-    },
-    selectedDate: {
-        type: String,
-        required: true
-    }
+    dailyStats:   { type: Object, default: emptyStats },
+    weeklyStats:  { type: Object, default: emptyStats },
+    monthlyStats: { type: Object, default: emptyStats },
+    overallStats: { type: Object, default: emptyStats },
+    selectedDate: { type: String, required: true },
 });
 
 const date = ref(props.selectedDate);
+
+const dateAsObject = computed(() => {
+    const [year, month, day] = date.value.split('-').map(Number);
+    return new Date(year, month - 1, day);
+});
 
 const formattedDate = computed(() => {
     try {
         return new Date(date.value).toLocaleDateString('fr-FR', {
             year: 'numeric',
             month: 'long',
-            day: 'numeric'
+            day: 'numeric',
         });
     } catch (e) {
         return new Date().toLocaleDateString('fr-FR', {
             year: 'numeric',
             month: 'long',
-            day: 'numeric'
+            day: 'numeric',
         });
     }
 });
@@ -104,6 +60,22 @@ const formattedDate = computed(() => {
 const today = computed(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+});
+
+const currentPeriodStats = computed(() => {
+    if (activePeriodTab.value === 'daily') return props.dailyStats;
+    if (activePeriodTab.value === 'weekly') return props.weeklyStats;
+    return props.monthlyStats;
+});
+
+const currentPeriodLabel = computed(() => {
+    if (activePeriodTab.value === 'daily') {
+        return `Aujourd'hui — ${formattedDate.value}`;
+    }
+    if (activePeriodTab.value === 'weekly') {
+        return `Semaine du ${formattedDate.value}`;
+    }
+    return new Date(date.value).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 });
 
 const handleDateChange = (newDate) => {
@@ -114,7 +86,7 @@ const handleDateChange = (newDate) => {
         router.get(route('dashboard'), { date: formattedNewDate }, {
             preserveState: true,
             preserveScroll: true,
-            only: ['dailyStats', 'weeklyStats', 'monthlyStats', 'selectedDate']
+            only: ['dailyStats', 'weeklyStats', 'monthlyStats', 'selectedDate'],
         });
     }
 };
@@ -122,9 +94,15 @@ const handleDateChange = (newDate) => {
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('fr-FR', {
         style: 'currency',
-        currency: 'XOF'
+        currency: 'XOF',
     }).format(amount);
 };
+
+const periodTabs = [
+    { value: 'daily',   label: "Aujourd'hui", icon: 'mdi-calendar-today' },
+    { value: 'weekly',  label: 'Semaine',      icon: 'mdi-calendar-week'  },
+    { value: 'monthly', label: 'Mois',         icon: 'mdi-calendar-month' },
+];
 </script>
 
 <template>
@@ -132,707 +110,663 @@ const formatCurrency = (amount) => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                    📊 Tableau de bord
-                </h2>
-                <div class="w-full sm:w-auto">
-                    <v-menu
-                        v-model="menu"
-                        :close-on-content-click="false"
-                        min-width="auto"
-                        transition="scale-transition"
-                    >
-                        <template v-slot:activator="{ props }">
-                            <v-btn
-                                color="primary"
-                                v-bind="props"
-                                prepend-icon="mdi-calendar"
-                                variant="elevated"
-                                class="w-full sm:w-auto"
-                                size="large"
-                            >
-                                {{ formattedDate }}
-                            </v-btn>
-                        </template>
-
-                        <v-card elevation="8" class="rounded-lg">
-                            <v-card-text class="pa-2">
-                                <v-date-picker
-                                    :key="datePickerKey"
-                                    :max="today"
-                                    :first-day-of-week="1"
-                                    locale="fr"
-                                    @update:model-value="handleDateChange"
-                                    color="primary"
-                                    elevation="0"
-                                />
-                            </v-card-text>
-                        </v-card>
-                    </v-menu>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900 leading-tight">Tableau de bord</h2>
+                    <p class="text-sm text-gray-500 mt-0.5">Vue globale des performances commerciales</p>
                 </div>
+
+                <v-menu
+                    v-model="menu"
+                    :close-on-content-click="false"
+                    min-width="auto"
+                    transition="scale-transition"
+                >
+                    <template v-slot:activator="{ props: menuActivatorProps }">
+                        <v-btn
+                            color="primary"
+                            v-bind="menuActivatorProps"
+                            prepend-icon="mdi-calendar"
+                            variant="elevated"
+                            class="w-full sm:w-auto date-picker-btn"
+                        >
+                            {{ formattedDate }}
+                        </v-btn>
+                    </template>
+
+                    <v-card elevation="8" class="rounded-xl overflow-hidden">
+                        <v-card-text class="pa-2">
+                            <v-date-picker
+                                :key="datePickerKey"
+                                :model-value="dateAsObject"
+                                :max="today"
+                                :first-day-of-week="1"
+                                locale="fr"
+                                @update:model-value="handleDateChange"
+                                color="primary"
+                                elevation="0"
+                            />
+                        </v-card-text>
+                    </v-card>
+                </v-menu>
             </div>
         </template>
 
-        <div class="py-6 px-4 sm:px-6 lg:px-8">
-            <div class="max-w-7xl mx-auto space-y-8">
-                <!-- Overall Stats Summary -->
-                <div class="mb-8">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                        <v-icon class="mr-2" color="primary">mdi-chart-line</v-icon>
-                        Vue d'ensemble
-                    </h3>
-                    <v-row class="ma-0">
-                        <v-col cols="12" sm="6" md="4" lg="2" class="pa-2">
-                            <v-card
-                                class="stat-card h-100"
-                                elevation="3"
-                                :ripple="false"
+        <div class="py-8 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-7xl mx-auto space-y-10">
+
+                <!-- ===== OVERALL STATS SECTION ===== -->
+                <section>
+                    <div class="section-heading">
+                        <span class="section-heading-accent"></span>
+                        <span class="section-heading-text">Vue d'ensemble</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+
+                        <!-- Clients -->
+                        <div class="kpi-card kpi-card--blue">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--blue">
+                                    <v-icon size="22">mdi-account-group</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">CLIENTS</div>
+                                    <div class="kpi-value">{{ overallStats.total_customers }}</div>
+                                    <div class="kpi-badges">
+                                        <span class="kpi-badge kpi-badge--green">
+                                            {{ overallStats.total_confirmed_customers }} confirmés
+                                        </span>
+                                        <span class="kpi-badge kpi-badge--amber">
+                                            {{ overallStats.total_prospects }} prospects
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Factures -->
+                        <div class="kpi-card kpi-card--indigo">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--indigo">
+                                    <v-icon size="22">mdi-file-document-outline</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">FACTURES</div>
+                                    <div class="kpi-value">{{ overallStats.sales_invoices_count }}</div>
+                                    <div class="kpi-badges">
+                                        <span class="kpi-badge kpi-badge--green">✓ {{ overallStats.fully_paid_sales_invoices_count }}</span>
+                                        <span class="kpi-badge kpi-badge--amber">⚠ {{ overallStats.partially_paid_sales_invoices_count }}</span>
+                                        <span class="kpi-badge kpi-badge--red">✗ {{ overallStats.unpaid_sales_invoices_count }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chiffre d'affaires -->
+                        <div class="kpi-card kpi-card--emerald">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--emerald">
+                                    <v-icon size="22">mdi-cart-outline</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">CHIFFRE D'AFFAIRES</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--emerald">
+                                        {{ formatCurrency(overallStats.total_sales) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bénéfice estimé -->
+                        <div class="kpi-card kpi-card--green">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--green">
+                                    <v-icon size="22">mdi-trending-up</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">BÉNÉFICE ESTIMÉ</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--green">
+                                        {{ formatCurrency(overallStats.total_estimated_profit) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bénéfice réalisé -->
+                        <div class="kpi-card kpi-card--teal">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--teal">
+                                    <v-icon size="22">mdi-check-circle-outline</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">BÉNÉFICE RÉALISÉ</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--teal">
+                                        {{ formatCurrency(overallStats.total_realized_profit) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Encaissements -->
+                        <div class="kpi-card kpi-card--amber">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--amber">
+                                    <v-icon size="22">mdi-cash-multiple</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">ENCAISSEMENTS</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--amber">
+                                        {{ formatCurrency(overallStats.total_payments_received) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Dépenses -->
+                        <div class="kpi-card kpi-card--red">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--red">
+                                    <v-icon size="22">mdi-cash-minus</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">DÉPENSES</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--red">
+                                        {{ formatCurrency(overallStats.total_expenses) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- ===== PERIOD STATS SECTION ===== -->
+                <section>
+                    <div class="section-heading">
+                        <span class="section-heading-accent"></span>
+                        <span class="section-heading-text">Analyse par période</span>
+                    </div>
+
+                    <!-- Period tab switcher -->
+                    <div class="period-tabs-wrapper">
+                        <div class="period-tabs">
+                            <button
+                                v-for="periodTab in periodTabs"
+                                :key="periodTab.value"
+                                class="period-tab"
+                                :class="{ 'period-tab--active': activePeriodTab === periodTab.value }"
+                                @click="activePeriodTab = periodTab.value"
                             >
-                                <v-card-text class="text-center pa-4">
-                                    <div class="stat-icon mb-2">
-                                        <v-icon size="32" color="primary">mdi-account-group</v-icon>
+                                <v-icon size="15" class="period-tab-icon">{{ periodTab.icon }}</v-icon>
+                                {{ periodTab.label }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Period stats card -->
+                    <div class="period-card">
+
+                        <!-- Period card header -->
+                        <div class="period-card-header">
+                            <v-icon size="16" class="mr-2" style="color: #6366f1">mdi-chart-bar</v-icon>
+                            <span class="period-card-header-label">{{ currentPeriodLabel }}</span>
+                        </div>
+
+                        <!-- Period stats content -->
+                        <div class="period-card-content">
+
+                            <!-- Row 1: Clients & Invoices -->
+                            <div class="period-row">
+
+                                <!-- Customers -->
+                                <div class="period-group">
+                                    <div class="period-group-title">
+                                        <v-icon size="16" style="color: #3b82f6">mdi-account-group</v-icon>
+                                        Clients
                                     </div>
-                                    <div class="text-overline text-gray-600 mb-1">
-                                        TOTAL CLIENTS
-                                    </div>
-                                    <div class="text-h4 font-weight-bold text-gray-900 mb-3">
-                                        {{ overallStats.total_customers }}
-                                    </div>
-                                    <div class="d-flex justify-center gap-4">
-                                        <div class="text-center">
-                                            <div class="text-sm font-medium text-green-600">
-                                                {{ overallStats.total_confirmed_customers }}
-                                            </div>
-                                            <div class="text-xs text-gray-500">Confirmés</div>
+                                    <div class="period-metrics-grid period-metrics-grid--3">
+                                        <div class="period-metric">
+                                            <div class="period-metric-value">{{ currentPeriodStats.total_customers }}</div>
+                                            <div class="period-metric-label">Total</div>
                                         </div>
-                                        <div class="text-center">
-                                            <div class="text-sm font-medium text-amber-600">
-                                                {{ overallStats.total_prospects }}
-                                            </div>
-                                            <div class="text-xs text-gray-500">Prospects</div>
+                                        <div class="period-metric">
+                                            <div class="period-metric-value period-metric-value--green">{{ currentPeriodStats.total_confirmed_customers }}</div>
+                                            <div class="period-metric-label">Confirmés</div>
+                                        </div>
+                                        <div class="period-metric">
+                                            <div class="period-metric-value period-metric-value--amber">{{ currentPeriodStats.total_prospects }}</div>
+                                            <div class="period-metric-label">Prospects</div>
                                         </div>
                                     </div>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
+                                </div>
 
-                        <v-col cols="12" sm="6" md="4" lg="2" class="pa-2">
-                            <v-card
-                                class="stat-card h-100"
-                                elevation="3"
-                                :ripple="false"
-                            >
-                                <v-card-text class="text-center pa-4">
-                                    <div class="stat-icon mb-2">
-                                        <v-icon size="32" color="indigo">mdi-cart</v-icon>
+                                <!-- Invoices -->
+                                <div class="period-group">
+                                    <div class="period-group-title">
+                                        <v-icon size="16" style="color: #6366f1">mdi-file-document-outline</v-icon>
+                                        Factures
                                     </div>
-                                    <div class="text-overline text-gray-600 mb-1">
-                                        TOTAL VENTES
-                                    </div>
-                                    <div class="text-h4 font-weight-bold text-gray-900 mb-3">
-                                        {{ overallStats.ventes_count }}
-                                    </div>
-                                    <div class="d-flex justify-center gap-4">
-                                        <div class="text-center">
-                                            <div class="text-sm font-medium text-green-600">
-                                                {{ overallStats.total_ventes_paid }}
-                                            </div>
-                                            <div class="text-xs text-gray-500">Payées</div>
+                                    <div class="period-metrics-grid period-metrics-grid--4">
+                                        <div class="period-metric">
+                                            <div class="period-metric-value">{{ currentPeriodStats.sales_invoices_count }}</div>
+                                            <div class="period-metric-label">Total</div>
                                         </div>
-                                        <div class="text-center">
-                                            <div class="text-sm font-medium text-red-600">
-                                                {{ overallStats.total_ventes_unpaid }}
-                                            </div>
-                                            <div class="text-xs text-gray-500">Impayées</div>
+                                        <div class="period-metric">
+                                            <div class="period-metric-value period-metric-value--green">{{ currentPeriodStats.fully_paid_sales_invoices_count }}</div>
+                                            <div class="period-metric-label">Soldées</div>
+                                        </div>
+                                        <div class="period-metric">
+                                            <div class="period-metric-value period-metric-value--amber">{{ currentPeriodStats.partially_paid_sales_invoices_count }}</div>
+                                            <div class="period-metric-label">Partielles</div>
+                                        </div>
+                                        <div class="period-metric">
+                                            <div class="period-metric-value period-metric-value--red">{{ currentPeriodStats.unpaid_sales_invoices_count }}</div>
+                                            <div class="period-metric-label">Impayées</div>
                                         </div>
                                     </div>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
+                                </div>
 
-                        <v-col cols="12" sm="6" md="4" lg="2" class="pa-2">
-                            <v-card
-                                class="stat-card h-100"
-                                elevation="3"
-                                :ripple="false"
-                            >
-                                <v-card-text class="text-center pa-4">
-                                    <div class="stat-icon mb-2">
-                                        <v-icon size="32" color="success">mdi-trending-up</v-icon>
+                            </div>
+
+                            <div class="period-divider"></div>
+
+                            <!-- Row 2: Financials -->
+                            <div class="period-group">
+                                <div class="period-group-title">
+                                    <v-icon size="16" style="color: #10b981">mdi-cash</v-icon>
+                                    Finances
+                                </div>
+                                <div class="period-metrics-grid period-metrics-grid--5">
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency">{{ formatCurrency(currentPeriodStats.total_sales) }}</div>
+                                        <div class="period-metric-label">Chiffre d'affaires</div>
                                     </div>
-                                    <div class="text-overline text-gray-600 mb-1">
-                                        TOTAL BÉNÉFICES
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency period-metric-value--amber">{{ formatCurrency(currentPeriodStats.total_payments_received) }}</div>
+                                        <div class="period-metric-label">Encaissements</div>
                                     </div>
-                                    <div class="text-h4 font-weight-bold text-green-600 mb-3">
-                                        {{ formatCurrency(overallStats.total_profit) }}
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency period-metric-value--green">{{ formatCurrency(currentPeriodStats.total_estimated_profit) }}</div>
+                                        <div class="period-metric-label">Bénéfice estimé</div>
                                     </div>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-
-                        <v-col cols="12" sm="6" md="4" lg="2" class="pa-2">
-                            <v-card
-                                class="stat-card h-100"
-                                elevation="3"
-                                :ripple="false"
-                            >
-                                <v-card-text class="text-center pa-4">
-                                    <div class="stat-icon mb-2">
-                                        <v-icon size="32" color="purple">mdi-account-tie</v-icon>
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency period-metric-value--teal">{{ formatCurrency(currentPeriodStats.total_realized_profit) }}</div>
+                                        <div class="period-metric-label">Bénéfice réalisé</div>
                                     </div>
-                                    <div class="text-overline text-gray-600 mb-1">
-                                        Total Ventes
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency period-metric-value--red">{{ formatCurrency(currentPeriodStats.total_expenses) }}</div>
+                                        <div class="period-metric-label">Dépenses</div>
                                     </div>
-                                    <div class="text-h4 font-weight-bold text-gray-900 mb-3">
-                                        {{ overallStats.total_ventes?.toLocaleString() }}
-                                    </div>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
+                                </div>
+                            </div>
 
-                        <v-col cols="12" sm="6" md="4" lg="2" class="pa-2">
-                            <v-card
-                                class="stat-card h-100"
-                                elevation="3"
-                                :ripple="false"
-                            >
-                                <v-card-text class="text-center pa-4">
-                                    <div class="stat-icon mb-2">
-                                        <v-icon size="32" color="warning">mdi-cash-multiple</v-icon>
-                                    </div>
-                                    <div class="text-overline text-gray-600 mb-1">
-                                        ENCAISSEMENTS
-                                    </div>
-                                    <div class="text-h4 font-weight-bold text-amber-600 mb-3">
-                                        {{ formatCurrency(overallStats.total_payments) }}
-                                    </div>
-                                </v-card-text>
-                            </v-card>
-                        </v-col>
-                    </v-row>
-                </div>
+                        </div>
+                    </div>
 
-                <!-- Period Stats -->
-                <div>
-                    <v-tabs
-                        v-model="tab"
-                        bg-color="transparent"
-                        color="primary"
-                        class="mb-4"
-                        slider-color="primary"
-                        grow
-                    >
-                        <v-tab
-                            value="daily"
-                            class="text-none font-weight-medium"
-                            prepend-icon="mdi-calendar-today"
-                        >
-                            Aujourd'hui
-                        </v-tab>
-                        <v-tab
-                            value="weekly"
-                            class="text-none font-weight-medium"
-                            prepend-icon="mdi-calendar-week"
-                        >
-                            Cette Semaine
-                        </v-tab>
-                        <v-tab
-                            value="monthly"
-                            class="text-none font-weight-medium"
-                            prepend-icon="mdi-calendar-month"
-                        >
-                            Ce Mois
-                        </v-tab>
-                    </v-tabs>
+                </section>
 
-                    <v-window v-model="tab" class="mt-4">
-                        <v-window-item value="daily">
-                            <v-card elevation="4" class="rounded-lg">
-                                <v-card-title class="bg-gradient-to-r from-blue-50 to-indigo-50 text-lg font-medium">
-                                    <v-icon class="mr-2" color="primary">mdi-calendar-today</v-icon>
-                                    Statistiques du jour
-                                </v-card-title>
-                                <v-card-text class="pa-6">
-                                    <v-row>
-                                        <!-- Clients Card -->
-                                        <v-col cols="12" lg="6" class="mb-4">
-                                            <v-card variant="outlined" class="h-100 detail-card">
-                                                <v-card-title class="text-subtitle-1 bg-gray-50">
-                                                    <v-icon start color="primary">mdi-account-group</v-icon>
-                                                    Clients
-                                                </v-card-title>
-                                                <v-card-text class="pa-4">
-                                                    <v-row class="text-center">
-                                                        <v-col cols="4">
-                                                            <div class="metric-value">{{ dailyStats.total_customers }}</div>
-                                                            <div class="metric-label">Total</div>
-                                                        </v-col>
-                                                        <v-col cols="4">
-                                                            <div class="metric-value text-amber-600">{{ dailyStats.total_prospects }}</div>
-                                                            <div class="metric-label">Prospects</div>
-                                                        </v-col>
-                                                        <v-col cols="4">
-                                                            <div class="metric-value text-green-600">{{ dailyStats.total_confirmed_customers }}</div>
-                                                            <div class="metric-label">Confirmés</div>
-                                                        </v-col>
-                                                    </v-row>
-                                                </v-card-text>
-                                            </v-card>
-                                        </v-col>
-
-                                        <!-- Ventes Card -->
-                                        <v-col cols="12" lg="6" class="mb-4">
-                                            <v-card variant="outlined" class="h-100 detail-card">
-                                                <v-card-title class="text-subtitle-1 bg-gray-50">
-                                                    <v-icon start color="indigo">mdi-cash-register</v-icon>
-                                                    Ventes
-                                                </v-card-title>
-                                                <v-card-text class="pa-4">
-                                                    <v-row class="text-center">
-                                                        <v-col cols="6" sm="4" md="6" lg="4" xl="3">
-                                                            <div class="metric-value">{{ dailyStats.total_ventes }}</div>
-                                                            <div class="metric-label">Total</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="4" xl="3">
-                                                            <div class="metric-value text-primary text-sm">
-                                                                {{ formatCurrency(dailyStats.total_amount_gross) }}
-                                                            </div>
-                                                            <div class="metric-label">Brut</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="4" xl="3">
-                                                            <div class="metric-value text-green-600 text-sm">
-                                                                {{ formatCurrency(dailyStats.total_amount_paid) }}
-                                                            </div>
-                                                            <div class="metric-label">Payé</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="4" xl="3">
-                                                            <div class="metric-value text-red-600 text-sm">
-                                                                {{ formatCurrency(dailyStats.total_amount_unpaid) }}
-                                                            </div>
-                                                            <div class="metric-label">Impayé</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="4" xl="3">
-                                                            <div class="metric-value text-amber-600 text-sm">
-                                                                {{ formatCurrency(dailyStats.total_payments) }}
-                                                            </div>
-                                                            <div class="metric-label">Encaissements</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="4" xl="3">
-                                                            <div class="metric-value text-green-600 text-sm">
-                                                                {{ formatCurrency(dailyStats.total_profit) }}
-                                                            </div>
-                                                            <div class="metric-label">Bénéfice</div>
-                                                        </v-col>
-                                                        <v-col cols="12" sm="4" md="12" lg="4" xl="6">
-                                                            <div class="metric-value text-green-700 text-sm">
-                                                                {{ formatCurrency(dailyStats.total_net_profit) }}
-                                                            </div>
-                                                            <div class="metric-label">Bénéfice net</div>
-                                                        </v-col>
-                                                    </v-row>
-                                                </v-card-text>
-                                            </v-card>
-                                        </v-col>
-                                    </v-row>
-                                </v-card-text>
-                            </v-card>
-                        </v-window-item>
-
-                        <v-window-item value="weekly">
-                            <v-card elevation="4" class="rounded-lg">
-                                <v-card-title class="bg-gradient-to-r from-green-50 to-emerald-50 text-lg font-medium">
-                                    <v-icon class="mr-2" color="success">mdi-calendar-week</v-icon>
-                                    Statistiques de la semaine
-                                </v-card-title>
-                                <v-card-text class="pa-6">
-                                    <v-row>
-                                        <!-- Clients Card -->
-                                        <v-col cols="12" lg="6" class="mb-4">
-                                            <v-card variant="outlined" class="h-100 detail-card">
-                                                <v-card-title class="text-subtitle-1 bg-gray-50">
-                                                    <v-icon start color="primary">mdi-account-group</v-icon>
-                                                    Clients
-                                                </v-card-title>
-                                                <v-card-text class="pa-4">
-                                                    <v-row class="text-center">
-                                                        <v-col cols="4">
-                                                            <div class="metric-value">{{ weeklyStats.total_customers }}</div>
-                                                            <div class="metric-label">Total</div>
-                                                        </v-col>
-                                                        <v-col cols="4">
-                                                            <div class="metric-value text-amber-600">{{ weeklyStats.total_prospects }}</div>
-                                                            <div class="metric-label">Prospects</div>
-                                                        </v-col>
-                                                        <v-col cols="4">
-                                                            <div class="metric-value text-green-600">{{ weeklyStats.total_confirmed_customers }}</div>
-                                                            <div class="metric-label">Confirmés</div>
-                                                        </v-col>
-                                                    </v-row>
-                                                </v-card-text>
-                                            </v-card>
-                                        </v-col>
-
-                                        <!-- Ventes Card -->
-                                        <v-col cols="12" lg="6" class="mb-4">
-                                            <v-card variant="outlined" class="h-100 detail-card">
-                                                <v-card-title class="text-subtitle-1 bg-gray-50">
-                                                    <v-icon start color="indigo">mdi-cash-register</v-icon>
-                                                    Ventes
-                                                </v-card-title>
-                                                <v-card-text class="pa-4">
-                                                    <v-row class="text-center">
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value">{{ weeklyStats.total_ventes }}</div>
-                                                            <div class="metric-label">Total</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-primary text-sm">
-                                                                {{ formatCurrency(weeklyStats.total_amount_gross) }}
-                                                            </div>
-                                                            <div class="metric-label">Brut</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-green-600 text-sm">
-                                                                {{ formatCurrency(weeklyStats.total_amount_paid) }}
-                                                            </div>
-                                                            <div class="metric-label">Payé</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-red-600 text-sm">
-                                                                {{ formatCurrency(weeklyStats.total_amount_unpaid) }}
-                                                            </div>
-                                                            <div class="metric-label">Impayé</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-amber-600 text-sm">
-                                                                {{ formatCurrency(weeklyStats.total_payments) }}
-                                                            </div>
-                                                            <div class="metric-label">Encaissements</div>
-                                                        </v-col>
-                                                        <v-col cols="12" sm="4" md="12" lg="12" xl="4">
-                                                            <div class="metric-value text-green-600 text-sm">
-                                                                {{ formatCurrency(weeklyStats.total_profit) }}
-                                                            </div>
-                                                            <div class="metric-label">Bénéfice</div>
-                                                        </v-col>
-                                                        <v-col cols="12" md="12" lg="12" xl="12">
-                                                            <div class="metric-value text-green-700 text-sm">
-                                                                {{ formatCurrency(weeklyStats.total_net_profit) }}
-                                                            </div>
-                                                            <div class="metric-label">Bénéfice net</div>
-                                                        </v-col>
-                                                    </v-row>
-                                                </v-card-text>
-                                            </v-card>
-                                        </v-col>
-                                    </v-row>
-                                </v-card-text>
-                            </v-card>
-                        </v-window-item>
-
-                        <v-window-item value="monthly">
-                            <v-card elevation="4" class="rounded-lg">
-                                <v-card-title class="bg-gradient-to-r from-purple-50 to-pink-50 text-lg font-medium">
-                                    <v-icon class="mr-2" color="purple">mdi-calendar-month</v-icon>
-                                    Statistiques du mois
-                                </v-card-title>
-                                <v-card-text class="pa-6">
-                                    <v-row>
-                                        <!-- Clients Card -->
-                                        <v-col cols="12" lg="6" class="mb-4">
-                                            <v-card variant="outlined" class="h-100 detail-card">
-                                                <v-card-title class="text-subtitle-1 bg-gray-50">
-                                                    <v-icon start color="primary">mdi-account-group</v-icon>
-                                                    Clients
-                                                </v-card-title>
-                                                <v-card-text class="pa-4">
-                                                    <v-row class="text-center">
-                                                        <v-col cols="4">
-                                                            <div class="metric-value">{{ monthlyStats.total_customers }}</div>
-                                                            <div class="metric-label">Total</div>
-                                                        </v-col>
-                                                        <v-col cols="4">
-                                                            <div class="metric-value text-amber-600">{{ monthlyStats.total_prospects }}</div>
-                                                            <div class="metric-label">Prospects</div>
-                                                        </v-col>
-                                                        <v-col cols="4">
-                                                            <div class="metric-value text-green-600">{{ monthlyStats.total_confirmed_customers }}</div>
-                                                            <div class="metric-label">Confirmés</div>
-                                                        </v-col>
-                                                    </v-row>
-                                                </v-card-text>
-                                            </v-card>
-                                        </v-col>
-
-                                        <!-- Ventes Card -->
-                                        <v-col cols="12" lg="6" class="mb-4">
-                                            <v-card variant="outlined" class="h-100 detail-card">
-                                                <v-card-title class="text-subtitle-1 bg-gray-50">
-                                                    <v-icon start color="indigo">mdi-cash-register</v-icon>
-                                                    Ventes
-                                                </v-card-title>
-                                                <v-card-text class="pa-4">
-                                                    <v-row class="text-center">
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value">{{ monthlyStats.total_ventes }}</div>
-                                                            <div class="metric-label">Total</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-primary text-sm">
-                                                                {{ formatCurrency(monthlyStats.total_amount_gross) }}
-                                                            </div>
-                                                            <div class="metric-label">Brut</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-green-600 text-sm">
-                                                                {{ formatCurrency(monthlyStats.total_amount_paid) }}
-                                                            </div>
-                                                            <div class="metric-label">Payé</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-red-600 text-sm">
-                                                                {{ formatCurrency(monthlyStats.total_amount_unpaid) }}
-                                                            </div>
-                                                            <div class="metric-label">Impayé</div>
-                                                        </v-col>
-                                                        <v-col cols="6" sm="4" md="6" lg="6" xl="4">
-                                                            <div class="metric-value text-amber-600 text-sm">
-                                                                {{ formatCurrency(monthlyStats.total_payments) }}
-                                                            </div>
-                                                            <div class="metric-label">Encaissements</div>
-                                                        </v-col>
-                                                        <v-col cols="12" sm="4" md="12" lg="12" xl="4">
-                                                            <div class="metric-value text-green-600 text-sm">
-                                                                {{ formatCurrency(monthlyStats.total_profit) }}
-                                                            </div>
-                                                            <div class="metric-label">Bénéfice</div>
-                                                        </v-col>
-                                                        <v-col cols="12" md="12" lg="12" xl="12">
-                                                            <div class="metric-value text-green-700 text-sm">
-                                                                {{ formatCurrency(monthlyStats.total_net_profit) }}
-                                                            </div>
-                                                            <div class="metric-label">Bénéfice net</div>
-                                                        </v-col>
-                                                    </v-row>
-                                                </v-card-text>
-                                            </v-card>
-                                        </v-col>
-                                    </v-row>
-                                </v-card-text>
-                            </v-card>
-                        </v-window-item>
-                    </v-window>
-                </div>
             </div>
         </div>
     </AuthenticatedLayout>
 </template>
 
 <style scoped>
-/* Enhanced styling for better visual appeal */
-.font-medium{
-    font-size: 12px;
-}
-.stat-card {
-    transition: all 0.3s ease;
-    border-radius: 12px !important;
-    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-    border: 1px solid #e2e8f0;
-}
-
-.stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1) !important;
+/* =====================
+   SECTION HEADINGS
+   ===================== */
+.section-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
 }
 
-.stat-icon {
-    padding: 8px;
-    border-radius: 50%;
-    background: rgba(79, 70, 229, 0.1);
-    display: inline-flex;
+.section-heading-accent {
+    width: 4px;
+    height: 22px;
+    background: linear-gradient(180deg, #6366f1, #8b5cf6);
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.section-heading-text {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #6b7280;
+    text-transform: uppercase;
+}
+
+/* =====================
+   KPI CARDS (OVERALL)
+   ===================== */
+.kpi-card {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    border-left: 4px solid transparent;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    overflow: hidden;
+}
+
+.kpi-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.kpi-card--blue    { border-left-color: #3b82f6; }
+.kpi-card--indigo  { border-left-color: #6366f1; }
+.kpi-card--emerald { border-left-color: #10b981; }
+.kpi-card--green   { border-left-color: #22c55e; }
+.kpi-card--teal    { border-left-color: #14b8a6; }
+.kpi-card--amber   { border-left-color: #f59e0b; }
+.kpi-card--red     { border-left-color: #ef4444; }
+
+.kpi-card-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px 18px 18px 16px;
+}
+
+/* KPI Icons */
+.kpi-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
-.detail-card {
-    border-radius: 8px !important;
-    transition: all 0.2s ease;
+.kpi-icon--blue    { background: #eff6ff; color: #2563eb; }
+.kpi-icon--indigo  { background: #eef2ff; color: #4f46e5; }
+.kpi-icon--emerald { background: #ecfdf5; color: #059669; }
+.kpi-icon--green   { background: #f0fdf4; color: #16a34a; }
+.kpi-icon--teal    { background: #f0fdfa; color: #0d9488; }
+.kpi-icon--amber   { background: #fffbeb; color: #d97706; }
+.kpi-icon--red     { background: #fef2f2; color: #dc2626; }
+
+/* KPI Content */
+.kpi-content {
+    flex: 1;
+    min-width: 0;
 }
 
-.detail-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+.kpi-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #9ca3af;
+    text-transform: uppercase;
+    margin-bottom: 3px;
 }
 
-.metric-value {
-    font-size: 1.5rem !important;
-    font-weight: 700 !important;
-    line-height: 1.2 !important;
+.kpi-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #1f2937;
+    line-height: 1.1;
+    margin-bottom: 8px;
+}
+
+.kpi-value--currency {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.kpi-value--emerald { color: #047857; }
+.kpi-value--green   { color: #15803d; }
+.kpi-value--teal    { color: #0f766e; }
+.kpi-value--amber   { color: #b45309; }
+.kpi-value--red     { color: #b91c1c; }
+
+/* KPI Badges */
+.kpi-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.kpi-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.kpi-badge--green { background: #dcfce7; color: #166534; }
+.kpi-badge--amber { background: #fef3c7; color: #92400e; }
+.kpi-badge--red   { background: #fee2e2; color: #991b1b; }
+
+/* =====================
+   PERIOD TAB SWITCHER
+   ===================== */
+.period-tabs-wrapper {
+    margin-bottom: 18px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.period-tabs {
+    display: inline-flex;
+    gap: 3px;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 10px;
+}
+
+.period-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 7px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #6b7280;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.period-tab:hover:not(.period-tab--active) {
+    color: #374151;
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.period-tab--active {
+    background: #ffffff;
+    color: #4f46e5;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.period-tab-icon {
+    opacity: 0.8;
+}
+
+/* =====================
+   PERIOD STATS CARD
+   ===================== */
+.period-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.period-card-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 24px;
+    background: linear-gradient(135deg, #f8f9ff 0%, #eef2ff 100%);
+    border-bottom: 1px solid #e0e7ff;
+}
+
+.period-card-header-label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #4f46e5;
+    text-transform: capitalize;
+}
+
+.period-card-content {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.period-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+@media (min-width: 768px) {
+    .period-row {
+        grid-template-columns: 1fr 1.5fr;
+    }
+}
+
+.period-divider {
+    height: 1px;
+    background: #f1f5f9;
+    margin: 22px 0;
+}
+
+/* Period Groups */
+.period-group-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #6b7280;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+/* Period Metrics Grid */
+.period-metrics-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.period-metrics-grid--3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.period-metrics-grid--4 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.period-metrics-grid--5 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+@media (min-width: 480px) {
+    .period-metrics-grid--4 {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    .period-metrics-grid--5 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 900px) {
+    .period-metrics-grid--5 {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+/* Period Metric Cell */
+.period-metric {
+    text-align: center;
+    padding: 12px 8px;
+    border-radius: 8px;
+    background: #f9fafb;
+    transition: background 0.15s ease;
+}
+
+.period-metric:hover {
+    background: #f1f5f9;
+}
+
+.period-metric-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #1f2937;
+    line-height: 1.2;
     margin-bottom: 4px;
 }
 
-.metric-label {
-    font-size: 0.75rem !important;
+.period-metric-value--currency {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.period-metric-value--green  { color: #16a34a; }
+.period-metric-value--amber  { color: #d97706; }
+.period-metric-value--red    { color: #dc2626; }
+.period-metric-value--teal   { color: #0d9488; }
+
+.period-metric-label {
+    font-size: 10.5px;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #6b7280 !important;
-    font-weight: 500 !important;
+    color: #9ca3af;
 }
 
-/* Mobile-specific improvements */
-@media (max-width: 768px) {
-    .metric-value {
-        font-size: 1.25rem !important;
+/* =====================
+   RESPONSIVE
+   ===================== */
+@media (max-width: 639px) {
+    .period-metrics-grid--3 {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
     }
 
-    .stat-card .v-card-text {
-        padding: 16px !important;
+    .period-metric {
+        padding: 10px 4px;
     }
 
-    .detail-card .v-card-text {
-        padding: 16px !important;
-    }
-}
-
-@media (max-width: 640px) {
-    .metric-value {
-        font-size: 1.1rem !important;
+    .period-metric-value {
+        font-size: 1.25rem;
     }
 
-    .metric-value.text-sm {
-        font-size: 0.95rem !important;
+    .kpi-value {
+        font-size: 1.6rem;
     }
 
-    .metric-label {
-        font-size: 0.7rem !important;
+    .kpi-value--currency {
+        font-size: 1rem;
+    }
+
+    .period-card-content {
+        padding: 16px;
     }
 }
 
-/* Tab styling improvements */
-.v-tab {
-    border-radius: 8px !important;
-    margin: 0 4px !important;
-    text-transform: none !important;
-}
-
-.v-tab--selected {
-    background: rgba(79, 70, 229, 0.1) !important;
-    color: #4f46e5 !important;
-}
-
-/* Card title styling */
-.v-card-title {
-    border-radius: 8px 8px 0 0 !important;
-    font-weight: 600 !important;
-}
-
-/* Gradient backgrounds */
-.bg-gradient-to-r {
-    background: linear-gradient(to right, var(--tw-gradient-stops));
-}
-
-.from-blue-50 {
-    --tw-gradient-from: #eff6ff;
-    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(239, 246, 255, 0));
-}
-
-.to-indigo-50 {
-    --tw-gradient-to: #eef2ff;
-}
-
-.from-green-50 {
-    --tw-gradient-from: #f0fdf4;
-    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(240, 253, 244, 0));
-}
-
-.to-emerald-50 {
-    --tw-gradient-to: #ecfdf5;
-}
-
-.from-purple-50 {
-    --tw-gradient-from: #faf5ff;
-    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(250, 245, 255, 0));
-}
-
-.to-pink-50 {
-    --tw-gradient-to: #fdf2f8;
-}
-
-/* Color utilities */
-.text-gray-900 {
-    color: #111827 !important;
-}
-
-.text-gray-600 {
-    color: #4b5563 !important;
-}
-
-.text-gray-500 {
-    color: #6b7280 !important;
-}
-
-.text-green-600 {
-    color: #059669 !important;
-}
-
-.text-green-700 {
-    color: #047857 !important;
-}
-
-.text-amber-600 {
-    color: #d97706 !important;
-}
-
-.text-red-600 {
-    color: #dc2626 !important;
-}
-
-.bg-gray-50 {
-    background-color: #f9fafb !important;
-}
-
-/* Responsive grid improvements */
-.v-row.ma-0 {
-    margin: 0 !important;
-}
-
-.v-col.pa-2 {
-    padding: 8px !important;
-}
-
-/* Loading and transition effects */
-.v-window-item {
-    transition: all 0.3s ease-in-out;
-}
-
-/* Enhanced button styling */
-.v-btn--variant-elevated {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
-}
-
-.v-btn--variant-elevated:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-    transform: translateY(-1px);
-}
-
-/* Date picker styling */
-.v-date-picker {
-    border-radius: 8px !important;
-}
-
-/* Improved spacing for mobile */
-@media (max-width: 768px) {
-    .py-6 {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-    }
-
-    .space-y-8 > * + * {
-        margin-top: 1.5rem !important;
-    }
-
-    .mb-8 {
-        margin-bottom: 1.5rem !important;
-    }
+/* =====================
+   DATE PICKER BUTTON
+   ===================== */
+.date-picker-btn {
+    letter-spacing: 0;
 }
 </style>
