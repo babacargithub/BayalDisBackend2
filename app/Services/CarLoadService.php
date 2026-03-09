@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
 use App\Data\CarLoadInventory\ConvertedQuantityDTO;
 use App\Data\CarLoadInventory\InventoryParentProductDTO;
+use App\Exceptions\InsufficientStockException;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
@@ -13,6 +14,7 @@ use App\Models\Product;
 use App\Models\Team;
 use App\Models\Vente;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use JetBrains\PhpStorm\ArrayShape;
 
@@ -74,9 +76,9 @@ class CarLoadService
                 'quantity_loaded' => $data['quantity_loaded'],
                 'comment' => $data['comment'] ?? null,
             ]);
-            //TODO check the difference after update on warehouse stock update it accordingly
-            if (isset($data["quantity_left"])){
-                $item->quantity_left = $data["quantity_left"];
+            // TODO check the difference after update on warehouse stock update it accordingly
+            if (isset($data['quantity_left'])) {
+                $item->quantity_left = $data['quantity_left'];
                 $item->save();
             }
 
@@ -89,6 +91,7 @@ class CarLoadService
         if ($item->carLoad->returned) {
             throw new \Exception('Cannot delete items from an unloaded car load');
         }
+
         return DB::transaction(function () use ($item) {
             $quantity_left = $item->quantity_left;
 
@@ -96,8 +99,8 @@ class CarLoadService
             $product = Product::findOrFail($item->product_id);
             $product->incrementStock($quantity_left, updateMainStock: true);
             $product->save();
-//             dd($quantity_left, $product->stock_available);
-//             throw new \Exception('Cannot delete items from an unloaded car load');
+            //             dd($quantity_left, $product->stock_available);
+            //             throw new \Exception('Cannot delete items from an unloaded car load');
             $item->delete();
 
         });
@@ -147,7 +150,7 @@ class CarLoadService
 
         return DB::transaction(function () use ($previousCarLoad) {
             $newCarLoad = CarLoad::create([
-                'name' => $previousCarLoad->name . ' (Copy)',
+                'name' => $previousCarLoad->name.' (Copy)',
                 'team_id' => $previousCarLoad->team_id,
                 'status' => 'LOADING',
                 'load_date' => Carbon::now(),
@@ -177,32 +180,33 @@ class CarLoadService
     public function getAllCarLoads()
     {
         return CarLoad::with([
-            'items' => function($query) {
+            'items' => function ($query) {
                 $query->orderBy('loaded_at', 'desc');
             },
             'items.product',
             'team',
-            'inventory.items.product'
+            'inventory.items.product',
         ])
             ->orderBy('created_at', 'desc')
             ->paginate(1000);
     }
+
     public function getCurrentCarLoad()
     {
         return CarLoad::with([
-            'items' => function($query) {
+            'items' => function ($query) {
                 $query->orderBy('loaded_at', 'desc');
                 $query->orderBy('id', 'desc');
             },
             'items.product',
             'team',
-            'inventory.items' => function($query) {
+            'inventory.items' => function ($query) {
                 $query->join('products', 'car_load_inventory_items.product_id', '=', 'products.id')
                     ->orderBy('products.name') // secondary sort for products with same parent
                     ->orderBy('products.parent_id')
                     ->select('car_load_inventory_items.*'); // important: select only inventory_items columns
             },
-            'inventory.items.product'
+            'inventory.items.product',
         ])
             ->orderBy('created_at', 'desc')
             ->limit(3)
@@ -219,12 +223,12 @@ class CarLoadService
             ->with(['items.product'])
             ->first();
 
-//        $currentCarLoad = CarLoad::
-//            with(['items.product'])
-//            ->latest()
-//            ->first();
+        //        $currentCarLoad = CarLoad::
+        //            with(['items.product'])
+        //            ->latest()
+        //            ->first();
 
-        if (!$currentCarLoad) {
+        if (! $currentCarLoad) {
             return [];
         }
 
@@ -234,11 +238,10 @@ class CarLoadService
                 'product_id' => $item->product_id,
                 'product_name' => $item->product->name,
                 'quantity_loaded' => $item->quantity_loaded,
-                "quantity_left" => $item->quantity_left,
-                "is_base_product" => $item->product->is_base_product,
-                "base_quantity" => $item->product->base_quantity,
-                'created_at' => $item->loaded_at ? $item->loaded_at->format("Y-m-d H:i:s") : $item->created_at->format
-                ('Y-m-d H:i:s')
+                'quantity_left' => $item->quantity_left,
+                'is_base_product' => $item->product->is_base_product,
+                'base_quantity' => $item->product->base_quantity,
+                'created_at' => $item->loaded_at ? $item->loaded_at->format('Y-m-d H:i:s') : $item->created_at->format('Y-m-d H:i:s'),
             ];
         });
     }
@@ -248,13 +251,13 @@ class CarLoadService
      */
     public function createFromInventory(CarLoadInventory $inventory): CarLoad
     {
-        if (!$inventory->closed) {
+        if (! $inventory->closed) {
             throw new \Exception('Impossible de créer un nouveau chargement à partir d\'un inventaire non fermé');
         }
         // if there is a car load with the same team and the return date is in the future and the car load is not returned, throw an exception
         $carLoad = CarLoad::where('team_id', $inventory->carLoad->team_id)
             ->where('return_date', '>', now())
-            ->where("returned", false)
+            ->where('returned', false)
             ->exists();
         if ($carLoad) {
             throw new \Exception('Cette équipe a déjà un chargement en cours et non retourné');
@@ -268,7 +271,7 @@ class CarLoadService
                 'team_id' => $carLoad->team_id,
                 'status' => 'LOADING',
                 'load_date' => Carbon::now(),
-                'return_date'=> Carbon::now()->endOfWeek(),
+                'return_date' => Carbon::now()->endOfWeek(),
                 'comment' => "Créé à partir de l'inventaire #{$inventory->id}",
                 'previous_car_load_id' => $carLoad->id,
             ]);
@@ -281,14 +284,13 @@ class CarLoadService
                     $newCarLoad->items()->create([
                         'product_id' => $item->product_id,
                         'quantity_loaded' => $remainingQuantity,
-                        "quantity_left" => $remainingQuantity,
-                        "from_previous_car_load" => true,
+                        'quantity_left' => $remainingQuantity,
+                        'from_previous_car_load' => true,
                         'loaded_at' => Carbon::now()->toDateString(),
                     ]);
                 }
             }
             // get missing items from the inventory by distinct product_id and sum the total_loaded
-
 
             return $newCarLoad;
         });
@@ -302,7 +304,7 @@ class CarLoadService
             ->where('returned', false)
             ->first();
 
-        if (!$currentCarLoad) {
+        if (! $currentCarLoad) {
             throw new \Exception('Aucun chargement actif trouvé pour votre équipe');
         }
 
@@ -311,19 +313,19 @@ class CarLoadService
             ->where('product_id', $product->id)
             ->first();
 
-
-        if (!$parentItem) {
+        if (! $parentItem) {
             throw new \Exception('Ce produit n\'est pas dans votre chargement');
         }
         $product = $parentItem->product;
 
-        if ($currentCarLoad->getTotalQuantityLeftOfProduct($product) < $data['quantityOfBaseProductToTransform']) {
-            throw new \Exception('Stock insuffisant dans le chargement. Stock disponible: ' . $currentCarLoad->getTotalQuantityLeftOfProduct($product));
+        $quantityAvailableInCarLoad = $this->getTotalQuantityLeftOfProductInCarLoad($currentCarLoad, $product);
+        if ($quantityAvailableInCarLoad < $data['quantityOfBaseProductToTransform']) {
+            throw new \Exception('Stock insuffisant dans le chargement. Stock disponible: '.$quantityAvailableInCarLoad);
         }
 
-        DB::transaction(function () use ($currentCarLoad, $product, $data, $parentItem) {
+        DB::transaction(function () use ($currentCarLoad, $product, $data) {
             // Decrease parent stock
-            $currentCarLoad->decreaseStockOfProduct($product, $data['quantityOfBaseProductToTransform']);
+            $this->decreaseProductStockInCarLoadUsingFifo($product, $data['quantityOfBaseProductToTransform'], $currentCarLoad);
 
             // Process each variant
             foreach ($data['items'] as $item) {
@@ -331,12 +333,14 @@ class CarLoadService
 
                 // Verify this is a valid parent-child relationship
                 if ($variant->parent_id !== $product->id) {
-                    throw new \Exception('Le produit ' . $variant->name . ' n\'est pas un variant de ce produit');
+                    throw new \Exception('Le produit '.$variant->name.' n\'est pas un variant de ce produit');
                 }
 
                 // Calculate actual quantity after removing unused quantity
                 $actualQuantity = $item['quantity'] - $item['unused_quantity'];
-                if ($actualQuantity <= 0) continue;
+                if ($actualQuantity <= 0) {
+                    continue;
+                }
 
                 // Create car load item for variant
                 $currentCarLoad->items()->create([
@@ -344,13 +348,13 @@ class CarLoadService
                     'quantity_loaded' => $actualQuantity,
                     'quantity_left' => $actualQuantity,
                     'loaded_at' => now(),
-                    'comment' => 'Transformé à partir de ' . $product->name
+                    'comment' => 'Transformé à partir de '.$product->name,
                 ]);
             }
         });
     }
 
-    public function createItems(CarLoad $carLoad, array $items) : CarLoad
+    public function createItems(CarLoad $carLoad, array $items): CarLoad
     {
         return DB::transaction(function () use ($items, $carLoad) {
             foreach ($items as $item) {
@@ -362,8 +366,9 @@ class CarLoadService
                     'comment' => $item['comment'] ?? null,
                 ]);
                 $product = Product::find($item['product_id']);
-                $product->decrementStock($item['quantity_loaded'], updateMainStock: true,commercial: null);
+                $product->decrementStock($item['quantity_loaded'], updateMainStock: true, carLoad: null);
             }
+
             return $carLoad;
         });
     }
@@ -398,7 +403,7 @@ class CarLoadService
                                         GROUP BY product_id
                                         ORDER BY total_quantity_sold DESC
                                     ", array_merge([$startDate, $endDate], $productIds));
-//        $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
+        //        $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
         // For each variant, sum quantity from ventes between the car load dates
         foreach ($salesByProduct as $child) {
             // Sum quantity column from ventes between the car load dates
@@ -416,27 +421,29 @@ class CarLoadService
             $totalSoldOfParent += $conversionResult['decimal_parent_quantity'];
 
         }
+
         // Return the total sold of parent product equivalent
         return $totalSoldOfParent;
     }
-    #[ArrayShape(["loadingsHistory" => "array", "product" => "array", "ventes" => "array"])]
-    public function productHistoryInCarLoad(Product $product, CarLoad $carLoad)
+
+    #[ArrayShape(['loadingsHistory' => 'array', 'product' => 'array', 'ventes' => 'array'])]
+    public function productHistoryInCarLoad(Product $product, CarLoad $carLoad): array
     {
         $ventes = Vente::where('product_id', $product->id)
             ->join('sales_invoices', 'sales_invoices.id', '=', 'ventes.sales_invoice_id')
             ->join('customers', 'customers.id', '=', 'sales_invoices.customer_id')
-            ->select('product_id','quantity','price','customers.name','ventes.created_at','sales_invoices.created_at as invoice_date','sales_invoices.id as invoice_number')
-            ->whereDate('ventes.created_at', ">=", $carLoad->load_date->toDateString())
+            ->select('product_id', 'quantity', 'price', 'customers.name', 'ventes.created_at', 'sales_invoices.created_at as invoice_date', 'sales_invoices.id as invoice_number')
+            ->whereDate('ventes.created_at', '>=', $carLoad->load_date->toDateString())
             ->orderBy('ventes.created_at', 'desc')
             ->orderBy('sales_invoices.customer_id')
             ->orderBy('sales_invoices.created_at', 'desc')
-            ->whereDate('ventes.created_at', "<=", $carLoad->return_date->toDateString())
+            ->whereDate('ventes.created_at', '<=', $carLoad->return_date->toDateString())
             ->get();
         $loadingsHistory = $carLoad->items()->where('product_id', $product->id)->get();
-//        $loadingsHistory = [];
-//        $ventes = [];
+        //        $loadingsHistory = [];
+        //        $ventes = [];
 
-        return  [
+        return [
             'loadingsHistory' => $loadingsHistory,
             'product' => $product,
             'ventes' => $ventes,
@@ -447,30 +454,32 @@ class CarLoadService
     public function getCurrentCarLoadForTeam(Team $team): ?CarLoad
     {
         return CarLoad::where('team_id', $team->id)
-            ->whereDate('return_date',">=", now()->toDateString())
+            ->whereDate('return_date', '>=', now()->toDateString())
             ->orderBy('return_date', 'desc')
             ->limit(1)
             ->first();
     }
-    private function convertQuantity(Product $product, float|int $quantity) : ConvertedQuantityDTO
+
+    private function convertQuantity(Product $product, float|int $quantity): ConvertedQuantityDTO
     {
         $convertedDisplay = $product->getFormattedDisplayOfCartonAndParquets($quantity);
-        return new ConvertedQuantityDTO(parentQuantity: $convertedDisplay['cartons'], childQuantity:
-        $convertedDisplay['paquets'], childName: $convertedDisplay['first_variant_name']);
+
+        return new ConvertedQuantityDTO(parentQuantity: $convertedDisplay['cartons'], childQuantity: $convertedDisplay['paquets'], childName: $convertedDisplay['first_variant_name']);
 
     }
-    #[ArrayShape(["items" => "array"])]
+
+    #[ArrayShape(['items' => 'array'])]
     public function getCalculatedQuantitiesOfProductsInInventory(CarLoad $carLoad, CarLoadInventory $inventory): array
     {
         // Ensure required relations are loaded
-            $inventory->loadMissing(['items.product', 'carLoad.team', 'user']);
+        $inventory->loadMissing(['items.product', 'carLoad.team', 'user']);
 
         // Fetch all parent products (products without a parent)
         // TODO load parent products from car load items
-            $parentProducts = Product::whereNull('parent_id')->get();
+        $parentProducts = Product::whereNull('parent_id')->get();
 
         // Build items with all computed fields needed by the Blade view
-            $processedItems = $parentProducts->map(function (Product $parentProduct) use ($carLoad, $inventory) {
+        $processedItems = $parentProducts->map(function (Product $parentProduct) use ($carLoad, $inventory) {
             // Find the inventory item for the parent (if any)
             $parentItem = $inventory->items->firstWhere('product_id', $parentProduct->id);
 
@@ -480,7 +489,7 @@ class CarLoadService
             });
 
             // If neither the parent nor any child is inventoried, skip this parent
-            if (!$parentItem && $childrenItems->isEmpty()) {
+            if (! $parentItem && $childrenItems->isEmpty()) {
                 return null;
             }
 
@@ -521,39 +530,95 @@ class CarLoadService
             // Result in parent decimal units
             $resultDecimal = $calculatedTotalSold + $calculatedTotalReturnedParent - $calculatedTotalLoaded;
 
-//            return [
-//                'product_name' => $parentProduct->name,
-//                'product' => $parentProduct,
-//                'total_loaded' => $calculatedTotalLoaded,
-//                'total_sold' => $totalSold,
-//                'total_returned' => $totalReturnedParent, // parent cartons only, children listed separately
-//                'children' => $children,
-//                'result' => $resultDecimal,
-//            ];
+            //            return [
+            //                'product_name' => $parentProduct->name,
+            //                'product' => $parentProduct,
+            //                'total_loaded' => $calculatedTotalLoaded,
+            //                'total_sold' => $totalSold,
+            //                'total_returned' => $totalReturnedParent, // parent cartons only, children listed separately
+            //                'children' => $children,
+            //                'result' => $resultDecimal,
+            //            ];
 
-                return new CarLoadInventoryResultItemDTO(
-                    parent: InventoryParentProductDTO::fromProduct($parentProduct),
-                    totalLoaded: $calculatedTotalLoaded,
-                    totalReturned: $calculatedTotalReturnedParent,
-                    totalSold: $calculatedTotalSold,
-                    children: $children->map(fn($item)=> InventoryParentProductDTO::fromProduct($item->product)),
-                    totalLoadedConverted: $this->convertQuantity($parentProduct, $calculatedTotalLoaded),
-                    totalSoldConverted: $this->convertQuantity($parentProduct, $calculatedTotalSold),
-                    totalReturnedConverted: $this->convertQuantity($parentProduct, $calculatedTotalReturnedParent),
-                    resultConverted: $this->convertQuantity($parentProduct, $resultDecimal),
-                    resultOfComputation: $resultDecimal,
-                    priceOfResultComputation: $parentProduct->price * $resultDecimal,
+            return new CarLoadInventoryResultItemDTO(
+                parent: InventoryParentProductDTO::fromProduct($parentProduct),
+                totalLoaded: $calculatedTotalLoaded,
+                totalReturned: $calculatedTotalReturnedParent,
+                totalSold: $calculatedTotalSold,
+                children: $children->map(fn ($item) => InventoryParentProductDTO::fromProduct($item->product)),
+                totalLoadedConverted: $this->convertQuantity($parentProduct, $calculatedTotalLoaded),
+                totalSoldConverted: $this->convertQuantity($parentProduct, $calculatedTotalSold),
+                totalReturnedConverted: $this->convertQuantity($parentProduct, $calculatedTotalReturnedParent),
+                resultConverted: $this->convertQuantity($parentProduct, $resultDecimal),
+                resultOfComputation: $resultDecimal,
+                priceOfResultComputation: $parentProduct->price * $resultDecimal,
 
-                );
+            );
         })->filter()->values();
+
         return ['items' => $processedItems];
     }
 
-
-    public function getAvailableStockOfProductInCarLoad(CarLoad $carLoad, Product $product)
+    public function getTotalQuantityLeftOfProductInCarLoad(CarLoad $carLoad, Product $product): int
     {
         return $carLoad->items()->where('product_id', $product->id)->sum('quantity_left');
     }
 
+    public function getTotalQuantityLoadedOfProductInCarLoad(CarLoad $carLoad, Product $product): int
+    {
+        return $carLoad->items()->where('product_id', $product->id)->sum('quantity_loaded');
+    }
 
-} 
+    /**
+     * @throws InsufficientStockException
+     */
+    public function decreaseProductStockInCarLoadUsingFifo(Product $product, int $quantity, CarLoad $carLoad): void
+    {
+        $totalQuantityLeft = $this->getTotalQuantityLeftOfProductInCarLoad($carLoad, $product);
+
+        if ($totalQuantityLeft < $quantity) {
+            throw new InsufficientStockException(
+                'Stock insuffisant pour le produit '.$product->name.
+                ' dans le chargement '.$carLoad->name.
+                '. Qté restante : '.$totalQuantityLeft
+            );
+        }
+
+        $itemsOrderedByOldestLoadedFirst = $carLoad->items()
+            ->where('product_id', $product->id)
+            ->orderBy('loaded_at', 'asc')
+            ->get();
+
+        $remainingQuantityToDeduct = $quantity;
+
+        foreach ($itemsOrderedByOldestLoadedFirst as $item) {
+            if ($item->quantity_left >= $remainingQuantityToDeduct) {
+                $item->quantity_left -= $remainingQuantityToDeduct;
+                $item->save();
+                break;
+            }
+
+            $remainingQuantityToDeduct -= $item->quantity_left;
+            $item->quantity_left = 0;
+            $item->save();
+        }
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function increaseProductStockInCarLoad(Product $product, int $quantity, CarLoad $carLoad): void
+    {
+        try {
+            $latestItem = $carLoad->items()
+                ->where('product_id', $product->id)
+                ->orderBy('loaded_at', 'desc')
+                ->firstOrFail();
+
+            $latestItem->quantity_left += $quantity;
+            $latestItem->save();
+        } catch (ModelNotFoundException) {
+            throw new \Exception("Ce produit n'est pas dans ce chargement du véhicule : ".$carLoad->name);
+        }
+    }
+}

@@ -1,4 +1,6 @@
-<?php /** @noinspection UnknownColumnInspection */
+<?php
+
+/** @noinspection UnknownColumnInspection */
 
 namespace App\Services;
 
@@ -10,7 +12,6 @@ use App\Exceptions\InsufficientStockException;
 use App\Models\Customer;
 use App\Models\Depense;
 use App\Models\Payment;
-use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
 use Carbon\Carbon;
@@ -21,6 +22,10 @@ use Throwable;
 
 class SalesInvoiceService
 {
+    public function __construct(
+        private readonly CarLoadService $carLoadService
+    ) {}
+
     /** @throws  InsufficientStockException|Throwable */
     public function createSalesInvoice(array $data): SalesInvoice
     {
@@ -31,12 +36,12 @@ class SalesInvoiceService
 
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
-                'invoice_number' => 'FACTURE Nº '.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
-                'comment' => 'Facture Vente',
+                'invoice_number' => 'F'.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
+                'comment' => 'Facture de Vente',
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
                 'commercial_id' => $user->commercial->id,
+                'status' => SalesInvoiceStatus::Draft,
             ]);
-            $salesInvoice->save();
             $salesInvoice->refresh();
 
             // Add items to the invoice and update stock
@@ -54,19 +59,23 @@ class SalesInvoiceService
 
                 $itemsArray[] = $salesInvoiceItem;
 
-                // Update product stock using the decrementStock method
-                //TODO we will use Product Service with a fully tested method
-                $product = Product::findOrFail($item['product_id']);
-                /** @noinspection PhpRedundantOptionalArgumentInspection */
-                $product->decrementStock($item['quantity'], updateMainStock: false, commercial: $user->commercial);
             }
             $salesInvoice->items()->saveMany($itemsArray);
-
+            //  move the stock
+            $currentCarLoad = $this->carLoadService->getCurrentCarLoadForTeam($user->commercial->team);
+            if ($currentCarLoad === null) {
+                throw new \Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException(
+                    'Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !'
+                );
+            }
+            foreach ($itemsArray as $item) {
+                $this->carLoadService->decreaseProductStockInCarLoadUsingFifo($item->product, $item->quantity, $currentCarLoad);
+            }
 
             // If paid, create the payment, then explicitly transition to FULLY_PAID.
             // markAsFullyPaid() is the only authorised path to FULLY_PAID status.
             if ($data['paid']) {
-                $totalAmount  = $this->calculateTotalAmountForInvoice($salesInvoice);
+                $totalAmount = $this->calculateTotalAmountForInvoice($salesInvoice);
                 Payment::create([
                     'sales_invoice_id' => $salesInvoice->id,
                     'amount' => $totalAmount,
@@ -78,14 +87,14 @@ class SalesInvoiceService
             $salesInvoice->recalculateStoredTotals();
             $salesInvoice->save();
             $customer = Customer::withoutEagerLoads()->findOrFail($data['customer_id']);
-//            // check customer has current visite also check if it is a prospect
-//            $customerVisit = $customer->visits()->where('status', CustomerVisit::STATUS_PLANNED)->orderBy('created_at', 'asc')
-//                ->first();
-//            $customerVisit?->complete([
-//                'notes' => 'Visite complété après enregistrement facture',
-//                'gps_coordinates' => $customer->gps_coordinates,
-//                'resulted_in_sale' => true,
-//            ]);
+            //            // check customer has current visite also check if it is a prospect
+            //            $customerVisit = $customer->visits()->where('status', CustomerVisit::STATUS_PLANNED)->orderBy('created_at', 'asc')
+            //                ->first();
+            //            $customerVisit?->complete([
+            //                'notes' => 'Visite complété après enregistrement facture',
+            //                'gps_coordinates' => $customer->gps_coordinates,
+            //                'resulted_in_sale' => true,
+            //            ]);
             if ($customer->is_prospect) {
                 $customer->is_prospect = false;
                 $customer->save();
@@ -112,6 +121,7 @@ class SalesInvoiceService
 
             $weeklyTotal = $weekInvoices->sum('total_amount');
             $weeklyTotalPaid = $weekInvoices->sum('total_payments');
+
             /**
              * @var $weekInvoices Collection
              */

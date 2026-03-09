@@ -55,7 +55,7 @@ class DashboardStatsTest extends TestCase
     {
         parent::setUp();
 
-        $this->salesInvoiceService = new SalesInvoiceService;
+        $this->salesInvoiceService = app(SalesInvoiceService::class);
         $defaultTeam = $this->makeTeamWithManager();
         $this->defaultCommercial = $this->makeCommercialForTeam($defaultTeam);
         $this->defaultCustomer = $this->makeCustomerForCommercial($this->defaultCommercial);

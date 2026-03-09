@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CarLoad;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
+use App\Services\CarLoadService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class SalesInvoiceController extends Controller
 {
@@ -89,10 +90,16 @@ class SalesInvoiceController extends Controller
             Vente::insert($ventes);
             $invoice->recalculateStoredTotals();
             // update stock of products
+            $commercial = auth()->user->commercial;
+            $currentCarLoad = app(CarLoadService::class)->getCurrentCarLoadForTeam($commercial->team);
+            if ($currentCarLoad === null) {
+                throw new UnprocessableEntityHttpException(
+                    'Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !'
+                );
+            }
             foreach ($ventes as $vente) {
                 $product = Product::findOrFail($vente['product_id']);
-                $product->decrementStock($vente['quantity'], updateMainStock: false, commercial: auth()
-                    ->user->commercial);
+                $product->decrementStock($vente['quantity'], updateMainStock: false, carLoad: $currentCarLoad);
             }
             // check if customer is prospect
             $customer = Customer::findOrFail($request->customer_id);
@@ -170,13 +177,14 @@ class SalesInvoiceController extends Controller
         try {
             DB::beginTransaction();
             // put stock back
+            $carLoadService = app(\App\Services\CarLoadService::class);
+            $commercialForInvoice = $salesInvoice->commercial;
+            $currentCarLoad = $commercialForInvoice
+                ? $carLoadService->getCurrentCarLoadForTeam($commercialForInvoice->team)
+                : null;
             foreach ($salesInvoice->items as $item) {
-                $product = Product::findOrFail($item->product_id);
-                $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($product, $salesInvoice->commercial);
-                if ($carLoadItem != null) {
-                    $carLoadItem->quantity_left += $item->quantity;
-                    $carLoadItem->save();
-
+                if ($currentCarLoad !== null) {
+                    $carLoadService->increaseProductStockInCarLoad($item->product, $item->quantity, $currentCarLoad);
                 }
             }
 
@@ -223,10 +231,12 @@ class SalesInvoiceController extends Controller
                 'should_be_paid_at' => $salesInvoice->should_be_paid_at,
             ]);
             $vente->refresh();
-            $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($vente->product, $salesInvoice->commercial);
-            if ($carLoadItem !== null) {
-                $carLoadItem->quantity_left -= $vente->quantity;
-                $carLoadItem->save();
+            $carLoadService = app(\App\Services\CarLoadService::class);
+            $currentCarLoad = $salesInvoice->commercial
+                ? $carLoadService->getCurrentCarLoadForTeam($salesInvoice->commercial->team)
+                : null;
+            if ($currentCarLoad !== null) {
+                $carLoadService->decreaseProductStockInCarLoadUsingFifo($vente->product, $vente->quantity, $currentCarLoad);
             }
 
             // Reload the invoice with its relationships
@@ -265,12 +275,11 @@ class SalesInvoiceController extends Controller
 
             $commercial = $item->commercial ?? $salesInvoice->commercial;
             // put stock back
-            if ($commercial != null) {
-                $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($item->product, $commercial);
-
-                if ($carLoadItem) {
-                    $carLoadItem->quantity_left += $item->quantity;
-                    $carLoadItem->save();
+            if ($commercial !== null) {
+                $carLoadService = app(\App\Services\CarLoadService::class);
+                $currentCarLoad = $carLoadService->getCurrentCarLoadForTeam($commercial->team);
+                if ($currentCarLoad !== null) {
+                    $carLoadService->increaseProductStockInCarLoad($item->product, $item->quantity, $currentCarLoad);
                 }
             }
             $item->delete();

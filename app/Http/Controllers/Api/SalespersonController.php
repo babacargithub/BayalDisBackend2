@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\InsufficientStockException;
+use App\Exceptions\InvoicePaymentMismatchException;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerVisitResource;
 use App\Models\Commercial;
@@ -13,6 +14,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
+use App\Services\CarLoadService;
 use App\Services\CustomerVisitService;
 use App\Services\SalesInvoiceService;
 use Carbon\Carbon;
@@ -232,7 +234,8 @@ class SalespersonController extends Controller
             // check if customer has visit planned if yes we mark it as completed
             $this->terminateVisitIfCustomerHasOne($customer);
 
-            $product->decrementStock($validated['quantity'], updateMainStock: false, commercial: $commercial);
+            $currentCarLoad = app(CarLoadService::class)->getCurrentCarLoadForTeam($commercial->team);
+            $product->decrementStock($validated['quantity'], updateMainStock: false, carLoad: $currentCarLoad);
 
             // Load the relationships
             $vente->load(['customer', 'product']);
@@ -917,9 +920,11 @@ class SalespersonController extends Controller
 
         try {
             $salesInvoiceService->createSalesInvoice($validated);
-        } catch (InsufficientStockException $e) {
+        } catch (InsufficientStockException|InvoicePaymentMismatchException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
 
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
 
         return response()->json([

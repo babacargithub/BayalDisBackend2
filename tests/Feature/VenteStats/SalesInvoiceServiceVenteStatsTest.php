@@ -43,7 +43,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         parent::setUp();
 
-        $this->salesInvoiceService = new SalesInvoiceService;
+        $this->salesInvoiceService = app(SalesInvoiceService::class);
         $this->defaultProduct = $this->makeProduct();
         $this->defaultTeam = $this->makeTeamWithManager();
         $this->defaultCommercial = $this->makeCommercialForTeam($this->defaultTeam);

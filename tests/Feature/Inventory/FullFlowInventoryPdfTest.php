@@ -283,22 +283,22 @@ class FullFlowInventoryPdfTest extends TestCase
             foreach ($pp->stockEntries as $se) {
                 $this->assertNotEquals($se->quantity, $se->quantity_left, 'Entry not fully available for '.$pp->name);
             }
-            $this->assertEquals($this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $pp), $it['quantity']);
+            $this->assertEquals($this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $pp), $it['quantity']);
         }
 
-        $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
+        $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
 
-        $this->assertEquals(self::$defaultQuantity500gCarton1000pcs, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p500gCarton1000pcs));
+        $this->assertEquals(self::$defaultQuantity500gCarton1000pcs, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->p500gCarton1000pcs));
 
-        $this->assertEquals(self::$defaultQuantity2KGCarton400pcs, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p2KGCarton400pcs));
+        $this->assertEquals(self::$defaultQuantity2KGCarton400pcs, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->p2KGCarton400pcs));
 
-        $this->assertEquals(self::$defaultQuantityGobeletCarton1000pcs, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->pGobeletCarton1000pcs));
+        $this->assertEquals(self::$defaultQuantityGobeletCarton1000pcs, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->pGobeletCarton1000pcs));
 
-        $this->assertEquals(self::$defaultQuantity2CompartCarton250pcs, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p2CompartCarton250pcs));
+        $this->assertEquals(self::$defaultQuantity2CompartCarton250pcs, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->p2CompartCarton250pcs));
 
-        $this->assertEquals(self::$defaultQuantityTransparent1000mlCarton500pcs, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->pTransparent1000mlCarton500pcs));
+        $this->assertEquals(self::$defaultQuantityTransparent1000mlCarton500pcs, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->pTransparent1000mlCarton500pcs));
 
-        $this->assertEquals(self::$defaultQuantityPotASauce2000pcs, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->pPotASauce2000pcs)
+        $this->assertEquals(self::$defaultQuantityPotASauce2000pcs, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->pPotASauce2000pcs)
         );
 
 
@@ -354,19 +354,19 @@ class FullFlowInventoryPdfTest extends TestCase
         }
 
         $this->assertEquals(self::$defaultQuantity1KGCarton1000pcs * 2,
-            $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
+            $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad,
             $this->p1KGCarton1000pcs));
-        $this->assertEquals(self::$defaultQuantity2KGCarton400pcs * 2, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
+        $this->assertEquals(self::$defaultQuantity2KGCarton400pcs * 2, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad,
             $this->p2KGCarton400pcs));
-        $this->assertEquals(self::$defaultQuantityGobeletCarton1000pcs * 2, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
+        $this->assertEquals(self::$defaultQuantityGobeletCarton1000pcs * 2, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad,
             $this->pGobeletCarton1000pcs));
 
         // Test transformToVariants via API (CarLoadService::transformToVariants)
         // Arrange current stocks in the car load for parent and a variant (child)
         $parent = $this->p1KGCarton1000pcs;
         $child = $this->c1KGPaquet20pcs;
-        $beforeParentAvail = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $parent);
-        $beforeChildAvail = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $child);
+        $beforeParentAvail = $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $parent);
+        $beforeChildAvail = $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $child);
 
         // We'll transform 3 parent cartons into child packets; provide two variant lines with some unused quantity
         $quantityOfBaseProductToTransform = self::$defaultTransform1KGCarton1000pcs;
@@ -390,9 +390,9 @@ class FullFlowInventoryPdfTest extends TestCase
         $this->transformProductToVariantsInCarLoad($carLoad, $this->p1KGCarton1000pcs, $this->c1KGPaquet20pcs,
             parentQuantityToTransform: self::$defaultTransform1KGCarton1000pcs, splitChunks: true,
             responseTester: $responseTester);
-        $availableParentQuantityAfterTransform = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $parent);// should
+        $availableParentQuantityAfterTransform = $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $parent);// should
         // be 17
-        $availableChildQuantityAfterTransform = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $child); // should be
+        $availableChildQuantityAfterTransform = $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $child); // should be
         // 150
         $this->assertEquals($beforeParentAvail - self::$defaultTransform1KGCarton1000pcs, $availableParentQuantityAfterTransform, 'Parent available stock should decrease by transformed quantity');
         $this->assertEquals($beforeChildAvail + $expectedActualChildIncrease, $availableChildQuantityAfterTransform, 'Child available stock should increase by sum(actual quantities)');
@@ -433,7 +433,7 @@ class FullFlowInventoryPdfTest extends TestCase
             $resp->assertCreated();
         };
         // Sales Of parents
-//        $this->assertEquals(29, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
+//        $this->assertEquals(29, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
         $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, self::$sold1KGCarton1000pcs,
             chunk: 30, responseTester:  clone $salesTester);
         $this->createInvoiceSalesForProductInCarLoad($this->p500gCarton1000pcs, $carLoad, self::$sold500gCarton1000pcs, true,30,clone $salesTester);
@@ -454,10 +454,10 @@ class FullFlowInventoryPdfTest extends TestCase
         $this->createInvoiceSalesForProductInCarLoad($this->cPotASauce100pcs, carLoad:  $carLoad, quantity: self::$soldPotASauce100pcs, chunk: 30, responseTester: $salesTester);
 
 //
-//        $this->assertEquals(19, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p500gCarton1000pcs));
+//        $this->assertEquals(19, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->p500gCarton1000pcs));
 
 //        $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, 20);
-//        $this->assertEquals(9, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad,
+//        $this->assertEquals(9, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad,
 //            $this->p1KGCarton1000pcs));
 //
 //        $this->createInvoiceSalesForProductInCarLoad($this->p1KGCarton1000pcs, $carLoad, quantity: 230,
@@ -862,7 +862,7 @@ class FullFlowInventoryPdfTest extends TestCase
         $parent = $this->p1KGCarton1000pcs;
         $child = $this->c1KGPaquet20pcs;
 
-        $available = $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $parent);
+        $available = $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $parent);
         $this->assertGreaterThan(0, $available);
 
         // Request more than available to trigger insufficient stock
@@ -939,9 +939,9 @@ class FullFlowInventoryPdfTest extends TestCase
        $this->assertEquals($parentQuantityLoaded - $parentQuantityToTransform, $carLoad->items()->whereProductId($this->p1KGCarton1000pcs->id)
            ->first()
            ->quantity_left);
-       $this->assertEquals($parentQuantityLoaded - $parentQuantityToTransform, $this->carLoadService->getAvailableStockOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
+       $this->assertEquals($parentQuantityLoaded - $parentQuantityToTransform, $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad($carLoad, $this->p1KGCarton1000pcs));
        $this->assertEquals(($this->p1KGCarton1000pcs->base_quantity / $this->c1KGPaquet20pcs->base_quantity) * $parentQuantityToTransform,
-           $this->carLoadService->getAvailableStockOfProductInCarLoad
+           $this->carLoadService->getTotalQuantityLeftOfProductInCarLoad
        ($carLoad,
            $this->c1KGPaquet20pcs));
     }

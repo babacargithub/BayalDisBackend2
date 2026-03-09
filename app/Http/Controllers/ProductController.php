@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\StockEntry;
+use App\Services\CarLoadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -13,9 +14,9 @@ class ProductController extends Controller
     public function index()
     {
         return Inertia::render('Produits/Index', [
-            'products' => Product::with(['stockEntries' => function($query) {
-                    $query->orderBy('created_at', 'desc');
-                }])
+            'products' => Product::with(['stockEntries' => function ($query) {
+                $query->orderBy('created_at', 'desc');
+            }])
                 ->get()
                 ->map(function ($product) {
                     return [
@@ -28,7 +29,7 @@ class ProductController extends Controller
                         'stock_value' => $product->stock_value,
                         'parent_id' => $product->parent_id,
                         'base_quantity' => $product->base_quantity,
-                        "total_sold" => $product->total_sold,
+                        'total_sold' => $product->total_sold,
                         'is_base_product' => $product->is_base_product,
                         'stock_entries' => $product->stockEntries->map(function ($entry) {
                             return [
@@ -36,9 +37,9 @@ class ProductController extends Controller
                                 'quantity' => $entry->quantity,
                                 'quantity_left' => $entry->quantity_left,
                                 'unit_price' => $entry->unit_price,
-                                'created_at' => $entry->created_at
+                                'created_at' => $entry->created_at,
                             ];
-                        })
+                        }),
                     ];
                 }),
             'total_stock_value' => Product::with('stockEntries')
@@ -46,7 +47,7 @@ class ProductController extends Controller
                 ->sum('stock_value'),
             'base_products' => Product::whereNull('parent_id')
                 ->select('id', 'name')
-                ->get()
+                ->get(),
         ]);
     }
 
@@ -57,7 +58,7 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0',
             'cost_price' => 'required|numeric|min:0',
             'parent_id' => 'nullable|exists:products,id',
-            'base_quantity' => 'required|integer|min:0'
+            'base_quantity' => 'required|integer|min:0',
         ]);
 
         Product::create($validated);
@@ -72,7 +73,7 @@ class ProductController extends Controller
             'price' => 'required|numeric|min:0',
             'cost_price' => 'required|numeric|min:0',
             'parent_id' => 'nullable|exists:products,id',
-            'base_quantity' => 'required|integer|min:0'
+            'base_quantity' => 'required|integer|min:0',
         ]);
 
         $produit->update($validated);
@@ -83,6 +84,7 @@ class ProductController extends Controller
     public function destroy(Product $produit)
     {
         $produit->delete();
+
         return redirect()->back()->with('success', 'Produit supprimé avec succès');
     }
 
@@ -91,7 +93,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'quantity' => 'required|integer|min:1',
             'unit_price' => 'required|numeric|min:0',
-            'purchase_invoice_item_id' => 'required|exists:purchase_invoice_items,id'
+            'purchase_invoice_item_id' => 'required|exists:purchase_invoice_items,id',
         ]);
 
         try {
@@ -102,7 +104,7 @@ class ProductController extends Controller
                 'purchase_invoice_item_id' => $validated['purchase_invoice_item_id'],
                 'quantity' => $validated['quantity'],
                 'quantity_left' => $validated['quantity'],
-                'unit_price' => $validated['unit_price']
+                'unit_price' => $validated['unit_price'],
             ]);
 
             DB::commit();
@@ -110,6 +112,7 @@ class ProductController extends Controller
             return redirect()->back()->with('success', 'Stock mis à jour avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->back()->with('error', 'Erreur lors de la mise à jour du stock');
         }
     }
@@ -119,7 +122,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'stock_entries' => 'required|array',
             'stock_entries.*.id' => 'required|exists:stock_entries,id',
-            'stock_entries.*.quantity_left' => 'required|integer|min:0'
+            'stock_entries.*.quantity_left' => 'required|integer|min:0',
         ]);
 
         try {
@@ -132,9 +135,11 @@ class ProductController extends Controller
             }
 
             DB::commit();
+
             return redirect()->back()->with('success', 'Stock mis à jour avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->back()->with('error', 'Erreur lors de la mise à jour du stock');
         }
     }
@@ -144,7 +149,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'variant_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
-            "quantity_transformed" => "required|integer|min:1",
+            'quantity_transformed' => 'required|integer|min:1',
             'unused_quantity' => 'required|integer|min:0',
         ], [
             'variant_id.required' => 'Le produit à transformer est obligatoire',
@@ -165,7 +170,7 @@ class ProductController extends Controller
         try {
             DB::transaction(function () use ($product, $validated) {
                 $variant = Product::findOrFail($validated['variant_id']);
-                
+
                 // Verify this is a valid parent-child relationship
                 if ($variant->parent_id !== $product->id) {
                     throw new \Exception('Le produit sélectionné n\'est pas un variant de ce produit');
@@ -173,16 +178,17 @@ class ProductController extends Controller
 
                 // Calculate total pieces needed
                 $totalPiecesNeeded = $validated['quantity'];
-                
+
                 // Check if parent product has enough stock
                 if ($product->stock_available < $totalPiecesNeeded) {
-                    throw new \Exception('Stock insuffisant. Stock disponible: ' . $product->stock_available . ' pièces');
+                    throw new \Exception('Stock insuffisant. Stock disponible: '.$product->stock_available.' pièces');
                 }
 
                 // Decrement parent stock
                 $parentStockEntry = $product->getStockEntry();
-                $product->decrementStock($totalPiecesNeeded, updateMainStock: false, commercial: auth()
-                    ->user->commercial);
+                $commercial = auth()->user->commercial;
+                $currentCarLoad = app(CarLoadService::class)->getCurrentCarLoadForTeam($commercial->team);
+                $product->decrementStock($totalPiecesNeeded, updateMainStock: false, carLoad: $currentCarLoad);
 
                 // Increment variant stock
                 // create a new stock entry for the variant
@@ -192,17 +198,19 @@ class ProductController extends Controller
                     'quantity' => $stockEntryQuantity,
                     'quantity_left' => $stockEntryQuantity,
                     'unit_price' => ($product->cost_price / $product->base_quantity) * $variant->base_quantity,
-                    "purchase_invoice_item_id" => $parentStockEntry->purchase_invoice_item_id
+                    'purchase_invoice_item_id' => $parentStockEntry->purchase_invoice_item_id,
 
                 ]);
             });
 
             DB::commit();
+
             return redirect()->back()->with('success', 'Transformation effectuée avec succès');
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->back()->withErrors(['error' => $e->getMessage()]);
         }
     }
-} 
+}

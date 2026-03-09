@@ -490,30 +490,29 @@ class DashboardControllerTest extends TestCase
 
     public function test_daily_stats_total_sales_differs_from_weekly_when_most_sales_are_on_other_days(): void
     {
-        $today = Carbon::today();
+        // Use Wednesday of the previous week as the reference date.
+        // This guarantees that Monday of that same week is always a valid
+        // "earlier in the same week" slot, regardless of what day today is.
+        $referenceDate = Carbon::now()->subWeek()->startOfWeek()->addDays(2); // Wednesday
+        $mondayOfSameWeek = $referenceDate->copy()->startOfWeek();            // Monday
 
-        // 1 invoice today
-        $invoiceToday = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
-        $this->backdateInvoice($invoiceToday, $today);
+        // 1 invoice on the reference date (Wednesday)
+        $invoiceOnReferenceDate = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+        $this->backdateInvoice($invoiceOnReferenceDate, $referenceDate);
 
-        // 1 invoice earlier this week (but not today)
-        $earlierThisWeek = $today->copy()->startOfWeek();
-        if ($earlierThisWeek->isSameDay($today)) {
-            // If today IS the start of the week, put the second invoice yesterday (previous week edge-case ignored)
-            $earlierThisWeek = $today->copy()->subDays(1);
-        }
-        $invoiceEarlierThisWeek = $this->makeInvoiceWithOneItem(price: 5000, quantity: 1, profit: 1000);
-        $this->backdateInvoice($invoiceEarlierThisWeek, $earlierThisWeek);
+        // 1 invoice earlier that same week (Monday) — must be counted in weeklyStats but not dailyStats
+        $invoiceEarlierSameWeek = $this->makeInvoiceWithOneItem(price: 5000, quantity: 1, profit: 1000);
+        $this->backdateInvoice($invoiceEarlierSameWeek, $mondayOfSameWeek);
 
         $response = $this->actingAs($this->authenticatedUser)
-            ->get(route('dashboard', ['date' => $today->toDateString()]));
+            ->get(route('dashboard', ['date' => $referenceDate->toDateString()]));
 
         $response->assertInertia(function ($page) {
             $dailySales = $page->toArray()['props']['dailyStats']['total_sales'];
             $weeklySales = $page->toArray()['props']['weeklyStats']['total_sales'];
 
-            $this->assertSame(1000, $dailySales, 'dailyStats must only include sales from today');
-            $this->assertGreaterThan($dailySales, $weeklySales, 'weeklyStats must include more than just today');
+            $this->assertSame(1000, $dailySales, 'dailyStats must only include sales from the reference date');
+            $this->assertGreaterThan($dailySales, $weeklySales, 'weeklyStats must include the Monday invoice too');
         });
     }
 
