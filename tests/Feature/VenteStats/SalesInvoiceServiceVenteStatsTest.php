@@ -7,6 +7,7 @@ use App\Data\Vente\VenteStatsFilter;
 use App\Models\CarLoad;
 use App\Models\Commercial;
 use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Team;
@@ -111,19 +112,48 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
 
     /**
      * Create a Vente with sensible defaults. Callers override only what matters for the test.
+     * commercial_id is routed to the backing SalesInvoice (not the Vente, since the column was removed).
      */
     private function makeVente(array $overrides = []): Vente
     {
-        return Vente::create(array_merge([
-            'customer_id' => $this->defaultCustomer->id,
+        $commercialId = $overrides['commercial_id'] ?? $this->defaultCommercial->id;
+        $customerId = ($overrides['customer_id'] ?? null) !== null
+            ? $overrides['customer_id']
+            : $this->defaultCustomer->id;
+        $paid = $overrides['paid'] ?? true;
+
+        unset($overrides['commercial_id']);
+
+        $invoice = SalesInvoice::create([
+            'customer_id' => $customerId,
+            'commercial_id' => $commercialId,
+        ]);
+
+        $vente = Vente::create(array_merge([
+            'sales_invoice_id' => $invoice->id,
+            'customer_id' => $customerId,
             'product_id' => $this->defaultProduct->id,
-            'commercial_id' => $this->defaultCommercial->id,
             'quantity' => 1,
             'price' => 1000,
             'profit' => 300,
-            'paid' => true,
-            'type' => Vente::TYPE_SINGLE,
+            'type' => Vente::TYPE_INVOICE,
         ], $overrides));
+
+        // Create a full payment when paid = true so recalculateStoredTotals()
+        // correctly sets status = FULLY_PAID and propagates paid = true to ventes.
+        if ($paid) {
+            $price = $overrides['price'] ?? 1000;
+            $quantity = $overrides['quantity'] ?? 1;
+            Payment::create([
+                'sales_invoice_id' => $invoice->id,
+                'amount' => $price * $quantity,
+                'payment_method' => 'Cash',
+                'user_id' => User::factory()->create()->id,
+            ]);
+            $invoice->markAsFullyPaid();
+        }
+
+        return $vente->fresh();
     }
 
     /**
@@ -145,7 +175,6 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         return Vente::create([
             'sales_invoice_id' => $invoice->id,
             'product_id' => $this->defaultProduct->id,
-            'commercial_id' => $commercial->id,
             'customer_id' => $customer->id,
             'quantity' => 1,
             'price' => $price,
@@ -604,7 +633,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
             'price' => 1000,
             'quantity' => 2,
             'paid' => true,
-            'type' => Vente::TYPE_SINGLE,
+            'type' => Vente::TYPE_INVOICE,
             'commercial_id' => $this->defaultCommercial->id,
             'customer_id' => $this->defaultCustomer->id,
         ]);
@@ -622,7 +651,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
                 paidStatus: PaidStatus::PaidOnly,
                 commercialId: $this->defaultCommercial->id,
                 customerId: $this->defaultCustomer->id,
-                type: Vente::TYPE_SINGLE,
+                type: Vente::TYPE_INVOICE,
             )
         );
 
@@ -888,7 +917,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate($withinRange, [
             'profit' => 400,
             'paid' => true,
-            'type' => Vente::TYPE_SINGLE,
+            'type' => Vente::TYPE_INVOICE,
             'commercial_id' => $this->defaultCommercial->id,
             'customer_id' => $this->defaultCustomer->id,
         ]);
@@ -903,7 +932,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
                 paidStatus: PaidStatus::PaidOnly,
                 commercialId: $this->defaultCommercial->id,
                 customerId: $this->defaultCustomer->id,
-                type: Vente::TYPE_SINGLE,
+                type: Vente::TYPE_INVOICE,
             )
         );
 

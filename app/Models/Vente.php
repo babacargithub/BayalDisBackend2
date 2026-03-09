@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Carbon;
 
 class Vente extends Model
@@ -12,15 +12,18 @@ class Vente extends Model
     use HasFactory;
 
     const PAYMENT_METHOD_CASH = 'Cash';
+
     const PAYMENT_METHOD_WAVE = 'Wave';
+
     const PAYMENT_METHOD_OM = 'Om';
-    const TYPE_INVOICE = "INVOICE_ITEM";
-    const TYPE_SINGLE = "SINGLE";
+
+    const TYPE_INVOICE = 'INVOICE_ITEM';
+
+    const TYPE_SINGLE = 'SINGLE';
 
     protected $fillable = [
         'customer_id',
         'product_id',
-        'commercial_id',
         'quantity',
         'price',
         'profit',
@@ -38,14 +41,14 @@ class Vente extends Model
         'quantity' => 'integer',
         'price' => 'integer',
         'profit' => 'integer',
-        "should_be_paid_at" => 'datetime',
-        "created_at" => 'datetime',
-        "updated_at" => 'datetime',
+        'should_be_paid_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
         'paid_at' => 'datetime',
         'order_id' => 'integer',
     ];
 
-//    protected $with = ['product', 'order'];
+    //    protected $with = ['product', 'order'];
 
     protected $appends = [];
 
@@ -71,32 +74,45 @@ class Vente extends Model
         if ($this->isInvoiceItem()) {
             return $this->salesInvoice?->customer;
         }
+
         return Customer::whereId($this->customer_id)->first();
     }
 
     // Boot method to add validation
-    protected static function boot()
+    protected static function boot(): void
     {
         parent::boot();
 
-        static::saving(function ($vente) {
-            if ($vente->type === 'SINGLE' && !$vente->customer_id) {
+        static::saving(function (Vente $vente) {
+            if ($vente->type === 'SINGLE' && ! $vente->customer_id) {
                 throw new \Exception('Customer ID is required for single ventes');
             }
+        });
 
-            // Calculate profit when saving
-            //$vente->calculateProfit();
+        /**
+         * After any invoice item is saved, recalculate the parent invoice's stored
+         * totals so total_amount, total_estimated_profit, status, and paid stay in sync.
+         */
+        static::saved(function (Vente $vente) {
+            if ($vente->sales_invoice_id !== null) {
+                $vente->salesInvoice?->recalculateStoredTotals();
+            }
+        });
+
+        /**
+         * After an invoice item is deleted, recalculate the parent invoice's stored
+         * totals so the balance reflects the removed item.
+         */
+        static::deleted(function (Vente $vente) {
+            if ($vente->sales_invoice_id !== null) {
+                $vente->salesInvoice?->recalculateStoredTotals();
+            }
         });
     }
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
-    }
-
-    public function commercial(): BelongsTo
-    {
-        return $this->belongsTo(Commercial::class);
     }
 
     public function order(): BelongsTo
@@ -138,6 +154,7 @@ class Vente extends Model
         if ($this->sales_invoice_id) {
             return $this->salesInvoice->paid;
         }
+
         return $value;
     }
 
@@ -147,23 +164,25 @@ class Vente extends Model
         if ($this->sales_invoice_id) {
             $value = $this->salesInvoice->should_be_paid_at;
         }
+
         // cast to datetime
-        return $value!= null ? $this->asDateTime($value) : null;
+        return $value != null ? $this->asDateTime($value) : null;
     }
+
     public function getCustomerAttribute(): ?Customer
     {
         if ($this->isInvoiceItem()) {
             return $this->salesInvoice?->customer;
         }
+
         return Customer::whereId($this->customer_id)->first();
 
     }
 
     /**
-     * @param $vente
-     * @return void
+     * @param  $vente
      */
-    function calculateProfit(): void
+    public function calculateProfit(): void
     {
         if ($this->product) {
             // Get the historical cost price from StockEntry records
@@ -176,9 +195,6 @@ class Vente extends Model
 
     /**
      * Get the historical cost price for a Vente based on FIFO principle
-     *
-     * @param $vente
-     * @return float
      */
     private function getHistoricalCostPrice($vente): float
     {
@@ -208,16 +224,18 @@ class Vente extends Model
         // Calculate weighted average cost price
         return $totalQuantity > 0 ? $totalValue / $totalQuantity : $vente->product->cost_price;
     }
+
     public function getCostPriceFromStockEntry()
     {
         $costPrice = 0;
         $costStockEntry = StockEntry::where('product_id', $this->product_id)
-            ->where("quantity", ">", 0)
-            ->orderBy("created_at", "asc")
+            ->where('quantity', '>', 0)
+            ->orderBy('created_at', 'asc')
             ->first();
         if ($costStockEntry != null) {
             $costPrice = $this->product->cost_price;
         }
+
         return $costPrice;
 
     }

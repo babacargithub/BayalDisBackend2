@@ -142,7 +142,6 @@ class RealizedProfitTest extends TestCase
         Vente::create([
             'sales_invoice_id' => $invoice->id,
             'product_id' => $this->defaultProduct->id,
-            'commercial_id' => $commercial->id,
             'quantity' => $quantity,
             'price' => $price,
             'profit' => $profit,

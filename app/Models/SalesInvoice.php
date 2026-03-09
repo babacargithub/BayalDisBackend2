@@ -2,14 +2,23 @@
 
 namespace App\Models;
 
+use App\Enums\SalesInvoiceStatus;
+use App\Exceptions\InvoicePaymentMismatchException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * @property int $total
- * @property int $total_remaining
- * @property int $total_paid
+ * @property int $total_amount Stored: sum of (price × quantity) for all invoice items.
+ * @property int $total_payments Stored: sum of all payment amounts received.
+ * @property int $total_estimated_profit Stored: sum of profit on all invoice items (full potential profit).
+ * @property int $total_realized_profit Stored: sum of profit on payments (proportional earned profit).
+ * @property SalesInvoiceStatus $status Stored: DRAFT | PARTIALLY_PAID | FULLY_PAID.
+ *
+ * Backward-compat aliases (delegate to stored columns — no DB query):
+ * @property int $total Alias for total_amount.
+ * @property int $total_paid Alias for total_payments.
+ * @property int $total_remaining Computed as total_amount − total_payments.
  */
 class SalesInvoice extends Model
 {
@@ -20,14 +29,28 @@ class SalesInvoice extends Model
         'comment',
         'commercial_id',
         'car_load_id',
+        'invoice_number',
+        'status',
     ];
 
-    protected $casts = [
-        'paid' => 'boolean',
-        'should_be_paid_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'paid' => 'boolean',
+            'should_be_paid_at' => 'datetime',
+            'total_amount' => 'integer',
+            'total_payments' => 'integer',
+            'total_estimated_profit' => 'integer',
+            'total_realized_profit' => 'integer',
+            'status' => SalesInvoiceStatus::class,
+        ];
+    }
 
     protected $appends = [];
+
+    // =========================================================================
+    // Relationships
+    // =========================================================================
 
     public function customer(): BelongsTo
     {
@@ -39,42 +62,9 @@ class SalesInvoice extends Model
         return $this->hasMany(Vente::class)->where('type', 'INVOICE_ITEM');
     }
 
-    public function getTotalAttribute(): int
-    {
-        return (int) $this->items->sum('subtotal');
-    }
-
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
-    }
-
-    // Boot method to handle cascading updates
-    protected static function boot()
-    {
-        parent::boot();
-
-        // When paid status changes, update all related ventes
-        static::updated(function ($invoice) {
-            if ($invoice->isDirty('paid')) {
-                $invoice->items()->update(['paid' => $invoice->paid]);
-            }
-            if ($invoice->isDirty('should_be_paid_at')) {
-                $invoice->items()->update(['should_be_paid_at' => $invoice->should_be_paid_at]);
-            }
-        });
-    }
-
-    public function getTotalRemainingAttribute()
-    {
-        return intval($this->items()
-            ->selectRaw('SUM(quantity * price) as total')
-            ->value('total')) - $this->payments->sum('amount');
-    }
-
-    public function getTotalPaidAttribute(): int
-    {
-        return $this->payments->sum('amount');
     }
 
     public function commercial(): BelongsTo
@@ -87,50 +77,139 @@ class SalesInvoice extends Model
         return $this->belongsTo(CarLoad::class);
     }
 
-    public function getTotalProfitAttribute(): int
-    {
-        return (int) $this->items()->selectRaw('SUM(profit) as total')->value('total');
+    // =========================================================================
+    // Boot
+    // =========================================================================
 
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        // Propagate paid/should_be_paid_at changes down to vente items.
+        static::updated(function (SalesInvoice $invoice) {
+            if ($invoice->isDirty('paid')) {
+                $invoice->items()->update(['paid' => $invoice->paid]);
+            }
+
+            if ($invoice->isDirty('should_be_paid_at')) {
+                $invoice->items()->update(['should_be_paid_at' => $invoice->should_be_paid_at]);
+            }
+        });
     }
 
-    public function getPercentageOfProfit(): float|int
+    // =========================================================================
+    // Backward-compat aliases (no DB queries — delegate to stored columns)
+    // =========================================================================
+
+    public function getTotalAttribute(): int
     {
-        $profit = $this->getTotalProfitAttribute();
-        if ($profit == 0) {
-            return 1;
-        }
-
-        return $profit / $this->total;
-
+        return $this->total_amount;
     }
 
-    public function getTotalProfitPaidAttribute(): int
+    public function getTotalPaidAttribute(): int
     {
-        $percentageOfProfit = $this->getPercentageOfProfit();
-
-        return $this->total_paid * $percentageOfProfit;
-
+        return $this->total_payments;
     }
+
+    public function getTotalRemainingAttribute(): int
+    {
+        return $this->total_amount - $this->total_payments;
+    }
+
+    // =========================================================================
+    // Stored totals management
+    // =========================================================================
 
     /**
-     * Compute the portion of this invoice's profit that is realized by a given payment amount.
+     * Re-query and persist all stored financial totals and the payment status.
      *
-     * Formula: profit_margin_ratio × payment_amount
-     * where profit_margin_ratio = total_profit / invoice_total
+     * Must be called whenever invoice items or payments change (saved or deleted).
+     * Triggers are registered in the Vente and Payment model boot() methods.
      *
-     * Returns 0 if the invoice total is 0 (no items yet) to prevent division by zero.
+     * Also keeps the legacy `paid` boolean in sync so existing code relying
+     * on it continues to work without modification.
+     */
+    public function recalculateStoredTotals(): void
+    {
+        $freshTotalAmount = (int) $this->items()->selectRaw('SUM(price * quantity) as total')->value('total');
+        $freshTotalEstimatedProfit = (int) $this->items()->selectRaw('SUM(profit) as total')->value('total');
+        $freshTotalPayments = (int) $this->payments()->selectRaw('SUM(amount) as total')->value('total');
+        $freshTotalRealizedProfit = (int) $this->payments()->selectRaw('SUM(profit) as total')->value('total');
+
+        // FULLY_PAID is never set automatically — only markAsFullyPaid() may do that.
+        // However, if the invoice is already FULLY_PAID and payments still cover the
+        // total, we preserve that status (guard against silent demotion on minor updates).
+        // Any reduction in payments that breaks coverage will demote appropriately.
+        $currentStatus = $this->status ?? SalesInvoiceStatus::Draft;
+        $paymentsStillCoverTotal = $freshTotalAmount > 0 && $freshTotalPayments >= $freshTotalAmount;
+
+        $newStatus = match (true) {
+            $currentStatus === SalesInvoiceStatus::FullyPaid && $paymentsStillCoverTotal => SalesInvoiceStatus::FullyPaid,
+            $freshTotalPayments > 0 => SalesInvoiceStatus::PartiallyPaid,
+            default => SalesInvoiceStatus::Draft,
+        };
+
+        $this->total_amount = $freshTotalAmount;
+        $this->total_estimated_profit = $freshTotalEstimatedProfit;
+        $this->total_payments = $freshTotalPayments;
+        $this->total_realized_profit = $freshTotalRealizedProfit;
+        $this->status = $newStatus;
+        $this->paid = $newStatus === SalesInvoiceStatus::FullyPaid;
+        $this->save();
+    }
+
+    // =========================================================================
+    // Business operations
+    // =========================================================================
+
+    /**
+     * Transition this invoice to FULLY_PAID status.
+     *
+     * This is the ONLY authorised path to FULLY_PAID — recalculateStoredTotals()
+     * never sets it automatically. Throws if payments do not exactly match the
+     * invoice total, ensuring financial consistency before the transition.
+     *
+     * Refreshes the model from the database first so stale in-memory values
+     * cannot cause a false positive or false negative validation.
+     *
+     * @throws InvoicePaymentMismatchException when total_payments ≠ total_amount.
+     */
+    public function markAsFullyPaid(): void
+    {
+        // Query fresh from the database — do not rely on any in-memory cached values
+        // or previously stored columns, as the caller may hold a stale model instance.
+        $freshTotalAmount = (int) $this->items()->selectRaw('SUM(price * quantity) as total')->value('total');
+        $freshTotalPayments = (int) $this->payments()->selectRaw('SUM(amount) as total')->value('total');
+
+        if ($freshTotalPayments !== $freshTotalAmount) {
+            throw new InvoicePaymentMismatchException;
+        }
+
+        $this->status = SalesInvoiceStatus::FullyPaid;
+        $this->paid = true;
+        $this->save();
+    }
+
+    // =========================================================================
+    // Financial computation helpers
+    // =========================================================================
+
+    /**
+     * Compute the portion of this invoice's profit realized by a given payment amount.
+     *
+     * Formula: (total_estimated_profit / total_amount) × payment_amount
+     *
+     * Uses stored columns — no extra DB query required.
+     * Returns 0 if total_amount is 0 to prevent division by zero.
+     *
      * This is the single source of truth for realized-profit-per-payment computation.
      */
     public function computeRealizedProfitForPaymentAmount(int $paymentAmount): int
     {
-        $invoiceTotal = $this->getTotalAttribute();
-
-        if ($invoiceTotal === 0) {
+        if (! $this->total_amount) {
             return 0;
         }
 
-        $invoiceTotalProfit = $this->getTotalProfitAttribute();
-
-        return (int) round($invoiceTotalProfit / $invoiceTotal * $paymentAmount);
+        return (int) round($this->total_estimated_profit / $this->total_amount * $paymentAmount);
     }
 }

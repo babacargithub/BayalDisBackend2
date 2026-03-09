@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\Dashboard\DashboardStats;
 use App\Data\Vente\PaidStatus;
 use App\Data\Vente\VenteStatsFilter;
+use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Models\Customer;
 use App\Models\CustomerVisit;
@@ -16,10 +17,11 @@ use App\Models\Vente;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class SalesInvoiceService
 {
-    /** @throws  InsufficientStockException|\Throwable */
+    /** @throws  InsufficientStockException|Throwable */
     public function createSalesInvoice(array $data): SalesInvoice
     {
         return DB::transaction(function () use ($data) {
@@ -29,8 +31,10 @@ class SalesInvoiceService
 
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
-                'invoice_number' => 'INV-'.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
+                'invoice_number' => 'FACTURE Nº '.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0',
+                    STR_PAD_LEFT),
                 'label' => 'Facture Vente',
+                // TODO remove this from request and implement a way to calculate status paid
                 'paid' => $data['paid'] ?? false,
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
                 'commercial_id' => $user->commercial->id,
@@ -42,8 +46,6 @@ class SalesInvoiceService
             // Add items to the invoice and update stock
             $itemsArray = [];
             foreach ($data['items'] as $item) {
-                $itemAmount = $item['quantity'] * $item['price'];
-                $totalAmount += $itemAmount;
 
                 $vente = new Vente([
                     'sales_invoice_id' => $salesInvoice->id,
@@ -51,8 +53,10 @@ class SalesInvoiceService
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     'type' => 'INVOICE_ITEM',
-                    'commercial_id' => request()->user()->commercial->id,
                 ]);
+                $itemAmount = $item['quantity'] * $item['price'];
+                $totalAmount += $itemAmount;
+
                 $itemsArray[] = $vente;
 
                 // Update product stock using the decrementStock method
@@ -67,7 +71,8 @@ class SalesInvoiceService
                 $vente->save();
             }
 
-            // If paid, create payment record
+            // If paid, create the payment then explicitly transition to FULLY_PAID.
+            // markAsFullyPaid() is the only authorised path to FULLY_PAID status.
             if ($data['paid']) {
                 Payment::create([
                     'sales_invoice_id' => $salesInvoice->id,
@@ -75,6 +80,7 @@ class SalesInvoiceService
                     'payment_method' => $data['payment_method'],
                     'user_id' => request()->user()->id,
                 ]);
+                $salesInvoice->markAsFullyPaid();
             }
             // check customer has current visite also check if it is a prospect
             $customer = Customer::findOrFail($data['customer_id']);
@@ -96,7 +102,7 @@ class SalesInvoiceService
 
     public function weeklyDebts(int $commercial_id)
     {
-        $invoices = SalesInvoice::with(['customer', 'items.product', 'payments'])
+        $invoices = SalesInvoice::with(['customer', 'items.product'])
             ->where('commercial_id', $commercial_id)
             ->get();
 
@@ -109,18 +115,16 @@ class SalesInvoiceService
         })->map(function ($weekInvoices, $weekKey) {
             [$weekStart, $weekEnd] = explode('|', $weekKey);
 
-            $total = $weekInvoices->sum('total');
-            $totalPaid = $weekInvoices->sum(function ($invoice) {
-                return $invoice->payments->sum('amount');
-            });
+            $weeklyTotal = $weekInvoices->sum('total_amount');
+            $weeklyTotalPaid = $weekInvoices->sum('total_payments');
 
             return [
                 'label' => 'Du '.Carbon::parse($weekStart)->locale('fr')->isoFormat('dddd D MMMM').
                           ' au '.Carbon::parse($weekEnd)->locale('fr')->isoFormat('dddd D MMMM YYYY'),
-                'total' => $total,
-                'total_paid' => $totalPaid,
-                'total_remaining' => $total - $totalPaid,
-                'invoices' => $weekInvoices->map(function ($invoice) {
+                'total' => $weeklyTotal,
+                'total_paid' => $weeklyTotalPaid,
+                'total_remaining' => $weeklyTotal - $weeklyTotalPaid,
+                'invoices' => $weekInvoices->map(function (SalesInvoice $invoice) {
                     return [
                         'id' => $invoice->id,
                         'created_at' => $invoice->created_at,
@@ -128,9 +132,9 @@ class SalesInvoiceService
                             'name' => $invoice->customer->name,
                             'phone_number' => $invoice->customer->phone_number,
                         ],
-                        'total' => $invoice->total,
-                        'total_paid' => $invoice->payments->sum('amount'),
-                        'total_remaining' => $invoice->total - $invoice->payments->sum('amount'),
+                        'total' => $invoice->total_amount,
+                        'total_paid' => $invoice->total_payments,
+                        'total_remaining' => $invoice->total_amount - $invoice->total_payments,
                     ];
                 })->values(),
             ];
@@ -219,34 +223,32 @@ class SalesInvoiceService
     }
 
     /**
-     * Count fully-paid sales invoices (paid = true) within the given date range.
+     * Count fully-paid sales invoices within the given date range.
      */
     public function fullyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
         return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
-            ->where('paid', true)
+            ->where('status', SalesInvoiceStatus::FullyPaid)
             ->count();
     }
 
     /**
-     * Count partially-paid sales invoices (paid = false with at least one payment) within the given date range.
+     * Count partially-paid sales invoices within the given date range.
      */
     public function partiallyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
         return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
-            ->where('paid', false)
-            ->whereHas('payments')
+            ->where('status', SalesInvoiceStatus::PartiallyPaid)
             ->count();
     }
 
     /**
-     * Count unpaid sales invoices (paid = false with no payments at all) within the given date range.
+     * Count draft (unpaid) sales invoices within the given date range.
      */
     public function unpaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
         return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
-            ->where('paid', false)
-            ->whereDoesntHave('payments')
+            ->where('status', SalesInvoiceStatus::Draft)
             ->count();
     }
 
@@ -335,10 +337,6 @@ class SalesInvoiceService
             PaidStatus::All => null,
         };
 
-        if ($filter->commercialId !== null) {
-            $query->where('commercial_id', $filter->commercialId);
-        }
-
         if ($filter->customerId !== null) {
             $query->where('customer_id', $filter->customerId);
         }
@@ -347,14 +345,23 @@ class SalesInvoiceService
             $query->where('type', $filter->type);
         }
 
-        if ($filter->carLoadId !== null) {
+        $needsInvoiceScope = $filter->commercialId !== null || $filter->carLoadId !== null;
+
+        if ($needsInvoiceScope) {
             $query->whereHas('salesInvoice', function (Builder $invoiceQuery) use ($filter) {
-                $invoiceQuery->where('car_load_id', $filter->carLoadId);
+                if ($filter->commercialId !== null) {
+                    $invoiceQuery->where('commercial_id', $filter->commercialId);
+                }
+
+                if ($filter->carLoadId !== null) {
+                    $invoiceQuery->where('car_load_id', $filter->carLoadId);
+                }
             });
         }
 
         return $query;
     }
+
     /**
      * Compute all dashboard statistics for a given time window.
      *

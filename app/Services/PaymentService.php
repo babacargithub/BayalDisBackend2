@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Models\Payment;
-use App\Models\SalesInvoice;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class PaymentService
@@ -16,6 +14,7 @@ class PaymentService
             ->get()
             ->map(function ($payment) {
                 $invoice = $payment->salesInvoice;
+
                 return [
                     'id' => $payment->id,
                     'customer' => [
@@ -24,9 +23,9 @@ class PaymentService
                         'phone_number' => $invoice->customer->phone_number,
                     ],
                     'invoice_date' => $invoice->created_at,
-                    'invoice_total' => $invoice->total,
-                    'amount_paid' => $invoice->payments->sum('amount'),
-                    'amount_remaining' => $invoice->total - $invoice->payments->sum('amount'),
+                    'invoice_total' => $invoice->total_amount,
+                    'amount_paid' => $invoice->total_payments,
+                    'amount_remaining' => $invoice->total_remaining,
                     'payment_method' => $payment->payment_method,
                     'created_at' => $payment->created_at,
                 ];
@@ -36,7 +35,7 @@ class PaymentService
     public function getPaymentStatistics()
     {
         $today = Carbon::today();
-        
+
         return [
             'today_total' => Payment::whereDate('created_at', $today)->sum('amount'),
             'today_count' => Payment::whereDate('created_at', $today)->count(),
@@ -44,4 +43,4 @@ class PaymentService
             'month_total' => Payment::whereMonth('created_at', $today->month)->whereYear('created_at', $today->year)->sum('amount'),
         ];
     }
-} 
+}

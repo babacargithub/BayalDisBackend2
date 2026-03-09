@@ -3,17 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\CarLoad;
+use App\Models\Customer;
+use App\Models\Payment;
+use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
-use App\Models\Payment;
-use App\Models\Customer;
-use App\Models\Product;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Exception;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Inertia\Inertia;
 
 class SalesInvoiceController extends Controller
 {
@@ -30,20 +29,15 @@ class SalesInvoiceController extends Controller
                 },
                 'items.product:id,name',
                 'payments' => function ($query) {
-                    $query->select('id', 'sales_invoice_id', 'amount', 'created_at', 'comment','payment_method');
-                }
+                    $query->select('id', 'sales_invoice_id', 'amount', 'created_at', 'comment', 'payment_method');
+                },
             ]);
 
         // Get paginated results with optimized loading
         $invoices = $query->latest()
-            ->orderByDesc("created_at")
+            ->orderByDesc('created_at')
             ->where('paid', false)
-            ->paginate(4000)
-            ->through(function ($invoice) {
-                // Add computed total to avoid N+1 queries
-                $invoice->total = $invoice->items->sum('subtotal');
-                return $invoice;
-            });
+            ->paginate(4000);
 
         return Inertia::render('SalesInvoices/Index', [
             'invoices' => $invoices,
@@ -89,16 +83,19 @@ class SalesInvoiceController extends Controller
                 ];
             }, $request->items);
 
-            // Insert all ventes in a single query
+            // Insert all ventes in a single query.
+            // Note: Vente::insert() bypasses model events, so we must recalculate
+            // the invoice's stored totals manually after the bulk insert.
             Vente::insert($ventes);
+            $invoice->recalculateStoredTotals();
             // update stock of products
             foreach ($ventes as $vente) {
                 $product = Product::findOrFail($vente['product_id']);
-                $product->decrementStock($vente['quantity'], updateMainStock: false,commercial: auth()
+                $product->decrementStock($vente['quantity'], updateMainStock: false, commercial: auth()
                     ->user->commercial);
             }
             // check if customer is prospect
-            $customer = Customer::findOrFail($request->customer_id);    
+            $customer = Customer::findOrFail($request->customer_id);
             if ($customer->is_prospect) {
                 // Update customer's prospect status
                 $customer->is_prospect = false;
@@ -111,6 +108,7 @@ class SalesInvoiceController extends Controller
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->back()->withErrors(['error' => 'Échec de la création de la facture. Veuillez réessayer.']);
         }
     }
@@ -121,20 +119,20 @@ class SalesInvoiceController extends Controller
             'customer:id,name',
             'items:id,sales_invoice_id,product_id,quantity,price,profit',
             'items.product:id,name',
-            'payments:id,sales_invoice_id,amount,created_at,comment'
+            'payments:id,sales_invoice_id,amount,created_at,comment',
         ]);
 
         // Check if this is an AJAX request
         if (request()->wantsJson() || request()->header('X-Requested-With') === 'XMLHttpRequest') {
             return response()->json([
                 'props' => [
-                    'invoice' => $salesInvoice
-                ]
+                    'invoice' => $salesInvoice,
+                ],
             ]);
         }
 
         return Inertia::render('SalesInvoices/Show', [
-            'invoice' => $salesInvoice
+            'invoice' => $salesInvoice,
         ]);
     }
 
@@ -152,10 +150,12 @@ class SalesInvoiceController extends Controller
             // update stock of products by calcaulating the difference between the old quantity and the new quantity
 
             DB::commit();
+
             return redirect()->back()->with('success', 'Invoice updated successfully.');
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->back()->with('error', 'Failed to update invoice. Please try again.');
         }
     }
@@ -169,11 +169,11 @@ class SalesInvoiceController extends Controller
 
         try {
             DB::beginTransaction();
-        // put stock back            
+            // put stock back
             foreach ($salesInvoice->items as $item) {
                 $product = Product::findOrFail($item->product_id);
                 $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($product, $salesInvoice->commercial);
-                if ($carLoadItem !=null){
+                if ($carLoadItem != null) {
                     $carLoadItem->quantity_left += $item->quantity;
                     $carLoadItem->save();
 
@@ -187,10 +187,12 @@ class SalesInvoiceController extends Controller
             $salesInvoice->delete();
 
             DB::commit();
+
             return redirect()->route('sales-invoices.index')->with('success', 'Invoice deleted successfully.');
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->route('sales-invoices.index')->with('error', 'Failed to delete invoice. Please try again.');
         }
     }
@@ -222,7 +224,7 @@ class SalesInvoiceController extends Controller
             ]);
             $vente->refresh();
             $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($vente->product, $salesInvoice->commercial);
-            if ($carLoadItem !== null){
+            if ($carLoadItem !== null) {
                 $carLoadItem->quantity_left -= $vente->quantity;
                 $carLoadItem->save();
             }
@@ -231,18 +233,19 @@ class SalesInvoiceController extends Controller
             $salesInvoice->load([
                 'items.product',
                 'customer',
-                'payments'
+                'payments',
             ]);
 
             DB::commit();
 
             return redirect()->back()->with([
                 'success' => 'Item added successfully',
-                'invoice' => $salesInvoice
+                'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->back()->with('error', 'Failed to add item');
         }
     }
@@ -262,13 +265,13 @@ class SalesInvoiceController extends Controller
 
             $commercial = $item->commercial ?? $salesInvoice->commercial;
             // put stock back
-            if ($commercial != null){
+            if ($commercial != null) {
                 $carLoadItem = CarLoad::findCarLoadItemForProductAndCommercial($item->product, $commercial);
 
-                    if ($carLoadItem) {
-                        $carLoadItem->quantity_left += $item->quantity;
-                        $carLoadItem->save();
-                    }
+                if ($carLoadItem) {
+                    $carLoadItem->quantity_left += $item->quantity;
+                    $carLoadItem->save();
+                }
             }
             $item->delete();
 
@@ -276,18 +279,19 @@ class SalesInvoiceController extends Controller
             $salesInvoice->load([
                 'items.product',
                 'customer',
-                'payments'
+                'payments',
             ]);
 
             DB::commit();
 
             return redirect()->back()->with([
                 'success' => 'Article supprimé avec succès',
-                'invoice' => $salesInvoice
+                'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->back()->withErrors(['error' => 'Échec de la suppression de l\'article. Veuillez réessayer.']);
         }
     }
@@ -325,11 +329,11 @@ class SalesInvoiceController extends Controller
                 'comment' => $request->comment,
             ]);
 
-            // Check if invoice is fully paid
+            // Transition to FULLY_PAID only via markAsFullyPaid(), which validates
+            // that payments exactly cover the total before persisting the status.
             $newTotalPaid = $totalPaid + $request->amount;
             if ($newTotalPaid >= $salesInvoice->total) {
-                // Update invoice and related ventes
-                $salesInvoice->update(['paid' => true]);
+                $salesInvoice->markAsFullyPaid();
                 $salesInvoice->items()->update([
                     'paid' => true,
                     'paid_at' => now(),
@@ -340,17 +344,19 @@ class SalesInvoiceController extends Controller
             $salesInvoice->load([
                 'items.product',
                 'customer',
-                'payments'
+                'payments',
             ]);
 
             DB::commit();
+
             return redirect()->back()->with([
                 'success' => 'Paiement ajouté avec succès',
-                'invoice' => $salesInvoice
+                'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->back()->withErrors(['error' => 'Échec de l\'ajout du paiement. Veuillez réessayer.']);
         }
     }
@@ -365,18 +371,16 @@ class SalesInvoiceController extends Controller
             DB::beginTransaction();
 
             $payment->delete();
-
-            // Update invoice paid status
-            $totalPaid = $salesInvoice->payments()->sum('amount');
-            if ($totalPaid < $salesInvoice->total) {
-                $salesInvoice->update(['paid' => false]);
-            }
+            // recalculateStoredTotals() fires automatically via Payment::deleted event,
+            // demoting the invoice from FULLY_PAID when payments no longer cover the total.
 
             DB::commit();
+
             return redirect()->back()->with('success', 'Payment removed successfully.');
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->back()->with('error', 'Failed to remove payment. Please try again.');
         }
     }
@@ -416,62 +420,65 @@ class SalesInvoiceController extends Controller
                 'comment' => $request->comment,
             ]);
 
-            // Recalculate total paid and update invoice status
+            // Transition to FULLY_PAID only via markAsFullyPaid().
+            // Demotion is handled automatically by recalculateStoredTotals() via Payment::saved.
             $newTotalPaid = $totalPaidExcludingCurrent + $request->amount;
-            $salesInvoice->update([
-                'paid' => $newTotalPaid >= $salesInvoice->total
-            ]);
+            $isNowFullyPaid = $newTotalPaid >= $salesInvoice->total;
 
-            // Update related ventes paid status
+            if ($isNowFullyPaid) {
+                $salesInvoice->markAsFullyPaid();
+            }
+
+            // Update related ventes paid status and paid_at timestamp.
             $salesInvoice->items()->update([
-                'paid' => $newTotalPaid >= $salesInvoice->total,
-                'paid_at' => $newTotalPaid >= $salesInvoice->total ? now() : null,
+                'paid' => $isNowFullyPaid,
+                'paid_at' => $isNowFullyPaid ? now() : null,
             ]);
 
             // Reload the invoice with its relationships
             $salesInvoice->load([
                 'items.product',
                 'customer',
-                'payments'
+                'payments',
             ]);
 
             DB::commit();
+
             return redirect()->back()->with([
                 'success' => 'Paiement mis à jour avec succès',
-                'invoice' => $salesInvoice
+                'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
             DB::rollBack();
             report($e);
+
             return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour du paiement. Veuillez réessayer.']);
         }
     }
 
-    public function updateProfit(Request $request, $salesInvoice,Vente $item)
+    public function updateProfit(Request $request, $salesInvoice, Vente $item)
     {
 
         if ($item->type !== 'INVOICE_ITEM') {
             if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
                 return response()->json(['error' => 'Cet article n\'appartient pas à cette facture'], 422);
             }
+
             return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture']);
         }
-
 
         try {
             // Check if this is a profit-only update
 
-                $validated = $request->validate([
-                    'profit' => 'required|integer',
-                ]);
+            $validated = $request->validate([
+                'profit' => 'required|integer',
+            ]);
 
-                 //Update only the profit field
-                $item->profit = $validated['profit'];
-                $item->save();
-
+            // Update only the profit field
+            $item->profit = $validated['profit'];
+            $item->save();
 
             return response()->json(['error' => '!Cet article a été traité !!'.$validated['profit']], 200);
-
 
             // Return JSON response for AJAX requests
             if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
@@ -484,7 +491,7 @@ class SalesInvoiceController extends Controller
 
             return redirect()->back()->with([
                 'success' => 'Article mis à jour avec succès',
-                'invoice' => $item->salesInvoice
+                'invoice' => $item->salesInvoice,
             ]);
 
         } catch (Exception $e) {
@@ -507,14 +514,14 @@ class SalesInvoiceController extends Controller
 
         // Total is calculated in the model or via relationships
 
-//        return view('pdf.invoice', [
-//            'invoice' => $salesInvoice
-//        ]);
+        //        return view('pdf.invoice', [
+        //            'invoice' => $salesInvoice
+        //        ]);
         $pdf = Pdf::loadView('pdf.invoice', [
-            'invoice' => $salesInvoice
+            'invoice' => $salesInvoice,
         ]);
 
-        return $pdf->download('facture de '.$salesInvoice->customer->name.'-' . $salesInvoice->id . '.pdf');
+        return $pdf->download('facture de '.$salesInvoice->customer->name.'-'.$salesInvoice->id.'.pdf');
 
     }
 
@@ -530,7 +537,7 @@ class SalesInvoiceController extends Controller
 
         $pdf = Pdf::loadView('pdf.unpaid-invoices', [
             'invoices' => $unpaidInvoices,
-            'date' => now()->format('d/m/Y H:i')
+            'date' => now()->format('d/m/Y H:i'),
         ]);
 
         return $pdf->download('factures_impayees_'.now()->format('d_m_Y').'.pdf');
@@ -555,8 +562,8 @@ class SalesInvoiceController extends Controller
         }
 
         // Apply search filter
-        if ($request->has('search') && !empty($request->search)) {
-            $searchTerm = '%' . strtolower($request->search) . '%';
+        if ($request->has('search') && ! empty($request->search)) {
+            $searchTerm = '%'.strtolower($request->search).'%';
             $query->whereHas('customer', function ($customerQuery) use ($searchTerm) {
                 $customerQuery->whereRaw('LOWER(name) LIKE ?', [$searchTerm]);
             });
@@ -568,10 +575,10 @@ class SalesInvoiceController extends Controller
                 foreach ($request->weeks as $weekKey) {
                     $weekStart = \Carbon\Carbon::parse($weekKey);
                     $weekEnd = $weekStart->copy()->endOfWeek();
-                    
+
                     $weekQuery->orWhereBetween('created_at', [
                         $weekStart->startOfDay(),
-                        $weekEnd->endOfDay()
+                        $weekEnd->endOfDay(),
                     ]);
                 }
             });
@@ -591,10 +598,11 @@ class SalesInvoiceController extends Controller
             'weekRangeTitle' => $weekRangeTitle,
             'totalAmount' => $filteredInvoices->sum('total'),
             'totalPaid' => $filteredInvoices->sum('total_paid'),
-            'totalRemaining' => $filteredInvoices->sum('total') - $filteredInvoices->sum('total_paid')
+            'totalRemaining' => $filteredInvoices->sum('total') - $filteredInvoices->sum('total_paid'),
         ]);
 
-        $filename = 'factures_filtrees_' . now()->format('d_m_Y_H_i') . '.pdf';
+        $filename = 'factures_filtrees_'.now()->format('d_m_Y_H_i').'.pdf';
+
         return $pdf->download($filename);
     }
 
@@ -612,14 +620,14 @@ class SalesInvoiceController extends Controller
         }
 
         // Search filter
-        if ($request->has('search') && !empty($request->search)) {
-            $descriptions[] = 'Client: "' . $request->search . '"';
+        if ($request->has('search') && ! empty($request->search)) {
+            $descriptions[] = 'Client: "'.$request->search.'"';
         }
 
         // Week filter
         if ($request->has('weeks') && is_array($request->weeks) && count($request->weeks) > 0) {
             $weekCount = count($request->weeks);
-            $descriptions[] = $weekCount === 1 ? '1 semaine sélectionnée' : $weekCount . ' semaines sélectionnées';
+            $descriptions[] = $weekCount === 1 ? '1 semaine sélectionnée' : $weekCount.' semaines sélectionnées';
         }
 
         return empty($descriptions) ? 'Toutes les factures' : implode(', ', $descriptions);
@@ -627,17 +635,17 @@ class SalesInvoiceController extends Controller
 
     private function buildWeekRangeTitle(Request $request)
     {
-        if (!$request->has('weeks') || !is_array($request->weeks) || count($request->weeks) === 0) {
+        if (! $request->has('weeks') || ! is_array($request->weeks) || count($request->weeks) === 0) {
             return null;
         }
 
         $weeks = $request->weeks;
-        
+
         // If only one week is selected
         if (count($weeks) === 1) {
             $weekStart = \Carbon\Carbon::parse($weeks[0]);
             $weekEnd = $weekStart->copy()->endOfWeek();
-            
+
             return $this->formatWeekRangeTitle($weekStart, $weekEnd);
         }
 
@@ -645,13 +653,13 @@ class SalesInvoiceController extends Controller
         sort($weeks);
         $firstWeek = \Carbon\Carbon::parse($weeks[0]);
         $lastWeek = \Carbon\Carbon::parse($weeks[count($weeks) - 1]);
-        
+
         // Check if weeks are consecutive
         $areConsecutive = true;
         for ($i = 1; $i < count($weeks); $i++) {
             $currentWeek = \Carbon\Carbon::parse($weeks[$i]);
             $previousWeek = \Carbon\Carbon::parse($weeks[$i - 1]);
-            
+
             if ($currentWeek->diffInWeeks($previousWeek) !== 1) {
                 $areConsecutive = false;
                 break;
@@ -662,11 +670,11 @@ class SalesInvoiceController extends Controller
             // Show range from first to last week
             $firstWeekStart = $firstWeek->copy()->startOfWeek();
             $lastWeekEnd = $lastWeek->copy()->endOfWeek();
-            
+
             return $this->formatWeekRangeTitle($firstWeekStart, $lastWeekEnd);
         } else {
             // Non-consecutive weeks
-            return 'Semaines sélectionnées (' . count($weeks) . ' semaines)';
+            return 'Semaines sélectionnées ('.count($weeks).' semaines)';
         }
     }
 
@@ -675,23 +683,23 @@ class SalesInvoiceController extends Controller
         $months = [
             1 => 'janvier', 2 => 'février', 3 => 'mars', 4 => 'avril',
             5 => 'mai', 6 => 'juin', 7 => 'juillet', 8 => 'août',
-            9 => 'septembre', 10 => 'octobre', 11 => 'novembre', 12 => 'décembre'
+            9 => 'septembre', 10 => 'octobre', 11 => 'novembre', 12 => 'décembre',
         ];
-        
+
         $startDay = $startDate->day;
         $startMonth = $months[$startDate->month];
         $startYear = $startDate->year;
-        
+
         $endDay = $endDate->day;
         $endMonth = $months[$endDate->month];
         $endYear = $endDate->year;
-        
+
         if ($startMonth === $endMonth && $startYear === $endYear) {
             return "Semaine du {$startDay} au {$endDay} {$startMonth} {$startYear}";
-        } else if ($startYear === $endYear) {
+        } elseif ($startYear === $endYear) {
             return "Semaine du {$startDay} {$startMonth} au {$endDay} {$endMonth} {$startYear}";
         } else {
             return "Semaine du {$startDay} {$startMonth} {$startYear} au {$endDay} {$endMonth} {$endYear}";
         }
     }
-} 
+}

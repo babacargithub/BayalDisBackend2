@@ -17,12 +17,15 @@ class Payment extends Model
         'user_id',
     ];
 
-    protected $casts = [
-        'amount' => 'integer',
-        'profit' => 'integer',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'amount' => 'integer',
+            'profit' => 'integer',
+            'created_at' => 'datetime',
+            'updated_at' => 'datetime',
+        ];
+    }
 
     protected $appends = [];
 
@@ -32,17 +35,36 @@ class Payment extends Model
 
         /**
          * Auto-populate profit when a payment is created.
-         * Computes the portion of the invoice's total profit realized by this payment amount.
-         * This fires regardless of which code path creates the payment, ensuring
-         * payments.profit is always correct and never left at 0.
+         * Uses the invoice's stored total_amount and total_estimated_profit columns,
+         * so no extra DB query is needed to load items.
          */
         static::creating(function (Payment $payment) {
             if ($payment->sales_invoice_id !== null) {
-                $invoice = SalesInvoice::with('items')->find($payment->sales_invoice_id);
+                $invoice = SalesInvoice::find($payment->sales_invoice_id);
 
                 if ($invoice !== null) {
                     $payment->profit = $invoice->computeRealizedProfitForPaymentAmount($payment->amount);
                 }
+            }
+        });
+
+        /**
+         * After any payment is persisted, recalculate the invoice's stored totals
+         * so total_payments, total_realized_profit, status, and paid stay in sync.
+         */
+        static::saved(function (Payment $payment) {
+            if ($payment->sales_invoice_id !== null) {
+                $payment->salesInvoice?->recalculateStoredTotals();
+            }
+        });
+
+        /**
+         * After a payment is deleted, recalculate the invoice's stored totals
+         * so the balance and status are updated immediately.
+         */
+        static::deleted(function (Payment $payment) {
+            if ($payment->sales_invoice_id !== null) {
+                $payment->salesInvoice?->recalculateStoredTotals();
             }
         });
     }
@@ -57,10 +79,18 @@ class Payment extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * The profit portion of this payment, computed from the invoice's profit margin.
+     * Uses stored columns on the invoice — no extra DB query for items.
+     */
     public function getTotalProfitAttribute(): int
     {
-        $percentageOfProfit = $this->salesInvoice->getPercentageOfProfit();
+        $invoice = $this->salesInvoice;
 
-        return (int) $this->amount * $percentageOfProfit;
+        if ($invoice === null || $invoice->total_amount === 0) {
+            return 0;
+        }
+
+        return (int) round($invoice->total_estimated_profit / $invoice->total_amount * $this->amount);
     }
 }

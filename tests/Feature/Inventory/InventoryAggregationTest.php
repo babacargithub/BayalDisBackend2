@@ -2,10 +2,8 @@
 
 namespace Tests\Feature\Inventory;
 
-use App\Http\Controllers\CarLoadController;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
-use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Product;
@@ -25,6 +23,7 @@ class InventoryAggregationTest extends TestCase
     private function makeTeamWithManager(): Team
     {
         $manager = User::factory()->create();
+
         return Team::create([
             'name' => 'Team Inventory '.rand(1, 1000),
             'user_id' => $manager->id,
@@ -42,11 +41,13 @@ class InventoryAggregationTest extends TestCase
         ]);
         $commercial->team()->associate($team);
         $commercial->save();
+
         return $commercial;
     }
+
     public static function makeCommercialForTeam(Team $team): Commercial
     {
-       return self::createCommercialForTeam($team);
+        return self::createCommercialForTeam($team);
     }
 
     private function makeActiveCarLoadForTeam(Team $team): CarLoad
@@ -108,7 +109,6 @@ class InventoryAggregationTest extends TestCase
         Vente::create([
             'product_id' => $parent->id,
             'customer_id' => $customer->id,
-            'commercial_id' => $commercial->id,
             'quantity' => 4,
             'price' => 3000,
             'type' => 'SINGLE',
@@ -117,7 +117,6 @@ class InventoryAggregationTest extends TestCase
         Vente::create([
             'product_id' => $variant->id,
             'customer_id' => $customer->id,
-            'commercial_id' => $commercial->id,
             'quantity' => 6,
             'price' => 1700,
             'type' => 'SINGLE',
@@ -147,12 +146,12 @@ class InventoryAggregationTest extends TestCase
         $variantItem = $items->firstWhere('product_id', $variant->id);
 
         // total_loaded should be equal to loaded quantities for that product
-        $this->assertSame(15, (int)$parentItem->total_loaded);
-        $this->assertSame(8, (int)$variantItem->total_loaded);
+        $this->assertSame(15, (int) $parentItem->total_loaded);
+        $this->assertSame(8, (int) $variantItem->total_loaded);
 
         // total_sold is computed from ventes between dates (global), in our isolated test DB it should match
-        $this->assertSame(4, (int)$parentItem->total_sold, 'Parent direct sales counted');
-        $this->assertSame(6, (int)$variantItem->total_sold, 'Variant direct sales counted');
+        $this->assertSame(4, (int) $parentItem->total_sold, 'Parent direct sales counted');
+        $this->assertSame(6, (int) $variantItem->total_sold, 'Variant direct sales counted');
     }
 
     public function test_determine_total_sold_of_parent_includes_converted_children_but_excludes_parent_direct_sales_current_behavior(): void
@@ -194,7 +193,6 @@ class InventoryAggregationTest extends TestCase
         Vente::create([
             'product_id' => $parent->id,
             'customer_id' => $customer->id,
-            'commercial_id' => $commercial->id,
             'quantity' => 3,
             'price' => 2400,
             'type' => 'SINGLE',
@@ -203,18 +201,17 @@ class InventoryAggregationTest extends TestCase
         Vente::create([
             'product_id' => $child->id,
             'customer_id' => $customer->id,
-            'commercial_id' => $commercial->id,
             'quantity' => 6,
             'price' => 1300,
             'type' => 'SINGLE',
             'paid' => true,
         ]);
 
-        $service = new CarLoadService();
+        $service = new CarLoadService;
         $total = $service->determineTotalSoldOfAParentProductFromChildren($carLoad, $parent);
 
         // Current implementation ignores parent direct ventes and only converts children then adds persisted inventory parent total
         // child base_quantity 6 vs parent 12 -> ratio 12/6 = 2, so 6 child -> 3 parent-equivalent
-        $this->assertEquals(0.12, (float)$total, 'Current behavior: parent direct sales are not added by the service');
+        $this->assertEquals(0.12, (float) $total, 'Current behavior: parent direct sales are not added by the service');
     }
 }

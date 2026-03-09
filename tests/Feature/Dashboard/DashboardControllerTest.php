@@ -91,19 +91,23 @@ class DashboardControllerTest extends TestCase
         $invoice = SalesInvoice::create([
             'customer_id' => $this->defaultCustomer->id,
             'commercial_id' => $this->defaultCommercial->id,
-            'paid' => $paid,
         ]);
 
         Vente::create([
             'sales_invoice_id' => $invoice->id,
             'product_id' => $this->defaultProduct->id,
-            'commercial_id' => $this->defaultCommercial->id,
             'quantity' => $quantity,
             'price' => $price,
             'profit' => $profit,
-            'paid' => $paid,
             'type' => Vente::TYPE_INVOICE,
         ]);
+
+        // Create a full payment when paid = true so recalculateStoredTotals()
+        // sets status = FULLY_PAID and keeps paid = true in sync.
+        if ($paid) {
+            $this->makePayment($invoice->fresh(), $price * $quantity);
+            $invoice->markAsFullyPaid();
+        }
 
         return $invoice->fresh(['items', 'payments']);
     }

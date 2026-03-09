@@ -1,4 +1,6 @@
-<?php /** @noinspection PhpRedundantOptionalArgumentInspection */
+<?php
+
+/** @noinspection PhpRedundantOptionalArgumentInspection */
 
 namespace Tests\Feature\Dashboard;
 
@@ -111,6 +113,9 @@ class DashboardStatsTest extends TestCase
 
     /**
      * Create a SalesInvoice with a single INVOICE_ITEM vente.
+     * When $paid = true, a full payment is created so that recalculateStoredTotals()
+     * sets status = FULLY_PAID correctly (status is derived from real payments, not the
+     * boolean flag alone).
      * Returns the invoice fresh with items and payments loaded.
      */
     private function makeInvoiceWithOneItem(
@@ -127,19 +132,21 @@ class DashboardStatsTest extends TestCase
         $invoice = SalesInvoice::create([
             'customer_id' => $customer->id,
             'commercial_id' => $commercial->id,
-            'paid' => $paid,
         ]);
 
         Vente::create([
             'sales_invoice_id' => $invoice->id,
             'product_id' => $this->defaultProduct->id,
-            'commercial_id' => $commercial->id,
             'quantity' => $quantity,
             'price' => $price,
             'profit' => $profit,
-            'paid' => $paid,
             'type' => Vente::TYPE_INVOICE,
         ]);
+
+        if ($paid) {
+            $this->makePayment($invoice->fresh(), $price * $quantity);
+            $invoice->markAsFullyPaid();
+        }
 
         return $invoice->fresh(['items', 'payments']);
     }

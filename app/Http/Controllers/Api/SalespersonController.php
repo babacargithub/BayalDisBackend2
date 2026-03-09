@@ -5,25 +5,21 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\InsufficientStockException;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerVisitResource;
-use App\Models\CarLoad;
+use App\Models\Commercial;
 use App\Models\Customer;
+use App\Models\CustomerVisit;
+use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
-use App\Models\CustomerVisit;
-use App\Models\VisitBatch;
+use App\Services\CustomerVisitService;
+use App\Services\SalesInvoiceService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Models\Commercial;
-use Carbon\Carbon;
-use App\Models\Order;
-use App\Services\CustomerVisitService;
-use App\Services\SalesInvoiceService;
-use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class SalespersonController extends Controller
 {
@@ -78,6 +74,7 @@ class SalespersonController extends Controller
     public function getCustomerCategories()
     {
         $categories = \App\Models\CustomerCategory::select('id', 'name')->get();
+
         return response()->json($categories);
     }
 
@@ -165,6 +162,7 @@ class SalespersonController extends Controller
 
     /**
      * Create a new vente
+     *
      * @throws \Exception
      */
     public function createVente(Request $request)
@@ -206,13 +204,14 @@ class SalespersonController extends Controller
         // Verify that the customer belongs to this salesperson
         $customer = Customer::findOrFail($validated['customer_id']);
         $product = Product::findOrFail($validated['product_id']);
-        return DB::transaction(function ()use ($product, $validated, $commercial, $request, $customer) {
-//            i{
-//
-//            }
-//            else if ($product->stock_available < $validated['quantity']) {
-//                return response()->json(['message' => 'Stock insuffisant pour le produit '.$product->name], 422);
-//            }
+
+        return DB::transaction(function () use ($product, $validated, $commercial, $request, $customer) {
+            //            i{
+            //
+            //            }
+            //            else if ($product->stock_available < $validated['quantity']) {
+            //                return response()->json(['message' => 'Stock insuffisant pour le produit '.$product->name], 422);
+            //            }
 
             $vente = $commercial->ventes()->create([
                 'product_id' => $validated['product_id'],
@@ -222,10 +221,10 @@ class SalespersonController extends Controller
                 'paid' => $validated['paid'],
                 'paid_at' => $validated['paid'] ? now() : null,
                 'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
-                'payment_method' => $validated['payment_method'] ?? "Cash",
+                'payment_method' => $validated['payment_method'] ?? 'Cash',
                 'user_id' => $request->user()->id,
             ]);
-            if ($customer->is_prospect){
+            if ($customer->is_prospect) {
                 $customer->is_prospect = false;
                 $customer->save();
             }
@@ -233,7 +232,7 @@ class SalespersonController extends Controller
             // check if customer has visit planned if yes we mark it as completed
             $this->terminateVisitIfCustomerHasOne($customer);
 
-            $product->decrementStock($validated['quantity'],updateMainStock: false, commercial: $commercial);
+            $product->decrementStock($validated['quantity'], updateMainStock: false, commercial: $commercial);
 
             // Load the relationships
             $vente->load(['customer', 'product']);
@@ -247,7 +246,7 @@ class SalespersonController extends Controller
                     'quantity' => $vente->quantity,
                     'price' => $vente->price,
                     'total' => $vente->price * $vente->quantity,
-                    'paid' => (bool)$vente->paid,
+                    'paid' => (bool) $vente->paid,
                     'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
                     'should_be_paid_at' => $vente->should_be_paid_at?->format('Y-m-d H:i:s'),
                     'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
@@ -256,7 +255,7 @@ class SalespersonController extends Controller
 
             // Add Wave payment URL if Wave is selected as payment method
             if (strtolower($validated['payment_method']) == 'wave') {
-                $response['vente']['wave_payment_url'] = 'https://pay.wave.com/m/M_lzWrf_pI8keK/c/sn/?amount=' . $vente->price * $vente->quantity;
+                $response['vente']['wave_payment_url'] = 'https://pay.wave.com/m/M_lzWrf_pI8keK/c/sn/?amount='.$vente->price * $vente->quantity;
             }
 
             return response()->json($response, 201);
@@ -274,6 +273,7 @@ class SalespersonController extends Controller
         if ($request->has('paid')) {
             $query->where('paid', $request->boolean('paid'));
         }
+
         return $this->venteResource($query);
     }
 
@@ -281,11 +281,11 @@ class SalespersonController extends Controller
     {
 
         $validated = $request->validate([
-            'payment_method' => 'required|in:' . implode(',', [
-                    Vente::PAYMENT_METHOD_CASH,
-                    Vente::PAYMENT_METHOD_WAVE,
-                    Vente::PAYMENT_METHOD_OM,
-                ]),
+            'payment_method' => 'required|in:'.implode(',', [
+                Vente::PAYMENT_METHOD_CASH,
+                Vente::PAYMENT_METHOD_WAVE,
+                Vente::PAYMENT_METHOD_OM,
+            ]),
         ]);
 
         $vente->paid = true;
@@ -300,8 +300,7 @@ class SalespersonController extends Controller
     public function paySalesInvoice(Request $request, $invoice)
     {
         $invoice_id = $invoice;
-//        $invoice = SalesInvoice::findOrFail($invoice);
-
+        //        $invoice = SalesInvoice::findOrFail($invoice);
 
         $validated = $request->validate([
             'amount' => 'required|integer|min:1',
@@ -316,26 +315,24 @@ class SalespersonController extends Controller
         DB::transaction(function () use ($invoice_id, $validated, $request) {
 
             // Create the payment
-            $payment = Payment::create(["sales_invoice_id"=>$invoice_id,
+            $payment = Payment::create(['sales_invoice_id' => $invoice_id,
                 'amount' => $validated['amount'],
                 'payment_method' => $validated['payment_method'],
                 'comment' => $validated['comment'],
-                "user_id"=>$request->user()->id
+                'user_id' => $request->user()->id,
             ]);
 
             // Check if invoice is fully paid
-            $totalPaid = Payment::where("sales_invoice_id",$invoice_id)->sum('amount');
-            $invoiceTotal = Vente::where("sales_invoice_id",$invoice_id)->sum(DB::raw('quantity * price'));
+            $totalPaid = Payment::where('sales_invoice_id', $invoice_id)->sum('amount');
+            $invoiceTotal = Vente::where('sales_invoice_id', $invoice_id)->sum(DB::raw('quantity * price'));
             if ($totalPaid >= $invoiceTotal) {
-                SalesInvoice::where("id",$invoice_id)->update(['paid' => true]);
-                Vente::where("sales_invoice_id",$invoice_id)->update([
+                SalesInvoice::where('id', $invoice_id)->update(['paid' => true]);
+                Vente::where('sales_invoice_id', $invoice_id)->update([
                     'paid' => true,
                     'paid_at' => now(),
                 ]);
             }
         });
-
-
 
         return response()->json([
             'message' => 'Paiement effectué avec succès',
@@ -346,13 +343,12 @@ class SalespersonController extends Controller
     public function getVentes(Request $request)
     {
         $commercial = $request->user()->commercial;
-        $date = $request->query("date", today()->toDateString());
+        $date = $request->query('date', today()->toDateString());
 
-        // Get single ventes
+        // Get single ventes (legacy TYPE_SINGLE — filtered by commercial via invoice join)
         $ventesQuery = Vente::with(['product', 'customer'])
-            ->where('commercial_id', $commercial->id)
             ->where('type', 'SINGLE')
-            ->whereDate("created_at", $date);
+            ->whereDate('created_at', $date);
 
         // Get sales invoices
         $invoicesQuery = SalesInvoice::with(['customer', 'items.product'])
@@ -368,11 +364,11 @@ class SalespersonController extends Controller
             return $vente->price * $vente->quantity;
         });
 
-//        $invoicesTotal = $invoices->sum(function ($invoice) {
-//            return $invoice->items->sum(function ($item) {
-//                return $item->quantity * $item->price;
-//            });
-//        });
+        //        $invoicesTotal = $invoices->sum(function ($invoice) {
+        //            return $invoice->items->sum(function ($item) {
+        //                return $item->quantity * $item->price;
+        //            });
+        //        });
 
         return response()->json([
             'ventes' => $ventes->map(function (Vente $vente) {
@@ -384,7 +380,7 @@ class SalespersonController extends Controller
                     'quantity' => $vente->quantity,
                     'price' => $vente->price,
                     'total' => $vente->price * $vente->quantity,
-                    'paid' => (bool)$vente->paid,
+                    'paid' => (bool) $vente->paid,
                     'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
                     'should_be_paid_at' => $vente->should_be_paid_at,
                     'created_at' => $vente->created_at,
@@ -393,7 +389,7 @@ class SalespersonController extends Controller
             'invoices' => $invoices->map(function ($invoice) {
                 return [
                     'id' => $invoice->id,
-                    'invoice_number' => $invoice->created_at->format('Ymd') . '-' . str_pad($invoice->id, 4, '0', STR_PAD_LEFT),
+                    'invoice_number' => $invoice->created_at->format('Ymd').'-'.str_pad($invoice->id, 4, '0', STR_PAD_LEFT),
                     'customer' => [
                         'name' => $invoice->customer->name,
                         'phone_number' => $invoice->customer->phone_number,
@@ -407,22 +403,23 @@ class SalespersonController extends Controller
                     'created_at' => $invoice->created_at,
                 ];
             }),
-            "payments" => $paymentsQuery->get()->map(function ($payment) {
+            'payments' => $paymentsQuery->get()->map(function ($payment) {
                 return [
-                    "id" => $payment->id,
-                    "amount" => $payment->amount,
-                    "payment_method" => $payment->payment_method,
-                    "created_at" => $payment->created_at,
-                    "label"=>"Paiement : ".$payment->salesInvoice?->customer?->name
+                    'id' => $payment->id,
+                    'amount' => $payment->amount,
+                    'payment_method' => $payment->payment_method,
+                    'created_at' => $payment->created_at,
+                    'label' => 'Paiement : '.$payment->salesInvoice?->customer?->name,
                 ];
             }),
-            'total' => $ventesTotal  + $paymentsQuery->sum('amount'),
+            'total' => $ventesTotal + $paymentsQuery->sum('amount'),
         ]);
     }
 
     public function venteResource($query): JsonResponse
     {
         $ventes = $query->get();
+
         return response()->json([
             'ventes' => $ventes->map(function (Vente $vente) {
                 return [
@@ -433,7 +430,7 @@ class SalespersonController extends Controller
                     'quantity' => $vente->quantity,
                     'price' => $vente->price,
                     'total' => $vente->price * $vente->quantity,
-                    'paid' => (bool)$vente->paid,
+                    'paid' => (bool) $vente->paid,
                     'paid_at' => $vente->paid_at?->format('Y-m-d H:i:s'),
                     'should_be_paid_at' => $vente->should_be_paid_at,
                     'created_at' => $vente->created_at->format('Y-m-d H:i:s'),
@@ -445,14 +442,14 @@ class SalespersonController extends Controller
         ]);
     }
 
-    public function getCustomersAndProducts(Request $request    )
+    public function getCustomersAndProducts(Request $request)
     {
         $customers = Customer::latest()->get();
         $products = Product::all();
 
         return response()->json([
             'customers' => $customers,
-            'products' => $products
+            'products' => $products,
         ]);
     }
 
@@ -467,7 +464,7 @@ class SalespersonController extends Controller
         ]);
 
         $commercial = auth()->user()->commercial;
-        if (!$commercial) {
+        if (! $commercial) {
             return response()->json(['message' => 'Commercial not found'], 404);
         }
 
@@ -500,7 +497,8 @@ class SalespersonController extends Controller
                 DB::raw('SUM(ventes.price * ventes.quantity) as total_amount')
             )
             ->join('products', 'ventes.product_id', '=', 'products.id')
-            ->where('ventes.commercial_id', $commercial->id)
+            ->join('sales_invoices', 'ventes.sales_invoice_id', '=', 'sales_invoices.id')
+            ->where('sales_invoices.commercial_id', $commercial->id)
             ->whereBetween('ventes.created_at', [$startDate, $endDate])
             ->groupBy('products.id', 'products.name')
             ->get();
@@ -524,46 +522,46 @@ class SalespersonController extends Controller
                     'total_amount' => $sale->total_amount,
                 ];
             });
-        $totalPayes = Vente::selectRaw("SUM(quantity * price) as total")
-            ->where("commercial_id", $commercial->id)
+        $totalPayes = Vente::selectRaw('SUM(quantity * price) as total')
+            ->whereHas('salesInvoice', fn ($q) => $q->where('commercial_id', $commercial->id))
             ->whereBetween('created_at', [$startDate, $endDate])
-            ->where("paid", true)
-            ->where('type', Vente::TYPE_SINGLE)
+            ->where('paid', true)
+            ->where('type', Vente::TYPE_INVOICE)
             ->value('total');
 
-        $encaissements =  Payment::where("user_id",request()->user()->id)->whereBetween('created_at',
+        $encaissements = Payment::where('user_id', request()->user()->id)->whereBetween('created_at',
             [$startDate, $endDate])->sum('amount');
 
         $totals = [
-           [
-               "name" => "Total Ventes",
-               "total_amount" =>  (Vente::selectRaw("SUM(quantity * price) as total")
-                   ->where("commercial_id", $commercial->id)
-                   ->whereBetween('created_at', [$startDate, $endDate])
-                       ->where('type', Vente::TYPE_SINGLE)
-                   ->value('total') ?? 0) + SalesInvoice::whereBetween("created_at", [$startDate, $endDate])->get()
-                       ->sum("total_remaining"),
-           ],
             [
-               "name" => "Ventes payées",
-               "total_amount" => Vente::where("commercial_id",$commercial->id)->where("paid",true)->whereBetween('created_at',
-                   [$startDate, $endDate])->sum('price')
-           ], [
-               "name" => "Ventes à crédit",
-               "total_amount" => Vente::selectRaw("SUM(quantity * price) as total")
-                   ->where("commercial_id", $commercial->id)
-                   ->where("paid", false)
-                       ->where("type", Vente::TYPE_SINGLE)
-                   ->whereBetween('created_at', [$startDate, $endDate])
-                   ->value('total') ?? 0
-           ],
+                'name' => 'Total Ventes',
+                'total_amount' => SalesInvoice::where('commercial_id', $commercial->id)
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->get()
+                    ->sum('total'),
+            ],
             [
-               "name" => "Encaissements",
-                "total_amount"=>$encaissements
-           ], [
-               "name" => "Total à verser",
-                "total_amount"=> $totalPayes + $encaissements
-           ],
+                'name' => 'Ventes payées',
+                'total_amount' => Vente::whereHas('salesInvoice', fn ($q) => $q->where('commercial_id', $commercial->id))
+                    ->where('paid', true)
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->sum(DB::raw('price * quantity')),
+            ], [
+                'name' => 'Ventes à crédit',
+                'total_amount' => Vente::selectRaw('SUM(quantity * price) as total')
+                    ->whereHas('salesInvoice', fn ($q) => $q->where('commercial_id', $commercial->id))
+                    ->where('paid', false)
+                    ->where('type', Vente::TYPE_INVOICE)
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->value('total') ?? 0,
+            ],
+            [
+                'name' => 'Encaissements',
+                'total_amount' => $encaissements,
+            ], [
+                'name' => 'Total à verser',
+                'total_amount' => $totalPayes + $encaissements,
+            ],
 
         ];
 
@@ -578,20 +576,19 @@ class SalespersonController extends Controller
             'prospects_count' => $prospectsCount,
             'product_sales' => $productSales,
             'payment_method_sales' => $paymentMethodSales,
-            "totals" => $totals
+            'totals' => $totals,
         ]);
     }
 
     public function getOrders()
     {
         $commercial = auth()->user()->commercial;
-        if (!$commercial) {
+        if (! $commercial) {
             return response()->json(['message' => 'Commercial not found'], 404);
         }
 
-        $orders =Order::
-        with(['customer', 'product'])
-            ->where("status", Order::STATUS_WAITING)
+        $orders = Order::with(['customer', 'product'])
+            ->where('status', Order::STATUS_WAITING)
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -609,7 +606,7 @@ class SalespersonController extends Controller
         ]);
 
         $commercial = auth()->user()->commercial;
-        if (!$commercial) {
+        if (! $commercial) {
             return response()->json(['message' => 'Commercial not found'], 404);
         }
 
@@ -624,7 +621,7 @@ class SalespersonController extends Controller
 
         return response()->json([
             'message' => 'Order created successfully',
-            'data' => $order->load(['customer', 'product'])
+            'data' => $order->load(['customer', 'product']),
         ], 201);
     }
 
@@ -642,19 +639,19 @@ class SalespersonController extends Controller
 
         $order->update([
             'status' => 'CANCELLED',
-            'comment' => $validated['comment']
+            'comment' => $validated['comment'],
         ]);
 
         return response()->json([
             'message' => 'Order cancelled successfully',
-            'data' => $order->load(['customer', 'product'])
+            'data' => $order->load(['customer', 'product']),
         ]);
     }
 
     public function deliverOrder(Request $request, Order $order)
     {
         if ($order->status !== Order::STATUS_WAITING) {
-            return response()->json(['message' => "Seules les commandes en attente peuvent etre livrées !"], 422);
+            return response()->json(['message' => 'Seules les commandes en attente peuvent etre livrées !'], 422);
         }
 
         $validated = $request->validate([
@@ -669,11 +666,11 @@ class SalespersonController extends Controller
                 'customer_id' => $order->customer_id,
                 'paid' => $validated['paid'],
                 'should_be_paid_at' => $validated['should_be_paid_at'] ?? null,
-                'comment' => "Facture de livraison",
+                'comment' => 'Facture de livraison',
             ]);
 
             // Create invoice items from order items
-            $ordersToCreate =[];
+            $ordersToCreate = [];
             foreach ($order->items as $item) {
                 $ordersToCreate[] = [
                     'product_id' => $item->product_id,
@@ -738,7 +735,7 @@ class SalespersonController extends Controller
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
-                ],["product_id"]);
+                ], ['product_id']);
             }
 
             DB::commit();
@@ -750,7 +747,8 @@ class SalespersonController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error updating order items: ' . $e->getMessage());
+            Log::error('Error updating order items: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Error updating order items',
                 'error' => $e->getMessage(),
@@ -803,6 +801,7 @@ class SalespersonController extends Controller
     {
         $commercial = $request->user()->commercial;
         $batches = $this->visitService->getVisitBatches($commercial);
+
         return response()->json(['data' => $batches]);
     }
 
@@ -813,6 +812,7 @@ class SalespersonController extends Controller
     {
         $commercial = $request->user()->commercial;
         $data = $this->visitService->getTodayVisits($commercial);
+
         return response()->json($data);
     }
 
@@ -835,8 +835,8 @@ class SalespersonController extends Controller
                 'visit_date' => $visitBatch->visit_date,
                 'commercial_id' => $visitBatch->commercial_id,
                 'created_at' => $visitBatch->created_at,
-                'visits' => CustomerVisitResource::collection($visitBatch->visits)
-            ]
+                'visits' => CustomerVisitResource::collection($visitBatch->visits),
+            ],
         ]);
     }
 
@@ -853,6 +853,7 @@ class SalespersonController extends Controller
         ]);
 
         $visit = $this->visitService->completeVisit($customerVisit, $validated);
+
         // keys should be snake case
         return response()->json(new CustomerVisitResource($visit));
     }
@@ -864,7 +865,7 @@ class SalespersonController extends Controller
     {
         $commercial = $request->user()->commercial;
 
-        if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
+        if (! $this->visitService->canAccessVisit($commercial, $customerVisit)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -873,6 +874,7 @@ class SalespersonController extends Controller
         ]);
 
         $visit = $this->visitService->cancelVisit($customerVisit, $validated);
+
         return response()->json($visit);
     }
 
@@ -883,7 +885,7 @@ class SalespersonController extends Controller
     {
         $commercial = $request->user()->commercial;
 
-        if (!$this->visitService->canAccessVisit($commercial, $customerVisit)) {
+        if (! $this->visitService->canAccessVisit($commercial, $customerVisit)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -893,6 +895,7 @@ class SalespersonController extends Controller
         ]);
 
         $visit = $this->visitService->updateVisit($customerVisit, $validated);
+
         return response()->json($visit);
     }
 
@@ -907,11 +910,10 @@ class SalespersonController extends Controller
             'paid' => 'required|boolean',
             'payment_method' => 'required_if:paid,true|nullable|string',
             'should_be_paid_at' => 'required_if:paid,false|nullable|date',
-        ],[
-            "should_be_paid_at"=>"Vous devez préciser l'échéance car la facture n'est pas payée !",
-            'payment_method'=>"Vous devez choisir un moyen de paiement parmi CASH, WAVE ou OM"
+        ], [
+            'should_be_paid_at' => "Vous devez préciser l'échéance car la facture n'est pas payée !",
+            'payment_method' => 'Vous devez choisir un moyen de paiement parmi CASH, WAVE ou OM',
         ]);
-
 
         try {
             $salesInvoiceService->createSalesInvoice($validated);
@@ -919,11 +921,11 @@ class SalespersonController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
 
         }
+
         return response()->json([
-                'message' => 'Facture créée avec succès',
-            ], 201);
-        
-    
+            'message' => 'Facture créée avec succès',
+        ], 201);
+
     }
 
     /**
@@ -941,7 +943,7 @@ class SalespersonController extends Controller
             });
 
         $invoices = $query->get();
-        
+
         // Calculate total amount for all invoices
         $total = $invoices->sum(function ($invoice) {
             return $invoice->items->sum(function ($item) {
@@ -985,7 +987,7 @@ class SalespersonController extends Controller
         $commercials = Commercial::select('id', 'name', 'phone_number')
             ->orderBy('name')
             ->get();
-            
+
         return response()->json($commercials);
     }
 
@@ -1000,13 +1002,13 @@ class SalespersonController extends Controller
                 'phone_number' => $customer->phone_number,
                 'address' => $customer->address,
                 'gps_coordinates' => $customer->gps_coordinates,
-                "owner_number" => $customer->owner_number,
+                'owner_number' => $customer->owner_number,
                 'debt' => $customer->total_debt,
-                "is_prospect"=>$customer->is_prospect
+                'is_prospect' => $customer->is_prospect,
             ];
         });
 
-        return response()->json(["customers" => $customers]);
+        return response()->json(['customers' => $customers]);
     }
 
     public function getDebts(): JsonResponse
@@ -1057,30 +1059,25 @@ class SalespersonController extends Controller
     public function getWeeklyDebts(Request $request, SalesInvoiceService $salesInvoiceService): JsonResponse
     {
         $commercial = $request->user()->commercial;
-        if (!$commercial) {
+        if (! $commercial) {
             return response()->json(['message' => 'Commercial not found'], 404);
         }
 
         $weeklyDebts = $salesInvoiceService->weeklyDebts($commercial->id);
+
         return response()->json($weeklyDebts);
     }
 
-    /**
-     * @param Customer|\LaravelIdea\Helper\App\Models\_IH_Customer_C|array $customer
-     * @return void
-     */
-    function terminateVisitIfCustomerHasOne(Customer|\LaravelIdea\Helper\App\Models\_IH_Customer_C|array $customer): void
+    public function terminateVisitIfCustomerHasOne(Customer|\LaravelIdea\Helper\App\Models\_IH_Customer_C|array $customer): void
     {
         $visit = $customer->visits()->whereDate('visit_planned_at', '<=', now()->toDateString())->where('status',
             CustomerVisit::STATUS_PLANNED)->first();
         if ($visit) {
             $visit->status = CustomerVisit::STATUS_COMPLETED;
             $visit->visited_at = now();
-            $visit->notes = "Visite marquée comme terminée directement suite à une vente";
+            $visit->notes = 'Visite marquée comme terminée directement suite à une vente';
             $visit->gps_coordinates = $customer->gps_coordinates;
             $visit->save();
         }
     }
-
-
 }
