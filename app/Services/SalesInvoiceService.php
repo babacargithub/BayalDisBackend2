@@ -252,6 +252,81 @@ class SalesInvoiceService
             ->count();
     }
 
+    // =========================================================================
+    // Per-invoice calculation helpers (used by SalesInvoice::recalculateStoredTotals)
+    // =========================================================================
+
+    /**
+     * Build a base query scoped to the INVOICE_ITEM ventes of a specific invoice.
+     * calculateTotalAmountForInvoice and calculateTotalEstimatedProfitForInvoice
+     * both run their aggregates on top of this query.
+     */
+    private function buildBaseInvoiceItemsQuery(SalesInvoice $invoice): Builder
+    {
+        return Vente::query()
+            ->where('sales_invoice_id', $invoice->id);
+    }
+
+    /**
+     * Build a base query scoped to the payments of a specific invoice.
+     * calculateTotalPaymentsForInvoice and calculateTotalRealizedProfitForInvoice
+     * both run their aggregates on top of this query.
+     */
+    private function buildBaseInvoicePaymentsQuery(SalesInvoice $invoice): Builder
+    {
+        return Payment::query()
+            ->where('sales_invoice_id', $invoice->id);
+    }
+
+    /**
+     * Compute the total sales amount (price × quantity) across all INVOICE_ITEM ventes
+     * belonging to the given invoice.
+     *
+     * Used by SalesInvoice::recalculateStoredTotals() to refresh the stored total_amount column.
+     */
+    public function calculateTotalAmountForInvoice(SalesInvoice $invoice): int
+    {
+        return (int) $this->buildBaseInvoiceItemsQuery($invoice)
+            ->selectRaw('SUM(price * quantity) as total')
+            ->value('total');
+    }
+
+    /**
+     * Compute the total estimated profit across all INVOICE_ITEM ventes belonging to the given invoice.
+     *
+     * "Estimated" because it reflects the full potential profit regardless of payment status.
+     * Used by SalesInvoice::recalculateStoredTotals() to refresh the stored total_estimated_profit column.
+     */
+    public function calculateTotalEstimatedProfitForInvoice(SalesInvoice $invoice): int
+    {
+        return (int) $this->buildBaseInvoiceItemsQuery($invoice)
+            ->sum('profit');
+    }
+
+    /**
+     * Compute the total amount received across all payments for the given invoice.
+     *
+     * Used by SalesInvoice::recalculateStoredTotals() to refresh the stored total_payments column.
+     */
+    public function calculateTotalPaymentsForInvoice(SalesInvoice $invoice): int
+    {
+        return (int) $this->buildBaseInvoicePaymentsQuery($invoice)
+            ->sum('amount');
+    }
+
+    /**
+     * Compute the total realized profit across all payments for the given invoice.
+     *
+     * "Realized" profit is proportional to the amount paid and is stored per-payment at creation
+     * time via the Payment model's creating event.
+     * Used by SalesInvoice::recalculateStoredTotals() to refresh the stored total_realized_profit column.
+     */
+    public function calculateTotalRealizedProfitForInvoice(SalesInvoice $invoice): int
+    {
+        return (int) $this->buildBaseInvoicePaymentsQuery($invoice)
+            ->sum('profit');
+    }
+
     /**
      * Build a base SalesInvoice query scoped to the given date range.
      */

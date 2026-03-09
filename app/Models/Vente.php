@@ -95,7 +95,7 @@ class Vente extends Model
          */
         static::saved(function (Vente $vente) {
             if ($vente->sales_invoice_id !== null) {
-                $vente->salesInvoice?->recalculateStoredTotals();
+                SalesInvoice::find($vente->sales_invoice_id)?->recalculateStoredTotals();
             }
         });
 
@@ -105,7 +105,7 @@ class Vente extends Model
          */
         static::deleted(function (Vente $vente) {
             if ($vente->sales_invoice_id !== null) {
-                $vente->salesInvoice?->recalculateStoredTotals();
+                SalesInvoice::find($vente->sales_invoice_id)?->recalculateStoredTotals();
             }
         });
     }

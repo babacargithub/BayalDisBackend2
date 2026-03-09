@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InvoicePaymentMismatchException;
+use App\Services\SalesInvoiceService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -131,10 +132,12 @@ class SalesInvoice extends Model
      */
     public function recalculateStoredTotals(): void
     {
-        $freshTotalAmount = (int) $this->items()->selectRaw('SUM(price * quantity) as total')->value('total');
-        $freshTotalEstimatedProfit = (int) $this->items()->selectRaw('SUM(profit) as total')->value('total');
-        $freshTotalPayments = (int) $this->payments()->selectRaw('SUM(amount) as total')->value('total');
-        $freshTotalRealizedProfit = (int) $this->payments()->selectRaw('SUM(profit) as total')->value('total');
+        $salesInvoiceService = app(SalesInvoiceService::class);
+
+        $freshTotalAmount = $salesInvoiceService->calculateTotalAmountForInvoice($this);
+        $freshTotalEstimatedProfit = $salesInvoiceService->calculateTotalEstimatedProfitForInvoice($this);
+        $freshTotalPayments = $salesInvoiceService->calculateTotalPaymentsForInvoice($this);
+        $freshTotalRealizedProfit = $salesInvoiceService->calculateTotalRealizedProfitForInvoice($this);
 
         // FULLY_PAID is never set automatically — only markAsFullyPaid() may do that.
         // However, if the invoice is already FULLY_PAID and payments still cover the

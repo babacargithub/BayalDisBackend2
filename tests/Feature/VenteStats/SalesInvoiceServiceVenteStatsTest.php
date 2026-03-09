@@ -121,6 +121,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
             ? $overrides['customer_id']
             : $this->defaultCustomer->id;
         $paid = $overrides['paid'] ?? true;
+        $venteType = $overrides['type'] ?? Vente::TYPE_INVOICE;
 
         unset($overrides['commercial_id']);
 
@@ -129,7 +130,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
             'commercial_id' => $commercialId,
         ]);
 
-        $vente = Vente::create(array_merge([
+        $venteDefaults = [
             'sales_invoice_id' => $invoice->id,
             'customer_id' => $customerId,
             'product_id' => $this->defaultProduct->id,
@@ -137,11 +138,19 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
             'price' => 1000,
             'profit' => 300,
             'type' => Vente::TYPE_INVOICE,
-        ], $overrides));
+        ];
 
-        // Create a full payment when paid = true so recalculateStoredTotals()
-        // correctly sets status = FULLY_PAID and propagates paid = true to ventes.
-        if ($paid) {
+        // SINGLE ventes manage their own paid column directly.
+        // INVOICE_ITEM ventes get paid = true via the invoice payment cascade.
+        if ($venteType === Vente::TYPE_SINGLE) {
+            $venteDefaults['paid'] = $paid;
+        }
+
+        $vente = Vente::create(array_merge($venteDefaults, $overrides));
+
+        // For INVOICE_ITEM ventes, create a matching payment and mark the invoice as
+        // fully paid so recalculateStoredTotals() propagates paid = true to the vente.
+        if ($paid && $venteType === Vente::TYPE_INVOICE) {
             $price = $overrides['price'] ?? 1000;
             $quantity = $overrides['quantity'] ?? 1;
             Payment::create([

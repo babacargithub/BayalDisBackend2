@@ -54,7 +54,7 @@ class Payment extends Model
          */
         static::saved(function (Payment $payment) {
             if ($payment->sales_invoice_id !== null) {
-                $payment->salesInvoice?->recalculateStoredTotals();
+                SalesInvoice::find($payment->sales_invoice_id)?->recalculateStoredTotals();
             }
         });
 
@@ -64,7 +64,7 @@ class Payment extends Model
          */
         static::deleted(function (Payment $payment) {
             if ($payment->sales_invoice_id !== null) {
-                $payment->salesInvoice?->recalculateStoredTotals();
+                SalesInvoice::find($payment->sales_invoice_id)?->recalculateStoredTotals();
             }
         });
     }

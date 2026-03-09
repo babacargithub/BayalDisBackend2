@@ -103,14 +103,21 @@ class SalesInvoiceStoredTotalsTest extends TestCase
     }
 
     /**
-     * Create a full payment covering the invoice total and call markAsFullyPaid()
-     * to transition the invoice to FULLY_PAID status.
-     * markAsFullyPaid() is the only authorised path to that status.
+     * Create a full payment covering the invoice total and call markAsFullyPaid().
+     * Returns the Payment so callers can delete it individually if needed
+     * (individual delete fires Payment::deleted which triggers recalculateStoredTotals()).
      */
+    private function fullyPayInvoiceAndReturnPayment(SalesInvoice $invoice): Payment
+    {
+        $payment = $this->makePaymentForInvoice($invoice, $invoice->fresh()->total_amount);
+        $invoice->markAsFullyPaid();
+
+        return $payment;
+    }
+
     private function fullyPayInvoice(SalesInvoice $invoice): void
     {
-        $this->makePaymentForInvoice($invoice, $invoice->fresh()->total_amount);
-        $invoice->markAsFullyPaid();
+        $this->fullyPayInvoiceAndReturnPayment($invoice);
     }
 
     // =========================================================================
@@ -344,10 +351,11 @@ class SalesInvoiceStoredTotalsTest extends TestCase
         $invoice = $this->makeEmptyInvoice();
         $this->addItemToInvoice($invoice, price: 2000, quantity: 1, profit: 400);
 
-        $this->fullyPayInvoice($invoice);
+        $payment = $this->fullyPayInvoiceAndReturnPayment($invoice);
         $this->assertSame(SalesInvoiceStatus::FullyPaid, $invoice->fresh()->status);
 
-        $invoice->payments()->delete();
+        // Use individual delete so Payment::deleted fires recalculateStoredTotals().
+        $payment->delete();
 
         $freshInvoice = $invoice->fresh();
         $this->assertSame(SalesInvoiceStatus::Draft, $freshInvoice->status);
@@ -361,11 +369,11 @@ class SalesInvoiceStoredTotalsTest extends TestCase
 
         $this->assertFalse($invoice->fresh()->paid);
 
-        $this->fullyPayInvoice($invoice);
+        $payment = $this->fullyPayInvoiceAndReturnPayment($invoice);
         $this->assertTrue($invoice->fresh()->paid);
 
-        $invoice->payments()->delete();
-        $invoice->recalculateStoredTotals();
+        // Individual delete fires Payment::deleted → recalculateStoredTotals() automatically.
+        $payment->delete();
         $this->assertFalse($invoice->fresh()->paid);
     }
 
