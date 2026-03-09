@@ -1,4 +1,4 @@
-<?php
+<?php /** @noinspection UnknownColumnInspection */
 
 namespace App\Services;
 
@@ -8,7 +8,6 @@ use App\Data\Vente\VenteStatsFilter;
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Models\Customer;
-use App\Models\CustomerVisit;
 use App\Models\Depense;
 use App\Models\Payment;
 use App\Models\Product;
@@ -16,6 +15,7 @@ use App\Models\SalesInvoice;
 use App\Models\Vente;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -31,49 +31,42 @@ class SalesInvoiceService
 
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
-                'invoice_number' => 'FACTURE Nº '.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0',
-                    STR_PAD_LEFT),
-                'label' => 'Facture Vente',
-                // TODO remove this from request and implement a way to calculate status paid
-                'paid' => $data['paid'] ?? false,
+                'invoice_number' => 'FACTURE Nº '.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
+                'comment' => 'Facture Vente',
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
                 'commercial_id' => $user->commercial->id,
             ]);
             $salesInvoice->save();
             $salesInvoice->refresh();
-            $totalAmount = 0;
 
             // Add items to the invoice and update stock
             $itemsArray = [];
             foreach ($data['items'] as $item) {
 
-                $vente = new Vente([
+                $salesInvoiceItem = new Vente([
                     'sales_invoice_id' => $salesInvoice->id,
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     'type' => 'INVOICE_ITEM',
                 ]);
-                $itemAmount = $item['quantity'] * $item['price'];
-                $totalAmount += $itemAmount;
+                $salesInvoiceItem->calculateProfit();
 
-                $itemsArray[] = $vente;
+                $itemsArray[] = $salesInvoiceItem;
 
                 // Update product stock using the decrementStock method
+                //TODO we will use Product Service with a fully tested method
                 $product = Product::findOrFail($item['product_id']);
+                /** @noinspection PhpRedundantOptionalArgumentInspection */
                 $product->decrementStock($item['quantity'], updateMainStock: false, commercial: $user->commercial);
             }
-            $itemsArray = collect($itemsArray);
             $salesInvoice->items()->saveMany($itemsArray);
-            // loop through items to calculate profits
-            foreach ($itemsArray as $vente) {
-                $vente->calculateProfit();
-                $vente->save();
-            }
 
-            // If paid, create the payment then explicitly transition to FULLY_PAID.
+
+            // If paid, create the payment, then explicitly transition to FULLY_PAID.
             // markAsFullyPaid() is the only authorised path to FULLY_PAID status.
             if ($data['paid']) {
+                $totalAmount  = $this->calculateTotalAmountForInvoice($salesInvoice);
                 Payment::create([
                     'sales_invoice_id' => $salesInvoice->id,
                     'amount' => $totalAmount,
@@ -82,15 +75,17 @@ class SalesInvoiceService
                 ]);
                 $salesInvoice->markAsFullyPaid();
             }
-            // check customer has current visite also check if it is a prospect
-            $customer = Customer::findOrFail($data['customer_id']);
-            $customerVisit = $customer->visits()->where('status', CustomerVisit::STATUS_PLANNED)->orderBy('created_at', 'asc')
-                ->first();
-            $customerVisit?->complete([
-                'notes' => 'Visite complété après enregistrement facture',
-                'gps_coordinates' => $customer->gps_coordinates,
-                'resulted_in_sale' => true,
-            ]);
+            $salesInvoice->recalculateStoredTotals();
+            $salesInvoice->save();
+            $customer = Customer::withoutEagerLoads()->findOrFail($data['customer_id']);
+//            // check customer has current visite also check if it is a prospect
+//            $customerVisit = $customer->visits()->where('status', CustomerVisit::STATUS_PLANNED)->orderBy('created_at', 'asc')
+//                ->first();
+//            $customerVisit?->complete([
+//                'notes' => 'Visite complété après enregistrement facture',
+//                'gps_coordinates' => $customer->gps_coordinates,
+//                'resulted_in_sale' => true,
+//            ]);
             if ($customer->is_prospect) {
                 $customer->is_prospect = false;
                 $customer->save();
@@ -106,7 +101,7 @@ class SalesInvoiceService
             ->where('commercial_id', $commercial_id)
             ->get();
 
-        $groupedInvoices = $invoices->groupBy(function ($invoice) {
+        return $invoices->groupBy(function ($invoice) {
             $date = Carbon::parse($invoice->created_at);
             $weekStart = $date->startOfWeek();
             $weekEnd = $date->copy()->endOfWeek();
@@ -117,13 +112,16 @@ class SalesInvoiceService
 
             $weeklyTotal = $weekInvoices->sum('total_amount');
             $weeklyTotalPaid = $weekInvoices->sum('total_payments');
-
+            /**
+             * @var $weekInvoices Collection
+             */
             return [
                 'label' => 'Du '.Carbon::parse($weekStart)->locale('fr')->isoFormat('dddd D MMMM').
                           ' au '.Carbon::parse($weekEnd)->locale('fr')->isoFormat('dddd D MMMM YYYY'),
                 'total' => $weeklyTotal,
                 'total_paid' => $weeklyTotalPaid,
                 'total_remaining' => $weeklyTotal - $weeklyTotalPaid,
+
                 'invoices' => $weekInvoices->map(function (SalesInvoice $invoice) {
                     return [
                         'id' => $invoice->id,
@@ -139,8 +137,6 @@ class SalesInvoiceService
                 })->values(),
             ];
         })->values();
-
-        return $groupedInvoices;
     }
 
     /**
@@ -167,7 +163,7 @@ class SalesInvoiceService
     /**
      * Compute the total profit for ventes within the given date range and filter constraints.
      *
-     * This is the single source of truth for profit computation in the application.
+     * This is the single source of truth for-profit computation in the application.
      * All dashboard, report, and API endpoints must use this method — never query ventes directly.
      *
      * @param  Carbon|null  $startDate  Inclusive start date; null means no lower bound (all-time).
@@ -219,25 +215,25 @@ class SalesInvoiceService
      */
     public function salesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
-        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)->count();
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)->count();
     }
 
     /**
-     * Count fully-paid sales invoices within the given date range.
+     * Count fully paid sales invoices within the given date range.
      */
     public function fullyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
-        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
             ->where('status', SalesInvoiceStatus::FullyPaid)
             ->count();
     }
 
     /**
-     * Count partially-paid sales invoices within the given date range.
+     * Count partially paid sales invoices within the given date range.
      */
     public function partiallyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
-        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
             ->where('status', SalesInvoiceStatus::PartiallyPaid)
             ->count();
     }
@@ -247,7 +243,7 @@ class SalesInvoiceService
      */
     public function unpaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
-        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
             ->where('status', SalesInvoiceStatus::Draft)
             ->count();
     }
