@@ -2,11 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Commercial;
+use App\Models\Customer;
 use App\Models\CustomerVisit;
 use App\Models\VisitBatch;
-use App\Models\Commercial;
-
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class CustomerVisitService
@@ -17,23 +16,24 @@ class CustomerVisitService
     public function getVisitBatches(Commercial $commercial, int $perPage = 20)
     {
         $batches = VisitBatch::latest()
-        ->paginate($perPage)->map(function (VisitBatch $batch){
+            ->paginate($perPage)->map(function (VisitBatch $batch) {
                 /**
                  * visitsCount: json['visits_count'],
                  * completedCount: json['completed_count'],
                  * pendingCount: json['pending_count'],
                  */
-            return [
-                'id' => $batch->id,
-                'name' => $batch->name,
-                'visit_date' => $batch->visit_date,
-                'visits'=>[],
-                'visits_count' => $batch->visits->count(),
-                'pending_count' => $batch->visits->where('status', 'planned')->count(),
-                'completed_count' => $batch->visits->where('status', 'completed')->count(),
-                'created_at' => $batch->created_at,
-            ];
+                return [
+                    'id' => $batch->id,
+                    'name' => $batch->name,
+                    'visit_date' => $batch->visit_date,
+                    'visits' => [],
+                    'visits_count' => $batch->visits->count(),
+                    'pending_count' => $batch->visits->where('status', 'planned')->count(),
+                    'completed_count' => $batch->visits->where('status', 'completed')->count(),
+                    'created_at' => $batch->created_at,
+                ];
             });
+
         return $batches;
     }
 
@@ -134,4 +134,24 @@ class CustomerVisitService
     {
         return true;
     }
-} 
+
+    /**
+     * If the customer has a planned visit scheduled for today or earlier, mark it as completed.
+     * Called automatically when a sale is made to a customer.
+     */
+    public function terminateVisitIfCustomerHasPlannedOne(Customer $customer): void
+    {
+        $visit = $customer->visits()
+            ->whereDate('visit_planned_at', '<=', now()->toDateString())
+            ->where('status', CustomerVisit::STATUS_PLANNED)
+            ->first();
+
+        if ($visit) {
+            $visit->status = CustomerVisit::STATUS_COMPLETED;
+            $visit->visited_at = now();
+            $visit->notes = 'Visite marquée comme terminée directement suite à une vente';
+            $visit->gps_coordinates = $customer->gps_coordinates;
+            $visit->save();
+        }
+    }
+}

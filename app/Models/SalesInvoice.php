@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $total Alias for total_amount.
  * @property int $total_paid Alias for total_payments.
  * @property int $total_remaining Computed as total_amount − total_payments.
+ * @property mixed $invoice_number
  */
 class SalesInvoice extends Model
 {

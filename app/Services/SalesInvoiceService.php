@@ -4,11 +4,13 @@
 
 namespace App\Services;
 
+use App\Data\ActivityReport\CommercialActivityReportDTO;
 use App\Data\Dashboard\DashboardStats;
 use App\Data\Vente\PaidStatus;
 use App\Data\Vente\VenteStatsFilter;
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
+use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Depense;
 use App\Models\Payment;
@@ -18,12 +20,13 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Throwable;
 
-class SalesInvoiceService
+readonly class SalesInvoiceService
 {
     public function __construct(
-        private readonly CarLoadService $carLoadService
+        private CarLoadService $carLoadService
     ) {}
 
     /** @throws  InsufficientStockException|Throwable */
@@ -64,7 +67,7 @@ class SalesInvoiceService
             //  move the stock
             $currentCarLoad = $this->carLoadService->getCurrentCarLoadForTeam($user->commercial->team);
             if ($currentCarLoad === null) {
-                throw new \Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException(
+                throw new UnprocessableEntityHttpException(
                     'Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !'
                 );
             }
@@ -76,16 +79,13 @@ class SalesInvoiceService
             // markAsFullyPaid() is the only authorised path to FULLY_PAID status.
             if ($data['paid']) {
                 $totalAmount = $this->calculateTotalAmountForInvoice($salesInvoice);
-                Payment::create([
+                $this->paySalesInvoice($salesInvoice, [
                     'sales_invoice_id' => $salesInvoice->id,
                     'amount' => $totalAmount,
                     'payment_method' => $data['payment_method'],
-                    'user_id' => request()->user()->id,
-                ]);
-                $salesInvoice->markAsFullyPaid();
+                ], request()->user()->id);
             }
-            $salesInvoice->recalculateStoredTotals();
-            $salesInvoice->save();
+
             $customer = Customer::withoutEagerLoads()->findOrFail($data['customer_id']);
             //            // check customer has current visite also check if it is a prospect
             //            $customerVisit = $customer->visits()->where('status', CustomerVisit::STATUS_PLANNED)->orderBy('created_at', 'asc')
@@ -101,6 +101,29 @@ class SalesInvoiceService
             }
 
             return $salesInvoice;
+        });
+    }
+
+    /** @throws Throwable */
+    public function paySalesInvoice(SalesInvoice $salesInvoice, array $validatedData, int $userId): bool
+    {
+        return DB::transaction(function () use ($salesInvoice, $validatedData, $userId) {
+
+            $salesInvoice->payments()->create([
+                'amount' => $validatedData['amount'],
+                'payment_method' => $validatedData['payment_method'],
+                'comment' => $validatedData['comment'] ?? null,
+                'user_id' => $userId,
+            ]);
+            $salesInvoice->recalculateStoredTotals();
+            $totalPaid = $this->calculateTotalPaymentsForInvoice($salesInvoice);
+            $invoiceTotal = $this->calculateTotalAmountForInvoice($salesInvoice);
+
+            if ($totalPaid >= $invoiceTotal) {
+                $salesInvoice->markAsFullyPaid();
+            }
+
+            return true;
         });
     }
 
@@ -441,6 +464,75 @@ class SalesInvoiceService
         }
 
         return $query;
+    }
+
+    /**
+     * Compute the activity report for a commercial over a given period.
+     *
+     * All financial totals are derived from stored columns on sales_invoices (total_amount,
+     * total_payments) so results are always consistent with the invoice lifecycle and no
+     * raw vente-level queries are needed.
+     *
+     * - totalSales:       SUM(sales_invoices.total_amount) for invoices created in the period.
+     * - totalPayments:    SUM(payments.amount) for payments collected in the period.
+     * - totalUnpaidAmount: SUM(total_amount - total_payments) on invoices created in the period.
+     * - Payment method totals (Wave/OM/Cash) are derived from the payments table in a single
+     *   grouped query; their sum equals totalPayments.
+     * - Customer counts reflect customers CREATED in the period (not customers who bought).
+     */
+    public function buildCommercialActivityReport(
+        Commercial $commercial,
+        Carbon $startDate,
+        Carbon $endDate,
+    ): CommercialActivityReportDTO {
+        // ── Invoice stored totals (single query on sales_invoices) ──────────────────
+        $invoiceAggregates = SalesInvoice::where('commercial_id', $commercial->id)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as total_sales, COALESCE(SUM(total_amount - total_payments), 0) as total_unpaid')
+            ->first();
+
+        $totalSales = (int) $invoiceAggregates->total_sales;
+        $totalUnpaidAmount = (int) $invoiceAggregates->total_unpaid;
+
+        // ── Payment method breakdown (single grouped query on payments) ───────────
+        // Scoped to payments collected in the period for this commercial's invoices.
+        $paymentMethodBreakdown = Payment::whereHas(
+            'salesInvoice',
+            fn (Builder $invoiceQuery) => $invoiceQuery->where('commercial_id', $commercial->id)
+        )
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->selectRaw('payment_method, SUM(amount) as total')
+            ->groupBy('payment_method')
+            ->pluck('total', 'payment_method');
+
+        $totalPaymentsCash = (int) ($paymentMethodBreakdown[Vente::PAYMENT_METHOD_CASH] ?? 0);
+        $totalPaymentsWave = (int) ($paymentMethodBreakdown[Vente::PAYMENT_METHOD_WAVE] ?? 0);
+        $totalPaymentsOm = (int) ($paymentMethodBreakdown[Vente::PAYMENT_METHOD_OM] ?? 0);
+
+        // Sum across all methods (including any unlabelled payments) for the authoritative total.
+        $totalPayments = (int) $paymentMethodBreakdown->sum();
+
+        // ── Customer counts (customers CREATED in the period) ────────────────────
+        $newConfirmedCustomersCount = $commercial->customers()
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->nonProspects()
+            ->count();
+
+        $newProspectCustomersCount = $commercial->customers()
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->prospects()
+            ->count();
+
+        return new CommercialActivityReportDTO(
+            totalSales: $totalSales,
+            totalPayments: $totalPayments,
+            newConfirmedCustomersCount: $newConfirmedCustomersCount,
+            newProspectCustomersCount: $newProspectCustomersCount,
+            totalUnpaidAmount: $totalUnpaidAmount,
+            totalPaymentsWave: $totalPaymentsWave,
+            totalPaymentsOm: $totalPaymentsOm,
+            totalPaymentsCash: $totalPaymentsCash,
+        );
     }
 
     /**

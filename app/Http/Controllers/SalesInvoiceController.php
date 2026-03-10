@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\PaySalesInvoiceRequest;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
@@ -305,15 +306,9 @@ class SalesInvoiceController extends Controller
         }
     }
 
-    public function addPayment(Request $request, SalesInvoice $salesInvoice)
+    public function addPayment(PaySalesInvoiceRequest $request, SalesInvoice $salesInvoice)
     {
         try {
-            $validated = $request->validate([
-                'amount' => 'required|integer|min:1',
-                'payment_method' => 'required|string|in:Cash,Wave,Om',
-                'comment' => 'nullable|string',
-            ]);
-
             if ($salesInvoice->paid) {
                 return redirect()->back()->withErrors(['error' => 'La facture est déjà payée.']);
             }
@@ -394,18 +389,13 @@ class SalesInvoiceController extends Controller
         }
     }
 
-    public function updatePayment(Request $request, SalesInvoice $salesInvoice, Payment $payment)
+    public function updatePayment(PaySalesInvoiceRequest $request, SalesInvoice $salesInvoice, Payment $payment)
     {
         if ($payment->sales_invoice_id !== $salesInvoice->id) {
             return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture']);
         }
 
         try {
-            $validated = $request->validate([
-                'amount' => 'required|integer|min:1',
-                'payment_method' => 'required|string|in:Cash,Wave,Om',
-                'comment' => 'nullable|string',
-            ]);
 
             DB::beginTransaction();
 
