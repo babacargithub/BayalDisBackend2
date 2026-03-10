@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $total_payments Stored: sum of all payment amounts received.
  * @property int $total_estimated_profit Stored: sum of profit on all invoice items (full potential profit).
  * @property int $total_realized_profit Stored: sum of profit on payments (proportional earned profit).
- * @property SalesInvoiceStatus $status Stored: DRAFT | PARTIALLY_PAID | FULLY_PAID.
+ * @property SalesInvoiceStatus $status Stored: DRAFT | ISSUED | PARTIALLY_PAID | FULLY_PAID.
  *
  * Backward-compat aliases (delegate to stored columns — no DB query):
  * @property int $total Alias for total_amount.
@@ -150,6 +150,9 @@ class SalesInvoice extends Model
         $newStatus = match (true) {
             $currentStatus === SalesInvoiceStatus::FullyPaid && $paymentsStillCoverTotal => SalesInvoiceStatus::FullyPaid,
             $freshTotalPayments > 0 => SalesInvoiceStatus::PartiallyPaid,
+            // Preserve Issued — an invoice issued to a customer must not be silently demoted
+            // back to Draft when a payment is removed or rolled back.
+            $currentStatus === SalesInvoiceStatus::Issued => SalesInvoiceStatus::Issued,
             default => SalesInvoiceStatus::Draft,
         };
 

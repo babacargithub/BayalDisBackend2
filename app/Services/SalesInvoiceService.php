@@ -43,7 +43,7 @@ readonly class SalesInvoiceService
                 'comment' => 'Facture de Vente',
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
                 'commercial_id' => $user->commercial->id,
-                'status' => SalesInvoiceStatus::Draft,
+                'status' => SalesInvoiceStatus::Issued,
             ]);
             $salesInvoice->refresh();
 
@@ -78,6 +78,7 @@ readonly class SalesInvoiceService
             // If paid, create the payment, then explicitly transition to FULLY_PAID.
             // markAsFullyPaid() is the only authorised path to FULLY_PAID status.
             if ($data['paid']) {
+                // If the request does not include the amount, we will default to the total amount of the invoice
                 $totalAmount = $this->calculateTotalAmountForInvoice($salesInvoice);
                 $this->paySalesInvoice($salesInvoice, [
                     'sales_invoice_id' => $salesInvoice->id,
@@ -272,12 +273,15 @@ readonly class SalesInvoiceService
     }
 
     /**
-     * Count draft (unpaid) sales invoices within the given date range.
+     * Count unpaid sales invoices within the given date range.
+     *
+     * Both DRAFT (back-office, not yet issued) and ISSUED (sent to customer, awaiting
+     * payment) are considered unpaid — neither has any payment recorded yet.
      */
     public function unpaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
     {
         return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
-            ->where('status', SalesInvoiceStatus::Draft)
+            ->whereIn('status', [SalesInvoiceStatus::Draft, SalesInvoiceStatus::Issued])
             ->count();
     }
 
@@ -470,13 +474,13 @@ readonly class SalesInvoiceService
      * Compute the activity report for a commercial over a given period.
      *
      * All financial totals are derived from stored columns on sales_invoices (total_amount,
-     * total_payments) so results are always consistent with the invoice lifecycle and no
+     * total_payments), so results are always consistent with the invoice lifecycle and no
      * raw vente-level queries are needed.
      *
-     * - totalSales:       SUM(sales_invoices.total_amount) for invoices created in the period.
-     * - totalPayments:    SUM(payments.amount) for payments collected in the period.
+     * - totalSales: SUM(sales_invoices.total_amount) for invoices created in the period.
+     * - totalPayments: SUM(payments.amount) for payments collected in the period.
      * - totalUnpaidAmount: SUM(total_amount - total_payments) on invoices created in the period.
-     * - Payment method totals (Wave/OM/Cash) are derived from the payments table in a single
+     * - Payment method totals (Wave/OM/Cash) are derived from the "payments" table in a single
      *   grouped query; their sum equals totalPayments.
      * - Customer counts reflect customers CREATED in the period (not customers who bought).
      */
@@ -486,13 +490,21 @@ readonly class SalesInvoiceService
         Carbon $endDate,
     ): CommercialActivityReportDTO {
         // ── Invoice stored totals (single query on sales_invoices) ──────────────────
+        /**
+         * @var array{total_sales: float, total_unpaid: float} $invoiceAggregates
+         */
+
         $invoiceAggregates = SalesInvoice::where('commercial_id', $commercial->id)
             ->whereBetween('created_at', [$startDate, $endDate])
             ->selectRaw('COALESCE(SUM(total_amount), 0) as total_sales, COALESCE(SUM(total_amount - total_payments), 0) as total_unpaid')
             ->first();
 
-        $totalSales = (int) $invoiceAggregates->total_sales;
-        $totalUnpaidAmount = (int) $invoiceAggregates->total_unpaid;
+        if (!empty($invoiceAggregates->total_sales)) {
+            $totalSales = (int) $invoiceAggregates->total_sales;
+        }
+        if (!empty($invoiceAggregates->total_unpaid)) {
+            $totalUnpaidAmount = (int) $invoiceAggregates->total_unpaid;
+        }
 
         // ── Payment method breakdown (single grouped query on payments) ───────────
         // Scoped to payments collected in the period for this commercial's invoices.
@@ -524,11 +536,11 @@ readonly class SalesInvoiceService
             ->count();
 
         return new CommercialActivityReportDTO(
-            totalSales: $totalSales,
+            totalSales: $totalSales ?? 0,
             totalPayments: $totalPayments,
             newConfirmedCustomersCount: $newConfirmedCustomersCount,
             newProspectCustomersCount: $newProspectCustomersCount,
-            totalUnpaidAmount: $totalUnpaidAmount,
+            totalUnpaidAmount: $totalUnpaidAmount ?? 0,
             totalPaymentsWave: $totalPaymentsWave,
             totalPaymentsOm: $totalPaymentsOm,
             totalPaymentsCash: $totalPaymentsCash,

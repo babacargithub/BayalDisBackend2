@@ -1,4 +1,6 @@
-<?php /** @noinspection UnknownColumnInspection */
+<?php
+
+/** @noinspection UnknownColumnInspection */
 
 namespace App\Http\Controllers\Api;
 
@@ -8,6 +10,8 @@ use App\Exceptions\InvoicePaymentMismatchException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateSalesInvoiceRequest;
 use App\Http\Requests\PaySalesInvoiceRequest;
+use App\Http\Resources\CustomerResource;
+use App\Http\Resources\ProductResource;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -24,6 +28,7 @@ class ApiSalesInvoiceController extends Controller
     public function __construct(
         private readonly SalesInvoiceService $salesInvoiceService,
     ) {}
+
     public function createSalesInvoice(CreateSalesInvoiceRequest $request): JsonResponse
     {
         try {
@@ -36,7 +41,6 @@ class ApiSalesInvoiceController extends Controller
 
         return response()->json(['message' => 'Facture créée avec succès'], 201);
     }
-
 
     /**
      * @throws Throwable
@@ -55,13 +59,11 @@ class ApiSalesInvoiceController extends Controller
     {
         $date = $request->query('date', today()->toDateString());
 
-
         $invoicesQuery = SalesInvoice::with(['customer', 'items.product'])
             ->whereDate('created_at', $date);
 
         $paymentsQuery = Payment::whereDate('created_at', $date)
             ->where('user_id', $request->user()->id);
-
 
         $invoices = $invoicesQuery->get();
         $activityReport = $this->salesInvoiceService->buildCommercialActivityReport(auth()->user()->commercial,
@@ -69,9 +71,8 @@ class ApiSalesInvoiceController extends Controller
         $totalSales = $activityReport->totalSales;
         $totalPayments = $activityReport->totalPayments;
 
-
         return response()->json([
-            'ventes' =>[],
+            'ventes' => [],
             'invoices' => $invoices->map(fn (SalesInvoice $invoice) => [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
@@ -92,12 +93,10 @@ class ApiSalesInvoiceController extends Controller
                 'created_at' => $payment->created_at,
                 'label' => 'Paiement : '.$payment->salesInvoice?->customer?->name,
             ]),
-            "total_payments"=> $totalPayments,
-            'total' => $totalSales
+            'total_payments' => $totalPayments,
+            'total' => $totalSales,
         ]);
     }
-
-
 
     public function getActivityReport(Request $request): JsonResponse
     {
@@ -127,8 +126,6 @@ class ApiSalesInvoiceController extends Controller
         ]);
     }
 
-
-
     public function getCommercials(): JsonResponse
     {
         return response()->json(
@@ -139,8 +136,8 @@ class ApiSalesInvoiceController extends Controller
     public function getCustomersAndProducts(): JsonResponse
     {
         return response()->json([
-            'customers' => Customer::latest()->get(),
-            'products' => Product::all(),
+            'customers' => CustomerResource::collection(Customer::latest()->get()),
+            'products' => ProductResource::collection(Product::all()),
         ]);
     }
 }
