@@ -290,7 +290,11 @@ class CarLoadService
                     ]);
                 }
             }
-            // get missing items from the inventory by distinct product_id and sum the total_loaded
+
+            // Zero out quantity_left on all old car load items.
+            // The remaining stock has been physically transferred to the new car load.
+            // Leaving old items non-zero creates phantom inventory across car loads.
+            $carLoad->items()->update(['quantity_left' => 0]);
 
             return $newCarLoad;
         });
