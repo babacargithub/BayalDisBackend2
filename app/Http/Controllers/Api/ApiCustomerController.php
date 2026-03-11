@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\CreateCustomerRequest;
-use App\Http\Requests\UpdateCustomerRequest;
+use App\Http\Requests\Api\CreateCustomerRequest;
+use App\Http\Requests\Api\UpdateCustomerRequest;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
 use App\Services\CustomerService;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -170,14 +170,14 @@ class ApiCustomerController extends Controller
         return response()->json($invoices);
     }
 
-    public function getWeeklyDebts(Request $request, SalesInvoiceService $salesInvoiceService): JsonResponse
+    public function getWeeklyDebts(Request $request, SalesInvoiceStatsService $salesInvoiceStatsService): JsonResponse
     {
         $commercial = $request->user()->commercial;
         if (! $commercial) {
             return response()->json(['message' => 'Commercial not found'], 404);
         }
 
-        return response()->json($salesInvoiceService->weeklyDebts($commercial->id));
+        return response()->json($salesInvoiceStatsService->weeklyDebts($commercial->id));
     }
 
     private function venteResource($query): JsonResponse

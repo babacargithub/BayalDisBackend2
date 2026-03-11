@@ -10,7 +10,7 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -32,7 +32,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private SalesInvoiceService $salesInvoiceService;
+    private SalesInvoiceStatsService $salesInvoiceStatsService;
 
     private Customer $defaultCustomer;
 
@@ -44,7 +44,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
     {
         parent::setUp();
 
-        $this->salesInvoiceService = app(SalesInvoiceService::class);
+        $this->salesInvoiceStatsService = app(SalesInvoiceStatsService::class);
 
         $team = Team::create([
             'name' => 'Team '.uniqid(),
@@ -136,7 +136,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
     {
         $invoice = $this->makeEmptyInvoice();
 
-        $this->assertSame(0, $this->salesInvoiceService->calculateTotalAmountForInvoice($invoice));
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoice));
     }
 
     public function test_calculate_total_amount_for_invoice_returns_price_times_quantity_for_single_item(): void
@@ -144,7 +144,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $invoice = $this->makeEmptyInvoice();
         $this->insertInvoiceItemDirectly($invoice, price: 2000, quantity: 3, profit: 600);
 
-        $this->assertSame(6000, $this->salesInvoiceService->calculateTotalAmountForInvoice($invoice));
+        $this->assertSame(6000, $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoice));
     }
 
     public function test_calculate_total_amount_for_invoice_accumulates_across_multiple_items(): void
@@ -153,7 +153,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertInvoiceItemDirectly($invoice, price: 1000, quantity: 2, profit: 200); // 2 000
         $this->insertInvoiceItemDirectly($invoice, price: 500, quantity: 4, profit: 100);  // 2 000
 
-        $this->assertSame(4000, $this->salesInvoiceService->calculateTotalAmountForInvoice($invoice));
+        $this->assertSame(4000, $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoice));
     }
 
     public function test_calculate_total_amount_for_invoice_is_isolated_from_other_invoices(): void
@@ -164,7 +164,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $otherInvoice = $this->makeEmptyInvoice();
         $this->insertInvoiceItemDirectly($otherInvoice, price: 9999, quantity: 99, profit: 5000);
 
-        $this->assertSame(1000, $this->salesInvoiceService->calculateTotalAmountForInvoice($invoiceUnderTest));
+        $this->assertSame(1000, $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoiceUnderTest));
     }
 
     // =========================================================================
@@ -175,7 +175,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
     {
         $invoice = $this->makeEmptyInvoice();
 
-        $this->assertSame(0, $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice));
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice));
     }
 
     public function test_calculate_total_estimated_profit_for_invoice_returns_profit_for_single_item(): void
@@ -183,7 +183,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $invoice = $this->makeEmptyInvoice();
         $this->insertInvoiceItemDirectly($invoice, price: 2000, quantity: 1, profit: 600);
 
-        $this->assertSame(600, $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice));
+        $this->assertSame(600, $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice));
     }
 
     public function test_calculate_total_estimated_profit_for_invoice_accumulates_across_multiple_items(): void
@@ -192,7 +192,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertInvoiceItemDirectly($invoice, price: 1000, quantity: 2, profit: 200);
         $this->insertInvoiceItemDirectly($invoice, price: 500, quantity: 4, profit: 300);
 
-        $this->assertSame(500, $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice));
+        $this->assertSame(500, $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice));
     }
 
     public function test_calculate_total_estimated_profit_for_invoice_is_isolated_from_other_invoices(): void
@@ -203,7 +203,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $otherInvoice = $this->makeEmptyInvoice();
         $this->insertInvoiceItemDirectly($otherInvoice, price: 2000, quantity: 1, profit: 9999);
 
-        $this->assertSame(200, $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoiceUnderTest));
+        $this->assertSame(200, $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoiceUnderTest));
     }
 
     // =========================================================================
@@ -214,7 +214,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
     {
         $invoice = $this->makeEmptyInvoice();
 
-        $this->assertSame(0, $this->salesInvoiceService->calculateTotalPaymentsForInvoice($invoice));
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateTotalPaymentsForInvoice($invoice));
     }
 
     public function test_calculate_total_payments_for_invoice_returns_amount_for_single_payment(): void
@@ -222,7 +222,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $invoice = $this->makeEmptyInvoice();
         $this->insertPaymentDirectly($invoice, amount: 1500, profit: 300);
 
-        $this->assertSame(1500, $this->salesInvoiceService->calculateTotalPaymentsForInvoice($invoice));
+        $this->assertSame(1500, $this->salesInvoiceStatsService->calculateTotalPaymentsForInvoice($invoice));
     }
 
     public function test_calculate_total_payments_for_invoice_accumulates_across_multiple_payments(): void
@@ -231,7 +231,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertPaymentDirectly($invoice, amount: 800, profit: 160);
         $this->insertPaymentDirectly($invoice, amount: 700, profit: 140);
 
-        $this->assertSame(1500, $this->salesInvoiceService->calculateTotalPaymentsForInvoice($invoice));
+        $this->assertSame(1500, $this->salesInvoiceStatsService->calculateTotalPaymentsForInvoice($invoice));
     }
 
     public function test_calculate_total_payments_for_invoice_is_isolated_from_other_invoices(): void
@@ -242,7 +242,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $otherInvoice = $this->makeEmptyInvoice();
         $this->insertPaymentDirectly($otherInvoice, amount: 99999, profit: 9999);
 
-        $this->assertSame(500, $this->salesInvoiceService->calculateTotalPaymentsForInvoice($invoiceUnderTest));
+        $this->assertSame(500, $this->salesInvoiceStatsService->calculateTotalPaymentsForInvoice($invoiceUnderTest));
     }
 
     // =========================================================================
@@ -253,7 +253,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
     {
         $invoice = $this->makeEmptyInvoice();
 
-        $this->assertSame(0, $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice));
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice));
     }
 
     public function test_calculate_total_realized_profit_for_invoice_returns_profit_for_single_payment(): void
@@ -262,7 +262,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         // profit column on the payment is set explicitly to verify the method sums it correctly
         $this->insertPaymentDirectly($invoice, amount: 1000, profit: 300);
 
-        $this->assertSame(300, $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice));
+        $this->assertSame(300, $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice));
     }
 
     public function test_calculate_total_realized_profit_for_invoice_accumulates_across_multiple_payments(): void
@@ -271,7 +271,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertPaymentDirectly($invoice, amount: 1000, profit: 300);
         $this->insertPaymentDirectly($invoice, amount: 500, profit: 150);
 
-        $this->assertSame(450, $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice));
+        $this->assertSame(450, $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice));
     }
 
     public function test_calculate_total_realized_profit_for_invoice_is_isolated_from_other_invoices(): void
@@ -282,7 +282,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $otherInvoice = $this->makeEmptyInvoice();
         $this->insertPaymentDirectly($otherInvoice, amount: 9999, profit: 9999);
 
-        $this->assertSame(300, $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoiceUnderTest));
+        $this->assertSame(300, $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoiceUnderTest));
     }
 
     public function test_calculate_total_realized_profit_for_invoice_returns_zero_when_payments_have_zero_profit(): void
@@ -291,7 +291,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         // A payment on an invoice with no items would yield 0 profit (division-by-zero guard)
         $this->insertPaymentDirectly($invoice, amount: 1000, profit: 0);
 
-        $this->assertSame(0, $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice));
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice));
     }
 
     // =========================================================================
@@ -305,8 +305,8 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertInvoiceItemDirectly($invoice, price: 2000, quantity: 1, profit: 600);
         $this->insertPaymentDirectly($invoice, amount: 1000, profit: 300);
 
-        $estimatedProfit = $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice);
-        $realizedProfit = $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice);
+        $estimatedProfit = $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice);
+        $realizedProfit = $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice);
 
         $this->assertLessThanOrEqual(
             $estimatedProfit,
@@ -322,8 +322,8 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertInvoiceItemDirectly($invoice, price: 2000, quantity: 1, profit: 600);
         $this->insertPaymentDirectly($invoice, amount: 2000, profit: 600);
 
-        $estimatedProfit = $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice);
-        $realizedProfit = $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice);
+        $estimatedProfit = $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice);
+        $realizedProfit = $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice);
 
         $this->assertSame($estimatedProfit, $realizedProfit);
         $this->assertLessThanOrEqual(
@@ -341,8 +341,8 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertPaymentDirectly($invoice, amount: 1200, profit: 360);
         $this->insertPaymentDirectly($invoice, amount: 800, profit: 240);
 
-        $estimatedProfit = $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice);
-        $realizedProfit = $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice);
+        $estimatedProfit = $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice);
+        $realizedProfit = $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice);
 
         $this->assertLessThanOrEqual($estimatedProfit, $realizedProfit);
     }
@@ -354,8 +354,8 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $invoice = $this->makeEmptyInvoice();
         $this->insertInvoiceItemDirectly($invoice, price: 2000, quantity: 1, profit: 600);
 
-        $totalAmount = $this->salesInvoiceService->calculateTotalAmountForInvoice($invoice);
-        $estimatedProfit = $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice);
+        $totalAmount = $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoice);
+        $estimatedProfit = $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice);
 
         $this->assertGreaterThan(
             $estimatedProfit,
@@ -370,8 +370,8 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertInvoiceItemDirectly($invoice, price: 1000, quantity: 2, profit: 200); // amount 2000, profit 200
         $this->insertInvoiceItemDirectly($invoice, price: 500, quantity: 4, profit: 300);  // amount 2000, profit 300
 
-        $totalAmount = $this->salesInvoiceService->calculateTotalAmountForInvoice($invoice);       // 4000
-        $estimatedProfit = $this->salesInvoiceService->calculateTotalEstimatedProfitForInvoice($invoice); // 500
+        $totalAmount = $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoice);       // 4000
+        $estimatedProfit = $this->salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($invoice); // 500
 
         $this->assertGreaterThan($estimatedProfit, $totalAmount);
     }
@@ -383,8 +383,8 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertInvoiceItemDirectly($invoice, price: 2000, quantity: 1, profit: 600);
         $this->insertPaymentDirectly($invoice, amount: 1000, profit: 300);
 
-        $totalAmount = $this->salesInvoiceService->calculateTotalAmountForInvoice($invoice);
-        $realizedProfit = $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice);
+        $totalAmount = $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoice);
+        $realizedProfit = $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice);
 
         $this->assertGreaterThan(
             $realizedProfit,
@@ -400,8 +400,8 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $this->insertInvoiceItemDirectly($invoice, price: 2000, quantity: 1, profit: 600);
         $this->insertPaymentDirectly($invoice, amount: 2000, profit: 600);
 
-        $totalAmount = $this->salesInvoiceService->calculateTotalAmountForInvoice($invoice);
-        $realizedProfit = $this->salesInvoiceService->calculateTotalRealizedProfitForInvoice($invoice);
+        $totalAmount = $this->salesInvoiceStatsService->calculateTotalAmountForInvoice($invoice);
+        $realizedProfit = $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice);
 
         $this->assertGreaterThan($realizedProfit, $totalAmount);
     }

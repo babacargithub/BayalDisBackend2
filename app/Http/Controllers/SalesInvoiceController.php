@@ -2,304 +2,192 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\PaySalesInvoiceRequest;
-use App\Models\Customer;
+use App\Enums\SalesInvoiceStatus;
+use App\Http\Requests\AddInvoiceItemRequest;
+use App\Http\Requests\Api\PaySalesInvoiceRequest;
+use App\Http\Requests\StoreSalesInvoiceRequest;
+use App\Http\Requests\UpdateInvoiceItemProfitRequest;
+use App\Http\Requests\UpdateSalesInvoiceRequest;
+use App\Http\Resources\SalesInvoiceResource;
 use App\Models\Payment;
-use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
-use App\Services\CarLoadService;
+use App\Services\SalesInvoiceService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class SalesInvoiceController extends Controller
 {
+    public function __construct(
+        private readonly SalesInvoiceService $salesInvoiceService
+    ) {}
+
     public function index()
     {
-        // Base query with optimized eager loading
-        $query = SalesInvoice::query()
-            ->select('id', 'customer_id', 'paid', 'should_be_paid_at', 'comment', 'created_at')
+        $invoices = SalesInvoice::query()
             ->with([
-                'customer:id,name',
-                'items' => function ($query) {
-                    $query->select('id', 'sales_invoice_id', 'product_id', 'quantity', 'price')
-                        ->where('type', 'INVOICE_ITEM');
-                },
-                'items.product:id,name',
-                'payments' => function ($query) {
-                    $query->select('id', 'sales_invoice_id', 'amount', 'created_at', 'comment', 'payment_method');
-                },
-            ]);
-
-        // Get paginated results with optimized loading
-        $invoices = $query->latest()
-            ->orderByDesc('created_at')
-            ->where('paid', false)
-            ->paginate(4000);
+                'customer:id,name,phone_number,address',
+            ])
+            ->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
+            ->latest()
+            ->paginate(5000);
 
         return Inertia::render('SalesInvoices/Index', [
-            'invoices' => $invoices,
-            'customers' => Customer::select('id', 'name')->get(),
-            'products' => Product::select('id', 'name', 'price')->get(),
+            'invoices' => SalesInvoiceResource::collection($invoices),
+            'customers' => [],
+            'products' => [],
         ]);
     }
 
-    public function store(Request $request)
+    public function store(StoreSalesInvoiceRequest $request)
     {
-        $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.price' => 'required|numeric|min:0',
-            'should_be_paid_at' => 'required|date',
-            'comment' => 'nullable|string',
-        ]);
-
         try {
-            DB::beginTransaction();
-
-            $invoice = SalesInvoice::create([
-                'customer_id' => $request->customer_id,
-                'comment' => $request->comment,
+            $this->salesInvoiceService->createSalesInvoice([
                 'paid' => false,
-                'should_be_paid_at' => $request->should_be_paid_at,
+                ...$request->validated(),
             ]);
-
-            // Prepare all ventes data at once
-            $ventes = array_map(function ($item) use ($invoice, $request) {
-                return [
-                    'sales_invoice_id' => $invoice->id,
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'type' => 'INVOICE_ITEM',
-                    'paid' => false,
-                    'should_be_paid_at' => $request->should_be_paid_at,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
-            }, $request->items);
-
-            // Insert all ventes in a single query.
-            // Note: Vente::insert() bypasses model events, so we must recalculate
-            // the invoice's stored totals manually after the bulk insert.
-            Vente::insert($ventes);
-            $invoice->recalculateStoredTotals();
-            // update stock of products
-            $commercial = auth()->user->commercial;
-            $currentCarLoad = app(CarLoadService::class)->getCurrentCarLoadForTeam($commercial->team);
-            if ($currentCarLoad === null) {
-                throw new UnprocessableEntityHttpException(
-                    'Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !'
-                );
-            }
-            foreach ($ventes as $vente) {
-                $product = Product::findOrFail($vente['product_id']);
-                $product->decrementStock($vente['quantity'], updateMainStock: false, carLoad: $currentCarLoad);
-            }
-            // check if customer is prospect
-            $customer = Customer::findOrFail($request->customer_id);
-            if ($customer->is_prospect) {
-                // Update customer's prospect status
-                $customer->is_prospect = false;
-                $customer->save();
-            }
-
-            DB::commit();
 
             return redirect()->back()->with('success', 'Facture créée avec succès');
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
-            return redirect()->back()->withErrors(['error' => 'Échec de la création de la facture. Veuillez réessayer.']);
+            return redirect()->back()->withErrors(['error' => 'Échec de la création de la facture : '.$e->getMessage()]);
         }
     }
 
     public function show(SalesInvoice $salesInvoice)
     {
         $salesInvoice->load([
-            'customer:id,name',
+            'customer:id,name,phone_number,address',
             'items:id,sales_invoice_id,product_id,quantity,price,profit',
-            'items.product:id,name',
-            'payments:id,sales_invoice_id,amount,created_at,comment',
+            'items.product:id,name,price',
+            'payments:id,sales_invoice_id,amount,payment_method,comment,created_at',
         ]);
 
-        // Check if this is an AJAX request
         if (request()->wantsJson() || request()->header('X-Requested-With') === 'XMLHttpRequest') {
-            return response()->json([
-                'props' => [
-                    'invoice' => $salesInvoice,
-                ],
-            ]);
+            return response()->json(['invoice' => $this->formatInvoiceDetails($salesInvoice)]);
         }
 
-        return Inertia::render('SalesInvoices/Show', [
-            'invoice' => $salesInvoice,
-        ]);
+        return Inertia::render('SalesInvoices/Index', ['invoice' => $salesInvoice]);
     }
 
-    public function update(Request $request, SalesInvoice $salesInvoice)
+    private function formatInvoiceDetails(SalesInvoice $salesInvoice): array
     {
-        $request->validate([
-            'paid' => 'boolean',
-            'should_be_paid_at' => 'nullable|date',
-            'comment' => 'nullable|string',
-        ]);
+        return [
+            'id' => $salesInvoice->id,
+            'customer' => [
+                'id' => $salesInvoice->customer->id,
+                'name' => $salesInvoice->customer->name,
+                'phone_number' => $salesInvoice->customer->phone_number,
+                'address' => $salesInvoice->customer->address,
+            ],
+            'paid' => $salesInvoice->paid,
+            'total_amount' => $salesInvoice->total_amount,
+            'total' => $salesInvoice->total_amount,
+            'total_payments' => $salesInvoice->total_payments,
+            'total_remaining' => $salesInvoice->total_amount - $salesInvoice->total_payments,
+            'total_estimated_profit' => $salesInvoice->total_estimated_profit,
+            'total_realized_profit' => $salesInvoice->total_realized_profit,
+            'comment' => $salesInvoice->comment,
+            'should_be_paid_at' => $salesInvoice->should_be_paid_at,
+            'created_at' => $salesInvoice->created_at,
+            'payments' => $salesInvoice->payments->map(fn ($payment) => [
+                'id' => $payment->id,
+                'amount' => $payment->amount,
+                'payment_method' => $payment->payment_method,
+                'comment' => $payment->comment,
+                'created_at' => $payment->created_at,
+            ])->values()->all(),
+            'items' => $salesInvoice->items->map(fn ($item) => [
+                'id' => $item->id,
+                'product_id' => $item->product_id,
+                'quantity' => $item->quantity,
+                'price' => $item->price,
+                'profit' => $item->profit,
+                'subtotal' => $item->price * $item->quantity,
+                'product' => [
+                    'id' => $item->product->id,
+                    'name' => $item->product->name,
+                    'price' => $item->product->price,
+                ],
+            ])->values()->all(),
+        ];
+    }
 
+    public function update(UpdateSalesInvoiceRequest $request, SalesInvoice $salesInvoice)
+    {
         try {
-            DB::beginTransaction();
-            $salesInvoice->update($request->only(['paid', 'should_be_paid_at', 'comment']));
-            // update stock of products by calcaulating the difference between the old quantity and the new quantity
+            $this->salesInvoiceService->updateSalesInvoice($salesInvoice, $request->validated());
 
-            DB::commit();
-
-            return redirect()->back()->with('success', 'Invoice updated successfully.');
+            return redirect()->back()->with('success', 'Facture mise à jour avec succès.');
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
-            return redirect()->back()->with('error', 'Failed to update invoice. Please try again.');
+            return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour de la facture. Veuillez réessayer.']);
         }
     }
 
     public function destroy(SalesInvoice $salesInvoice)
     {
-        // Check if invoice has payments
         if ($salesInvoice->payments()->exists()) {
-            return redirect()->back()->with('error', 'Cannot delete invoice with payments.');
+            return redirect()->back()->withErrors(['error' => 'Impossible de supprimer une facture avec des paiements.']);
         }
 
         try {
-            DB::beginTransaction();
-            // put stock back
-            $carLoadService = app(\App\Services\CarLoadService::class);
-            $commercialForInvoice = $salesInvoice->commercial;
-            $currentCarLoad = $commercialForInvoice
-                ? $carLoadService->getCurrentCarLoadForTeam($commercialForInvoice->team)
-                : null;
-            foreach ($salesInvoice->items as $item) {
-                if ($currentCarLoad !== null) {
-                    $carLoadService->increaseProductStockInCarLoad($item->product, $item->quantity, $currentCarLoad);
-                }
-            }
+            $this->salesInvoiceService->deleteSalesInvoice($salesInvoice);
 
-            // Delete related items first
-            $salesInvoice->items()->delete();
-
-            // Then delete the invoice
-            $salesInvoice->delete();
-
-            DB::commit();
-
-            return redirect()->route('sales-invoices.index')->with('success', 'Invoice deleted successfully.');
+            return redirect()->route('sales-invoices.index')->with('success', 'Facture supprimée avec succès.');
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
-            return redirect()->route('sales-invoices.index')->with('error', 'Failed to delete invoice. Please try again.');
+            return redirect()->route('sales-invoices.index')->withErrors(['error' => 'Échec de la suppression de la facture. Veuillez réessayer.']);
         }
     }
 
-    public function addItem(Request $request, SalesInvoice $salesInvoice)
+    public function addItem(AddInvoiceItemRequest $request, SalesInvoice $salesInvoice)
     {
-        $request->validate([
-            'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:1',
-            'price' => 'required|integer|min:0',
-        ]);
-
         if ($salesInvoice->paid) {
-            return response()->json(['message' => 'Cannot modify a paid invoice'], 422);
+            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée.']);
         }
 
         try {
-            DB::beginTransaction();
+            $this->salesInvoiceService->addItemToInvoice($salesInvoice, $request->validated());
 
-            // Create the new item
-            $vente = Vente::create([
-                'sales_invoice_id' => $salesInvoice->id,
-                'product_id' => $request->product_id,
-                'quantity' => $request->quantity,
-                'price' => $request->price,
-                'type' => 'INVOICE_ITEM',
-                'paid' => $salesInvoice->paid,
-                'should_be_paid_at' => $salesInvoice->should_be_paid_at,
-            ]);
-            $vente->refresh();
-            $carLoadService = app(\App\Services\CarLoadService::class);
-            $currentCarLoad = $salesInvoice->commercial
-                ? $carLoadService->getCurrentCarLoadForTeam($salesInvoice->commercial->team)
-                : null;
-            if ($currentCarLoad !== null) {
-                $carLoadService->decreaseProductStockInCarLoadUsingFifo($vente->product, $vente->quantity, $currentCarLoad);
-            }
-
-            // Reload the invoice with its relationships
-            $salesInvoice->load([
-                'items.product',
-                'customer',
-                'payments',
-            ]);
-
-            DB::commit();
+            $salesInvoice->load(['items.product', 'customer', 'payments']);
 
             return redirect()->back()->with([
-                'success' => 'Item added successfully',
+                'success' => 'Article ajouté avec succès',
                 'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
-            return redirect()->back()->with('error', 'Failed to add item');
+            return redirect()->back()->withErrors(['error' => 'Échec de l\'ajout de l\'article. Veuillez réessayer.']);
         }
     }
 
     public function removeItem(SalesInvoice $salesInvoice, Vente $item)
     {
         if ($salesInvoice->paid) {
-            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée']);
+            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée.']);
         }
 
         if ($item->sales_invoice_id !== $salesInvoice->id || $item->type !== 'INVOICE_ITEM') {
-            return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture']);
+            return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture.']);
         }
 
         try {
-            DB::beginTransaction();
+            $this->salesInvoiceService->removeItemFromInvoice($salesInvoice, $item);
 
-            $commercial = $item->commercial ?? $salesInvoice->commercial;
-            // put stock back
-            if ($commercial !== null) {
-                $carLoadService = app(\App\Services\CarLoadService::class);
-                $currentCarLoad = $carLoadService->getCurrentCarLoadForTeam($commercial->team);
-                if ($currentCarLoad !== null) {
-                    $carLoadService->increaseProductStockInCarLoad($item->product, $item->quantity, $currentCarLoad);
-                }
-            }
-            $item->delete();
-
-            // Reload the invoice with its relationships
-            $salesInvoice->load([
-                'items.product',
-                'customer',
-                'payments',
-            ]);
-
-            DB::commit();
+            $salesInvoice->load(['items.product', 'customer', 'payments']);
 
             return redirect()->back()->with([
                 'success' => 'Article supprimé avec succès',
                 'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
             return redirect()->back()->withErrors(['error' => 'Échec de la suppression de l\'article. Veuillez réessayer.']);
@@ -308,57 +196,25 @@ class SalesInvoiceController extends Controller
 
     public function addPayment(PaySalesInvoiceRequest $request, SalesInvoice $salesInvoice)
     {
+        if ($salesInvoice->paid) {
+            return redirect()->back()->withErrors(['error' => 'La facture est déjà payée.']);
+        }
+
+        $remainingBalanceOnInvoice = $salesInvoice->total_amount - $salesInvoice->total_payments;
+        if ($request->amount > $remainingBalanceOnInvoice) {
+            return redirect()->back()->withErrors(['amount' => 'Le montant du paiement dépasse le solde restant.']);
+        }
+
         try {
-            if ($salesInvoice->paid) {
-                return redirect()->back()->withErrors(['error' => 'La facture est déjà payée.']);
-            }
+            $this->salesInvoiceService->paySalesInvoice($salesInvoice, $request->validated(), $request->user()->id);
 
-            DB::beginTransaction();
-
-            // Load items to ensure total is calculated correctly
-            $salesInvoice->load('items');
-
-            // Get current total paid amount
-            $totalPaid = $salesInvoice->payments()->sum('amount');
-            $remaining = $salesInvoice->total - $totalPaid;
-
-            if ($request->amount > $remaining) {
-                return redirect()->back()->withErrors(['amount' => 'Le montant du paiement dépasse le solde restant.']);
-            }
-
-            // Create the payment
-            $payment = $salesInvoice->payments()->create([
-                'amount' => $request->amount,
-                'payment_method' => $request->payment_method,
-                'comment' => $request->comment,
-            ]);
-
-            // Transition to FULLY_PAID only via markAsFullyPaid(), which validates
-            // that payments exactly cover the total before persisting the status.
-            $newTotalPaid = $totalPaid + $request->amount;
-            if ($newTotalPaid >= $salesInvoice->total) {
-                $salesInvoice->markAsFullyPaid();
-                $salesInvoice->items()->update([
-                    'paid' => true,
-                    'paid_at' => now(),
-                ]);
-            }
-
-            // Reload the invoice with its relationships
-            $salesInvoice->load([
-                'items.product',
-                'customer',
-                'payments',
-            ]);
-
-            DB::commit();
+            $salesInvoice->load(['items.product', 'customer', 'payments']);
 
             return redirect()->back()->with([
                 'success' => 'Paiement ajouté avec succès',
                 'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
             return redirect()->back()->withErrors(['error' => 'Échec de l\'ajout du paiement. Veuillez réessayer.']);
@@ -368,123 +224,68 @@ class SalesInvoiceController extends Controller
     public function removePayment(SalesInvoice $salesInvoice, Payment $payment)
     {
         if ($payment->sales_invoice_id !== $salesInvoice->id) {
-            return response()->json(['message' => 'Payment does not belong to this invoice'], 422);
+            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture.']);
         }
 
         try {
-            DB::beginTransaction();
+            $this->salesInvoiceService->removePaymentFromInvoice($payment);
 
-            $payment->delete();
-            // recalculateStoredTotals() fires automatically via Payment::deleted event,
-            // demoting the invoice from FULLY_PAID when payments no longer cover the total.
-
-            DB::commit();
-
-            return redirect()->back()->with('success', 'Payment removed successfully.');
+            return redirect()->back()->with('success', 'Paiement supprimé avec succès.');
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
-            return redirect()->back()->with('error', 'Failed to remove payment. Please try again.');
+            return redirect()->back()->withErrors(['error' => 'Échec de la suppression du paiement. Veuillez réessayer.']);
         }
     }
 
     public function updatePayment(PaySalesInvoiceRequest $request, SalesInvoice $salesInvoice, Payment $payment)
     {
         if ($payment->sales_invoice_id !== $salesInvoice->id) {
-            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture']);
+            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture.']);
+        }
+
+        $totalPaidExcludingCurrentPayment = $salesInvoice->payments()
+            ->where('id', '!=', $payment->id)
+            ->sum('amount');
+
+        if ($request->amount + $totalPaidExcludingCurrentPayment > $salesInvoice->total_amount) {
+            return redirect()->back()->withErrors(['amount' => 'Le nouveau montant dépasserait le total de la facture.']);
         }
 
         try {
+            $this->salesInvoiceService->updatePaymentOnInvoice($salesInvoice, $payment, $request->validated());
 
-            DB::beginTransaction();
-
-            // Load items to ensure total is calculated correctly
-            $salesInvoice->load('items');
-
-            // Calculate new total paid amount excluding current payment
-            $totalPaidExcludingCurrent = $salesInvoice->payments()
-                ->where('id', '!=', $payment->id)
-                ->sum('amount');
-
-            // Check if new amount would exceed invoice total
-            if ($request->amount + $totalPaidExcludingCurrent > $salesInvoice->total) {
-                return redirect()->back()->withErrors(['amount' => 'Le nouveau montant dépasserait le total de la facture']);
-            }
-
-            // Update the payment
-            $payment->update([
-                'amount' => $request->amount,
-                'payment_method' => $request->payment_method,
-                'comment' => $request->comment,
-            ]);
-
-            // Transition to FULLY_PAID only via markAsFullyPaid().
-            // Demotion is handled automatically by recalculateStoredTotals() via Payment::saved.
-            $newTotalPaid = $totalPaidExcludingCurrent + $request->amount;
-            $isNowFullyPaid = $newTotalPaid >= $salesInvoice->total;
-
-            if ($isNowFullyPaid) {
-                $salesInvoice->markAsFullyPaid();
-            }
-
-            // Update related ventes paid status and paid_at timestamp.
-            $salesInvoice->items()->update([
-                'paid' => $isNowFullyPaid,
-                'paid_at' => $isNowFullyPaid ? now() : null,
-            ]);
-
-            // Reload the invoice with its relationships
-            $salesInvoice->load([
-                'items.product',
-                'customer',
-                'payments',
-            ]);
-
-            DB::commit();
+            $salesInvoice->load(['items.product', 'customer', 'payments']);
 
             return redirect()->back()->with([
                 'success' => 'Paiement mis à jour avec succès',
                 'invoice' => $salesInvoice,
             ]);
         } catch (Exception $e) {
-            DB::rollBack();
             report($e);
 
             return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour du paiement. Veuillez réessayer.']);
         }
     }
 
-    public function updateProfit(Request $request, $salesInvoice, Vente $item)
+    public function updateProfit(UpdateInvoiceItemProfitRequest $request, SalesInvoice $salesInvoice, Vente $item)
     {
-
         if ($item->type !== 'INVOICE_ITEM') {
             if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
-                return response()->json(['error' => 'Cet article n\'appartient pas à cette facture'], 422);
+                return response()->json(['error' => 'Cet article n\'appartient pas à cette facture.'], 422);
             }
 
-            return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture']);
+            return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture.']);
         }
 
         try {
-            // Check if this is a profit-only update
+            $updatedItem = $this->salesInvoiceService->updateInvoiceItemProfit($item, $request->validated()['profit']);
 
-            $validated = $request->validate([
-                'profit' => 'required|integer',
-            ]);
-
-            // Update only the profit field
-            $item->profit = $validated['profit'];
-            $item->save();
-
-            return response()->json(['error' => '!Cet article a été traité !!'.$validated['profit']], 200);
-
-            // Return JSON response for AJAX requests
             if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
                 return response()->json([
                     'success' => true,
                     'message' => 'Bénéfice mis à jour avec succès',
-                    'item' => $item,
+                    'item' => $updatedItem,
                 ]);
             }
 
@@ -492,7 +293,6 @@ class SalesInvoiceController extends Controller
                 'success' => 'Article mis à jour avec succès',
                 'invoice' => $item->salesInvoice,
             ]);
-
         } catch (Exception $e) {
             report($e);
 
@@ -511,17 +311,11 @@ class SalesInvoiceController extends Controller
             'items.product',
         ]);
 
-        // Total is calculated in the model or via relationships
-
-        //        return view('pdf.invoice', [
-        //            'invoice' => $salesInvoice
-        //        ]);
         $pdf = Pdf::loadView('pdf.invoice', [
             'invoice' => $salesInvoice,
         ]);
 
         return $pdf->download('facture de '.$salesInvoice->customer->name.'-'.$salesInvoice->id.'.pdf');
-
     }
 
     public function exportUnpaidPdf()
@@ -544,14 +338,12 @@ class SalesInvoiceController extends Controller
 
     public function exportFilteredPdf(Request $request)
     {
-        // Base query with optimized eager loading
         $query = SalesInvoice::query()
             ->with(['customer', 'payments', 'items'])
             ->select('sales_invoices.*')
             ->selectRaw('(SELECT SUM(quantity * price) FROM ventes WHERE sales_invoice_id = sales_invoices.id AND type = "INVOICE_ITEM") as total')
             ->selectRaw('COALESCE((SELECT SUM(amount) FROM payments WHERE sales_invoice_id = sales_invoices.id), 0) as total_paid');
 
-        // Apply payment status filter
         if ($request->has('filter') && $request->filter !== 'all') {
             if ($request->filter === 'paid') {
                 $query->havingRaw('total_paid >= total');
@@ -560,7 +352,6 @@ class SalesInvoiceController extends Controller
             }
         }
 
-        // Apply search filter
         if ($request->has('search') && ! empty($request->search)) {
             $searchTerm = '%'.strtolower($request->search).'%';
             $query->whereHas('customer', function ($customerQuery) use ($searchTerm) {
@@ -568,7 +359,6 @@ class SalesInvoiceController extends Controller
             });
         }
 
-        // Apply week filter
         if ($request->has('weeks') && is_array($request->weeks) && count($request->weeks) > 0) {
             $query->where(function ($weekQuery) use ($request) {
                 foreach ($request->weeks as $weekKey) {
@@ -583,10 +373,8 @@ class SalesInvoiceController extends Controller
             });
         }
 
-        // Get filtered invoices
         $filteredInvoices = $query->orderBy('created_at', 'desc')->get();
 
-        // Prepare filter description for PDF
         $filterDescription = $this->buildFilterDescription($request);
         $weekRangeTitle = $this->buildWeekRangeTitle($request);
 
@@ -600,16 +388,13 @@ class SalesInvoiceController extends Controller
             'totalRemaining' => $filteredInvoices->sum('total') - $filteredInvoices->sum('total_paid'),
         ]);
 
-        $filename = 'factures_filtrees_'.now()->format('d_m_Y_H_i').'.pdf';
-
-        return $pdf->download($filename);
+        return $pdf->download('factures_filtrees_'.now()->format('d_m_Y_H_i').'.pdf');
     }
 
-    private function buildFilterDescription(Request $request)
+    private function buildFilterDescription(Request $request): string
     {
         $descriptions = [];
 
-        // Payment status filter
         if ($request->has('filter') && $request->filter !== 'all') {
             if ($request->filter === 'paid') {
                 $descriptions[] = 'Factures payées';
@@ -618,12 +403,10 @@ class SalesInvoiceController extends Controller
             }
         }
 
-        // Search filter
         if ($request->has('search') && ! empty($request->search)) {
             $descriptions[] = 'Client: "'.$request->search.'"';
         }
 
-        // Week filter
         if ($request->has('weeks') && is_array($request->weeks) && count($request->weeks) > 0) {
             $weekCount = count($request->weeks);
             $descriptions[] = $weekCount === 1 ? '1 semaine sélectionnée' : $weekCount.' semaines sélectionnées';
@@ -632,7 +415,7 @@ class SalesInvoiceController extends Controller
         return empty($descriptions) ? 'Toutes les factures' : implode(', ', $descriptions);
     }
 
-    private function buildWeekRangeTitle(Request $request)
+    private function buildWeekRangeTitle(Request $request): ?string
     {
         if (! $request->has('weeks') || ! is_array($request->weeks) || count($request->weeks) === 0) {
             return null;
@@ -640,7 +423,6 @@ class SalesInvoiceController extends Controller
 
         $weeks = $request->weeks;
 
-        // If only one week is selected
         if (count($weeks) === 1) {
             $weekStart = \Carbon\Carbon::parse($weeks[0]);
             $weekEnd = $weekStart->copy()->endOfWeek();
@@ -648,36 +430,32 @@ class SalesInvoiceController extends Controller
             return $this->formatWeekRangeTitle($weekStart, $weekEnd);
         }
 
-        // If multiple weeks are selected, check if they are consecutive
         sort($weeks);
         $firstWeek = \Carbon\Carbon::parse($weeks[0]);
         $lastWeek = \Carbon\Carbon::parse($weeks[count($weeks) - 1]);
 
-        // Check if weeks are consecutive
-        $areConsecutive = true;
+        $areWeeksConsecutive = true;
         for ($i = 1; $i < count($weeks); $i++) {
             $currentWeek = \Carbon\Carbon::parse($weeks[$i]);
             $previousWeek = \Carbon\Carbon::parse($weeks[$i - 1]);
 
             if ($currentWeek->diffInWeeks($previousWeek) !== 1) {
-                $areConsecutive = false;
+                $areWeeksConsecutive = false;
                 break;
             }
         }
 
-        if ($areConsecutive) {
-            // Show range from first to last week
+        if ($areWeeksConsecutive) {
             $firstWeekStart = $firstWeek->copy()->startOfWeek();
             $lastWeekEnd = $lastWeek->copy()->endOfWeek();
 
             return $this->formatWeekRangeTitle($firstWeekStart, $lastWeekEnd);
-        } else {
-            // Non-consecutive weeks
-            return 'Semaines sélectionnées ('.count($weeks).' semaines)';
         }
+
+        return 'Semaines sélectionnées ('.count($weeks).' semaines)';
     }
 
-    private function formatWeekRangeTitle($startDate, $endDate)
+    private function formatWeekRangeTitle(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): string
     {
         $months = [
             1 => 'janvier', 2 => 'février', 3 => 'mars', 4 => 'avril',

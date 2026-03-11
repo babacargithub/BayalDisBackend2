@@ -12,7 +12,7 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -32,7 +32,7 @@ class RealizedProfitTest extends TestCase
 {
     use RefreshDatabase;
 
-    private SalesInvoiceService $salesInvoiceService;
+    private SalesInvoiceStatsService $salesInvoiceStatsService;
 
     private Team $defaultTeam;
 
@@ -46,7 +46,7 @@ class RealizedProfitTest extends TestCase
     {
         parent::setUp();
 
-        $this->salesInvoiceService = app(SalesInvoiceService::class);
+        $this->salesInvoiceStatsService = app(SalesInvoiceStatsService::class);
         $this->defaultTeam = $this->makeTeamWithManager();
         $this->defaultCommercial = $this->makeCommercialForTeam($this->defaultTeam);
         $this->defaultCustomer = $this->makeCustomerForCommercial($this->defaultCommercial);
@@ -327,7 +327,7 @@ class RealizedProfitTest extends TestCase
 
     public function test_total_realized_profits_returns_zero_when_no_payments_exist(): void
     {
-        $result = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(0, $result);
     }
@@ -337,7 +337,7 @@ class RealizedProfitTest extends TestCase
         $invoice = $this->makeInvoiceWithOneItem(price: 2000, quantity: 1, profit: 600);
         $this->makePayment($invoice, 2000);
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(600, $result);
     }
@@ -348,7 +348,7 @@ class RealizedProfitTest extends TestCase
         $invoice = $this->makeInvoiceWithOneItem(price: 2000, quantity: 2, profit: 1200);
         $this->makePayment($invoice, 2000); // 50% of 4000
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(600, $result);
     }
@@ -360,7 +360,7 @@ class RealizedProfitTest extends TestCase
         $this->makePayment($invoice, 2000); // 500
         $this->makePayment($invoice, 2000); // 500
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(1000, $result);
     }
@@ -373,7 +373,7 @@ class RealizedProfitTest extends TestCase
         $this->makePayment($invoiceA, 2000); // full → 400
         $this->makePayment($invoiceB, 1500); // 50% → 450
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(850, $result);
     }
@@ -383,7 +383,7 @@ class RealizedProfitTest extends TestCase
         $invoice = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 400);
         $this->makePayment($invoice, 1000);
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertIsInt($result);
     }
@@ -399,7 +399,7 @@ class RealizedProfitTest extends TestCase
         $this->makePaymentOnDate($invoice, 2000, Carbon::now()->subDays(10)); // outside → 500
         $this->makePaymentOnDate($invoice, 2000, Carbon::now()->subDays(2));  // within  → 500
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(
             Carbon::now()->subDays(5), Carbon::now(),
             VenteStatsFilter::new()
         );
@@ -414,7 +414,7 @@ class RealizedProfitTest extends TestCase
         $this->makePaymentOnDate($invoice, 1000, Carbon::now()->subYears(1));
         $this->makePaymentOnDate($invoice, 1000, Carbon::now());
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(600, $result);
     }
@@ -434,7 +434,7 @@ class RealizedProfitTest extends TestCase
         $this->makePayment($invoiceA, 2000); // 400
         $this->makePayment($invoiceB, 2000); // 800
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(
             null, null,
             VenteStatsFilter::new()->thatAreMadeByCommercial($this->defaultCommercial->id)
         );
@@ -457,7 +457,7 @@ class RealizedProfitTest extends TestCase
         $this->makePayment($invoiceA, 2000); // 400
         $this->makePayment($invoiceB, 2000); // 600
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(
             null, null,
             VenteStatsFilter::new()->forCustomer($this->defaultCustomer->id)
         );
@@ -479,7 +479,7 @@ class RealizedProfitTest extends TestCase
         $this->makePayment($invoiceA, 2000); // realized profit: 400
         $this->makePayment($invoiceB, 2000); // realized profit: 800 — must be excluded
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(
             null, null,
             VenteStatsFilter::new()->thatAreInCarLoad($targetCarLoad->id)
         );
@@ -503,7 +503,7 @@ class RealizedProfitTest extends TestCase
         $this->makePaymentOnDate($invoiceA, 2000, Carbon::now()->subDays(15)); // ✗ outside range
         $this->makePaymentOnDate($invoiceB, 2000, Carbon::now()->subDays(2));  // ✗ wrong commercial
 
-        $result = $this->salesInvoiceService->totalRealizedProfits(
+        $result = $this->salesInvoiceStatsService->totalRealizedProfits(
             Carbon::now()->subDays(5), Carbon::now(),
             VenteStatsFilter::new()->thatAreMadeByCommercial($this->defaultCommercial->id)
         );
@@ -521,8 +521,8 @@ class RealizedProfitTest extends TestCase
         $invoice = $this->makeInvoiceWithOneItem(price: 2000, quantity: 2, profit: 1000);
         $this->makePayment($invoice, 2000); // 50% → 500 realized
 
-        $potential = $this->salesInvoiceService->totalEstimatedProfits(null, null, VenteStatsFilter::new());
-        $realized = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $potential = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, VenteStatsFilter::new());
+        $realized = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(1000, $potential);
         $this->assertSame(500, $realized);
@@ -534,8 +534,8 @@ class RealizedProfitTest extends TestCase
         $invoice = $this->makeInvoiceWithOneItem(price: 1000, quantity: 2, profit: 600);
         $this->makePayment($invoice, 2000); // full payment
 
-        $potential = $this->salesInvoiceService->totalEstimatedProfits(null, null, VenteStatsFilter::new());
-        $realized = $this->salesInvoiceService->totalRealizedProfits(null, null, VenteStatsFilter::new());
+        $potential = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, VenteStatsFilter::new());
+        $realized = $this->salesInvoiceStatsService->totalRealizedProfits(null, null, VenteStatsFilter::new());
 
         $this->assertSame(600, $potential);
         $this->assertSame(600, $realized);

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\CompleteVisitRequest;
-use App\Http\Requests\StoreCustomerVisitRequest;
+use App\Http\Requests\Api\CompleteVisitRequest;
+use App\Http\Requests\Api\StoreCustomerVisitRequest;
 use App\Http\Resources\CustomerVisitResource;
 use App\Models\CustomerVisit;
 use App\Models\VisitBatch;

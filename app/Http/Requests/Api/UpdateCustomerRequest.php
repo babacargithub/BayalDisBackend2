@@ -1,10 +1,11 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Api;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
-class CreateCustomerRequest extends FormRequest
+class UpdateCustomerRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,12 +16,16 @@ class CreateCustomerRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-            'phone_number' => ['required', 'numeric', 'digits:9', 'unique:customers,phone_number'],
+            'phone_number' => [
+                'required',
+                'numeric',
+                'digits:9',
+                Rule::unique('customers', 'phone_number')->ignore($this->route('customer')),
+            ],
             'owner_number' => ['required', 'numeric', 'digits:9'],
-            'gps_coordinates' => ['required', 'string'],
-            'description' => ['nullable', 'string'],
-            'address' => ['nullable', 'string', 'max:255'],
-            'customer_category_id' => ['nullable', 'exists:customer_categories,id'],
+            'gps_coordinates' => ['sometimes', 'string'],
+            'description' => ['sometimes', 'string'],
+            'address' => ['sometimes', 'string', 'max:255'],
         ];
     }
 
@@ -37,8 +42,8 @@ class CreateCustomerRequest extends FormRequest
             'owner_number.required' => 'Le numéro du propriétaire est obligatoire',
             'owner_number.numeric' => 'Le numéro du propriétaire doit être numérique',
             'owner_number.digits' => 'Le numéro du propriétaire doit contenir 9 chiffres',
-            'gps_coordinates.required' => 'Les coordonnées GPS sont obligatoires',
-            'customer_category_id.exists' => 'La catégorie sélectionnée n\'existe pas',
+            'gps_coordinates.string' => 'Les coordonnées GPS doivent être une chaîne de caractères',
+            'address.max' => 'L\'adresse ne doit pas dépasser 255 caractères',
         ];
     }
 }

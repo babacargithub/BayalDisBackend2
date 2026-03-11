@@ -15,7 +15,7 @@ use App\Models\Team;
 use App\Models\TypeDepense;
 use App\Models\User;
 use App\Models\Vente;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -43,7 +43,7 @@ class DashboardStatsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private SalesInvoiceService $salesInvoiceService;
+    private SalesInvoiceStatsService $salesInvoiceStatsService;
 
     private Commercial $defaultCommercial;
 
@@ -55,7 +55,7 @@ class DashboardStatsTest extends TestCase
     {
         parent::setUp();
 
-        $this->salesInvoiceService = app(SalesInvoiceService::class);
+        $this->salesInvoiceStatsService = app(SalesInvoiceStatsService::class);
         $defaultTeam = $this->makeTeamWithManager();
         $this->defaultCommercial = $this->makeCommercialForTeam($defaultTeam);
         $this->defaultCustomer = $this->makeCustomerForCommercial($this->defaultCommercial);
@@ -207,7 +207,7 @@ class DashboardStatsTest extends TestCase
 
     private function buildStats(?Carbon $startDate, ?Carbon $endDate): DashboardStats
     {
-        return $this->salesInvoiceService->buildStatsForPeriod($startDate, $endDate);
+        return $this->salesInvoiceStatsService->buildStatsForPeriod($startDate, $endDate);
     }
 
     // =========================================================================

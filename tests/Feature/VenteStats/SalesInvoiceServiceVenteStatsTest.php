@@ -13,7 +13,7 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -29,7 +29,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private SalesInvoiceService $salesInvoiceService;
+    private SalesInvoiceStatsService $salesInvoiceStatsService;
 
     private Product $defaultProduct;
 
@@ -43,7 +43,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         parent::setUp();
 
-        $this->salesInvoiceService = app(SalesInvoiceService::class);
+        $this->salesInvoiceStatsService = app(SalesInvoiceStatsService::class);
         $this->defaultProduct = $this->makeProduct();
         $this->defaultTeam = $this->makeTeamWithManager();
         $this->defaultCommercial = $this->makeCommercialForTeam($this->defaultTeam);
@@ -217,7 +217,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
 
     public function test_total_sales_returns_zero_when_no_ventes_exist(): void
     {
-        $result = $this->salesInvoiceService->totalSales(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(0, $result);
     }
@@ -226,7 +226,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         $this->makeVente(['price' => 2500, 'quantity' => 3]);
 
-        $result = $this->salesInvoiceService->totalSales(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(7500, $result);
     }
@@ -237,7 +237,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 500,  'quantity' => 3]); // 1 500
         $this->makeVente(['price' => 2000, 'quantity' => 1]); // 2 000
 
-        $result = $this->salesInvoiceService->totalSales(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(5500, $result);
     }
@@ -246,7 +246,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         $this->makeVente(['price' => 1000, 'quantity' => 1]);
 
-        $result = $this->salesInvoiceService->totalSales(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales(null, null, $this->allTimeAllFilter());
 
         $this->assertIsInt($result);
     }
@@ -256,7 +256,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 500000, 'quantity' => 100]); // 50 000 000
         $this->makeVente(['price' => 750000, 'quantity' => 80]);  // 60 000 000
 
-        $result = $this->salesInvoiceService->totalSales(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(110_000_000, $result);
     }
@@ -270,7 +270,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'paid' => true]);
         $this->makeVente(['price' => 2000, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly)
         );
@@ -283,7 +283,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'paid' => true]);
         $this->makeVente(['price' => 2000, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::UnpaidOnly)
         );
@@ -296,7 +296,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'paid' => true]);
         $this->makeVente(['price' => 2000, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             VenteStatsFilter::regardlessOfPaymentStatus()
         );
@@ -308,7 +308,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         $this->makeVente(['price' => 1500, 'quantity' => 2, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly)
         );
@@ -320,7 +320,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         $this->makeVente(['price' => 1500, 'quantity' => 2, 'paid' => true]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::UnpaidOnly)
         );
@@ -337,7 +337,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now()->subDays(10), ['price' => 9000]); // before
         $this->makeVenteOnDate(Carbon::now()->subDay(), ['price' => 1000]); // after start → included
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             Carbon::now()->subDays(3), null,
             $this->allTimeAllFilter()
         );
@@ -350,7 +350,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now()->subDay(), ['price' => 1000]); // before end → included
         $this->makeVenteOnDate(Carbon::now()->addDays(5), ['price' => 9000]); // after end
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, Carbon::now()->addDays(2),
             $this->allTimeAllFilter()
         );
@@ -365,7 +365,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now()->subDay(), ['price' => 500,  'quantity' => 3]); // within → 1 500
         $this->makeVenteOnDate(Carbon::now()->addDays(10), ['price' => 8000]); // after range
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             Carbon::now()->subDays(5), Carbon::now(),
             $this->allTimeAllFilter()
         );
@@ -378,7 +378,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $startDate = Carbon::now()->subDays(3);
         $this->makeVenteOnDate($startDate, ['price' => 1000]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             $startDate, null,
             $this->allTimeAllFilter()
         );
@@ -391,7 +391,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $endDate = Carbon::now()->subDay();
         $this->makeVenteOnDate($endDate, ['price' => 1000]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, $endDate,
             $this->allTimeAllFilter()
         );
@@ -404,7 +404,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now()->subYears(2), ['price' => 3000]);
         $this->makeVenteOnDate(Carbon::now(), ['price' => 1000]);
 
-        $result = $this->salesInvoiceService->totalSales(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(4000, $result);
     }
@@ -418,7 +418,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate($endDate->copy()->addDays(2), ['price' => 999]); // after end
         $this->makeVenteOnDate(Carbon::now()->subDays(3), ['price' => 1000]); // within
 
-        $result = $this->salesInvoiceService->totalSales($startDate, $endDate, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales($startDate, $endDate, $this->allTimeAllFilter());
 
         $this->assertSame(1000, $result);
     }
@@ -435,7 +435,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'commercial_id' => $this->defaultCommercial->id]);
         $this->makeVente(['price' => 5000, 'commercial_id' => $otherCommercial->id, 'customer_id' => $otherCustomer->id]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(commercialId: $this->defaultCommercial->id)
         );
@@ -448,7 +448,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $commercialWithNoVentes = $this->makeCommercialForTeam($this->defaultTeam);
         $this->makeVente(['price' => 1000]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(commercialId: $commercialWithNoVentes->id)
         );
@@ -461,7 +461,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'quantity' => 1]);
         $this->makeVente(['price' => 2000, 'quantity' => 2]); // 4 000
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(commercialId: $this->defaultCommercial->id)
         );
@@ -481,7 +481,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'customer_id' => $this->defaultCustomer->id]);
         $this->makeVente(['price' => 3000, 'customer_id' => $otherCustomer->id, 'commercial_id' => $otherCommercial->id]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(customerId: $this->defaultCustomer->id)
         );
@@ -494,7 +494,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $customerWithNoVentes = $this->makeCustomerForCommercial($this->defaultCommercial);
         $this->makeVente(['price' => 1000]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(customerId: $customerWithNoVentes->id)
         );
@@ -511,7 +511,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'type' => Vente::TYPE_SINGLE]);
         $this->makeVente(['price' => 5000, 'type' => Vente::TYPE_INVOICE, 'customer_id' => null]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(type: Vente::TYPE_SINGLE)
         );
@@ -524,7 +524,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'type' => Vente::TYPE_SINGLE]);
         $this->makeVente(['price' => 5000, 'type' => Vente::TYPE_INVOICE, 'customer_id' => null]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(type: Vente::TYPE_INVOICE)
         );
@@ -537,7 +537,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 1000, 'type' => Vente::TYPE_SINGLE]);
         $this->makeVente(['price' => 5000, 'type' => Vente::TYPE_INVOICE, 'customer_id' => null]);
 
-        $result = $this->salesInvoiceService->totalSales(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalSales(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(6000, $result);
     }
@@ -554,7 +554,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeInvoiceVenteForCarLoad(price: 1000, carLoad: $targetCarLoad);  // ✓ target car load
         $this->makeInvoiceVenteForCarLoad(price: 9000, carLoad: $otherCarLoad);   // ✗ different car load
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(carLoadId: $targetCarLoad->id)
         );
@@ -568,7 +568,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
 
         $this->makeVente(['price' => 1000]); // standalone vente, not linked to any invoice
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(carLoadId: $isolatedCarLoad->id)
         );
@@ -589,7 +589,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate($withinRange, ['price' => 2000, 'paid' => false]); // ✗ unpaid
         $this->makeVenteOnDate($outsideRange, ['price' => 3000, 'paid' => true]);  // ✗ outside range
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             Carbon::now()->subDays(5), Carbon::now(),
             new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly)
         );
@@ -606,7 +606,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 2000, 'commercial_id' => $this->defaultCommercial->id, 'paid' => false]); // ✗ unpaid
         $this->makeVente(['price' => 5000, 'commercial_id' => $otherCommercial->id, 'customer_id' => $otherCustomer->id, 'paid' => true]); // ✗ wrong commercial
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly, commercialId: $this->defaultCommercial->id)
         );
@@ -623,7 +623,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now()->subDays(2), ['price' => 3000, 'customer_id' => $otherCustomer->id, 'commercial_id' => $otherCommercial->id]); // ✗ wrong customer
         $this->makeVenteOnDate(Carbon::now()->subDays(10), ['price' => 1000, 'customer_id' => $this->defaultCustomer->id]); // ✗ outside range
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             Carbon::now()->subDays(5), Carbon::now(),
             new VenteStatsFilter(customerId: $this->defaultCustomer->id)
         );
@@ -654,7 +654,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         // Outside date range
         $this->makeVenteOnDate(Carbon::now()->subDays(20), ['price' => 5000]);
 
-        $result = $this->salesInvoiceService->totalSales(
+        $result = $this->salesInvoiceStatsService->totalSales(
             Carbon::now()->subDays(5), Carbon::now(),
             new VenteStatsFilter(
                 paidStatus: PaidStatus::PaidOnly,
@@ -673,7 +673,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
 
     public function test_total_profits_returns_zero_when_no_ventes_exist(): void
     {
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(0, $result);
     }
@@ -682,7 +682,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         $this->makeVente(['profit' => 450]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(450, $result);
     }
@@ -693,7 +693,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 700]);
         $this->makeVente(['profit' => 200]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(1200, $result);
     }
@@ -702,7 +702,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         $this->makeVente(['profit' => 500]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertIsInt($result);
     }
@@ -712,7 +712,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 0]);
         $this->makeVente(['profit' => 0]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(0, $result);
     }
@@ -722,7 +722,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         // Profit is stored explicitly; it must not be recomputed from price × quantity
         $this->makeVente(['price' => 5000, 'quantity' => 10, 'profit' => 250]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(250, $result);
         $this->assertNotSame(50000, $result); // price × quantity must not be used
@@ -737,7 +737,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 300, 'paid' => true]);
         $this->makeVente(['profit' => 700, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly)
         );
@@ -750,7 +750,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 300, 'paid' => true]);
         $this->makeVente(['profit' => 700, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::UnpaidOnly)
         );
@@ -763,7 +763,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 300, 'paid' => true]);
         $this->makeVente(['profit' => 700, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::All)
         );
@@ -775,7 +775,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
     {
         $this->makeVente(['profit' => 400, 'paid' => false]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             null, null,
             new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly)
         );
@@ -794,7 +794,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now(), ['profit' => 600]); // within
         $this->makeVenteOnDate(Carbon::now()->addDays(5), ['profit' => 999]); // after
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             Carbon::now()->subDays(5), Carbon::now()->addDay(),
             $this->allTimeAllFilter()
         );
@@ -807,7 +807,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now()->subYears(1), ['profit' => 500]);
         $this->makeVenteOnDate(Carbon::now(), ['profit' => 500]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(1000, $result);
     }
@@ -817,7 +817,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate(Carbon::now()->subDays(10), ['profit' => 999]); // before start
         $this->makeVenteOnDate(Carbon::now()->subDay(), ['profit' => 400]); // after start
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             Carbon::now()->subDays(3), null,
             $this->allTimeAllFilter()
         );
@@ -837,7 +837,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 300, 'commercial_id' => $this->defaultCommercial->id]);
         $this->makeVente(['profit' => 700, 'commercial_id' => $otherCommercial->id, 'customer_id' => $otherCustomer->id]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             null, null,
             new VenteStatsFilter(commercialId: $this->defaultCommercial->id)
         );
@@ -857,7 +857,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 300, 'customer_id' => $this->defaultCustomer->id]);
         $this->makeVente(['profit' => 700, 'customer_id' => $otherCustomer->id, 'commercial_id' => $otherCommercial->id]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             null, null,
             new VenteStatsFilter(customerId: $this->defaultCustomer->id)
         );
@@ -874,7 +874,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 300, 'type' => Vente::TYPE_SINGLE]);
         $this->makeVente(['profit' => 700, 'type' => Vente::TYPE_INVOICE, 'customer_id' => null]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             null, null,
             new VenteStatsFilter(type: Vente::TYPE_SINGLE)
         );
@@ -887,7 +887,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['profit' => 300, 'type' => Vente::TYPE_SINGLE]);
         $this->makeVente(['profit' => 700, 'type' => Vente::TYPE_INVOICE, 'customer_id' => null]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $this->allTimeAllFilter());
 
         $this->assertSame(1000, $result);
     }
@@ -908,7 +908,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate($withinRange, ['profit' => 999, 'paid' => true,  'commercial_id' => $otherCommercial->id, 'customer_id' => $otherCustomer->id]); // ✗ wrong commercial
         $this->makeVenteOnDate($outsideRange, ['profit' => 999, 'paid' => true, 'commercial_id' => $this->defaultCommercial->id]); // ✗ out of range
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             Carbon::now()->subDays(5), Carbon::now(),
             new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly, commercialId: $this->defaultCommercial->id)
         );
@@ -935,7 +935,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVenteOnDate($withinRange, ['profit' => 999, 'commercial_id' => $otherCommercial->id, 'customer_id' => $otherCustomer->id]);
         $this->makeVenteOnDate(Carbon::now()->subDays(20), ['profit' => 999]);
 
-        $result = $this->salesInvoiceService->totalEstimatedProfits(
+        $result = $this->salesInvoiceStatsService->totalEstimatedProfits(
             Carbon::now()->subDays(5), Carbon::now(),
             new VenteStatsFilter(
                 paidStatus: PaidStatus::PaidOnly,
@@ -957,8 +957,8 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 2000, 'quantity' => 3, 'profit' => 600]);
 
         $filter = new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly);
-        $sales = $this->salesInvoiceService->totalSales(null, null, $filter);
-        $profits = $this->salesInvoiceService->totalEstimatedProfits(null, null, $filter);
+        $sales = $this->salesInvoiceStatsService->totalSales(null, null, $filter);
+        $profits = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $filter);
 
         $this->assertSame(6000, $sales);
         $this->assertSame(600, $profits);
@@ -972,8 +972,8 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         $this->makeVente(['price' => 5000, 'quantity' => 1, 'profit' => 1500, 'paid' => false]);
 
         $filter = new VenteStatsFilter(paidStatus: PaidStatus::PaidOnly);
-        $sales = $this->salesInvoiceService->totalSales(null, null, $filter);
-        $profits = $this->salesInvoiceService->totalEstimatedProfits(null, null, $filter);
+        $sales = $this->salesInvoiceStatsService->totalSales(null, null, $filter);
+        $profits = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $filter);
 
         $this->assertSame(3000, $sales);
         $this->assertSame(900, $profits);

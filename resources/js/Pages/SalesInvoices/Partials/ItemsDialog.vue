@@ -1,12 +1,13 @@
 <template>
   <v-dialog v-model="dialog" max-width="800px">
     <v-card>
+      <v-progress-linear v-if="loading" indeterminate color="primary" />
       <v-card-title class="d-flex justify-space-between align-center">
         <span>Articles de la Facture</span>
         <v-btn
           color="primary"
           @click="showAddItemForm = true"
-          v-if="!invoice.paid"
+          v-if="!invoice.paid && !loading"
         >
           Ajouter un Article
         </v-btn>
@@ -241,6 +242,10 @@ import { useForm, router } from '@inertiajs/vue3'
 
 const props = defineProps({
   modelValue: Boolean,
+  loading: {
+    type: Boolean,
+    default: false,
+  },
   invoice: {
     type: Object,
     required: true

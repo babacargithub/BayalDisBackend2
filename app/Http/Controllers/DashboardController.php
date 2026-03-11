@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Data\Dashboard\DashboardStats;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,24 +11,25 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function __construct(private readonly SalesInvoiceService $salesInvoiceService) {}
+    public function __construct(private readonly SalesInvoiceStatsService $salesInvoiceStatsService) {}
 
     public function index(Request $request): Response
     {
         $selectedDate = Carbon::parse($request->query('date', Carbon::today()->toDateString()));
-            return Inertia::render('Dashboard', [
-                'selectedDate' => $selectedDate->toDateString(),
-                'dailyStats' => $this->getDailyStats($selectedDate)->toSnakeCaseArray(),
-                'weeklyStats' => $this->getWeeklyStats($selectedDate)->toSnakeCaseArray(),
-                'monthlyStats' => $this->getMonthlyStats($selectedDate)->toSnakeCaseArray(),
-                'overallStats' => $this->getOverallStats()->toSnakeCaseArray(),
-            ]);
+
+        return Inertia::render('Dashboard', [
+            'selectedDate' => $selectedDate->toDateString(),
+            'dailyStats' => $this->getDailyStats($selectedDate)->toSnakeCaseArray(),
+            'weeklyStats' => $this->getWeeklyStats($selectedDate)->toSnakeCaseArray(),
+            'monthlyStats' => $this->getMonthlyStats($selectedDate)->toSnakeCaseArray(),
+            'overallStats' => $this->getOverallStats()->toSnakeCaseArray(),
+        ]);
 
     }
 
     private function getDailyStats(Carbon $date): DashboardStats
     {
-        return $this->salesInvoiceService->buildStatsForPeriod(
+        return $this->salesInvoiceStatsService->buildStatsForPeriod(
             startDate: $date->copy()->startOfDay(),
             endDate: $date->copy()->endOfDay(),
         );
@@ -36,7 +37,7 @@ class DashboardController extends Controller
 
     private function getWeeklyStats(Carbon $date): DashboardStats
     {
-        return $this->salesInvoiceService->buildStatsForPeriod(
+        return $this->salesInvoiceStatsService->buildStatsForPeriod(
             startDate: $date->copy()->startOfWeek(),
             endDate: $date->copy()->endOfWeek(),
         );
@@ -44,7 +45,7 @@ class DashboardController extends Controller
 
     private function getMonthlyStats(Carbon $date): DashboardStats
     {
-        return $this->salesInvoiceService->buildStatsForPeriod(
+        return $this->salesInvoiceStatsService->buildStatsForPeriod(
             startDate: $date->copy()->startOfMonth(),
             endDate: $date->copy()->endOfMonth(),
         );
@@ -52,8 +53,6 @@ class DashboardController extends Controller
 
     private function getOverallStats(): DashboardStats
     {
-        return $this->salesInvoiceService->buildStatsForPeriod(startDate: null, endDate: null);
+        return $this->salesInvoiceStatsService->buildStatsForPeriod(startDate: null, endDate: null);
     }
-
-
 }

@@ -4,7 +4,7 @@ namespace App\Models;
 
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InvoicePaymentMismatchException;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -87,10 +87,13 @@ class SalesInvoice extends Model
     {
         parent::boot();
 
-        // Propagate paid/should_be_paid_at changes down to vente items.
+        // Propagate paid/paid_at/should_be_paid_at changes down to vente items.
         static::updated(function (SalesInvoice $invoice) {
             if ($invoice->isDirty('paid')) {
-                $invoice->items()->update(['paid' => $invoice->paid]);
+                $invoice->items()->update([
+                    'paid' => $invoice->paid,
+                    'paid_at' => $invoice->paid ? now() : null,
+                ]);
             }
 
             if ($invoice->isDirty('should_be_paid_at')) {
@@ -133,12 +136,12 @@ class SalesInvoice extends Model
      */
     public function recalculateStoredTotals(): void
     {
-        $salesInvoiceService = app(SalesInvoiceService::class);
+        $salesInvoiceStatsService = app(SalesInvoiceStatsService::class);
 
-        $freshTotalAmount = $salesInvoiceService->calculateTotalAmountForInvoice($this);
-        $freshTotalEstimatedProfit = $salesInvoiceService->calculateTotalEstimatedProfitForInvoice($this);
-        $freshTotalPayments = $salesInvoiceService->calculateTotalPaymentsForInvoice($this);
-        $freshTotalRealizedProfit = $salesInvoiceService->calculateTotalRealizedProfitForInvoice($this);
+        $freshTotalAmount = $salesInvoiceStatsService->calculateTotalAmountForInvoice($this);
+        $freshTotalEstimatedProfit = $salesInvoiceStatsService->calculateTotalEstimatedProfitForInvoice($this);
+        $freshTotalPayments = $salesInvoiceStatsService->calculateTotalPaymentsForInvoice($this);
+        $freshTotalRealizedProfit = $salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($this);
 
         // FULLY_PAID is never set automatically — only markAsFullyPaid() may do that.
         // However, if the invoice is already FULLY_PAID and payments still cover the

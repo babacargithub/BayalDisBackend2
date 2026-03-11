@@ -25,7 +25,7 @@ class InventoryAggregationTest extends TestCase
         $manager = User::factory()->create();
 
         return Team::create([
-            'name' => 'Team Inventory '.rand(1, 1000),
+            'name' => 'Team Inventory '.rand(1000, 10000),
             'user_id' => $manager->id,
         ]);
     }

@@ -11,7 +11,7 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
-use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +29,7 @@ class CommercialActivityReportTest extends TestCase
 {
     use RefreshDatabase;
 
-    private SalesInvoiceService $salesInvoiceService;
+    private SalesInvoiceStatsService $salesInvoiceStatsService;
 
     private Commercial $commercial;
 
@@ -43,7 +43,7 @@ class CommercialActivityReportTest extends TestCase
     {
         parent::setUp();
 
-        $this->salesInvoiceService = app(SalesInvoiceService::class);
+        $this->salesInvoiceStatsService = app(SalesInvoiceStatsService::class);
         $this->today = Carbon::today();
         $this->product = $this->makeProduct();
         $team = $this->makeTeam();
@@ -157,7 +157,7 @@ class CommercialActivityReportTest extends TestCase
 
     private function buildReport(?Commercial $commercial = null): CommercialActivityReportDTO
     {
-        return $this->salesInvoiceService->buildCommercialActivityReport(
+        return $this->salesInvoiceStatsService->buildCommercialActivityReport(
             $commercial ?? $this->commercial,
             $this->today->copy()->startOfDay(),
             $this->today->copy()->endOfDay(),
@@ -460,7 +460,7 @@ class CommercialActivityReportTest extends TestCase
         $this->makeInvoiceWithItems($this->commercial, [['quantity' => 1, 'price' => 1000]], $monday);
         $this->makeInvoiceWithItems($this->commercial, [['quantity' => 1, 'price' => 2000]], $monday->copy()->addDays(3));
 
-        $report = $this->salesInvoiceService->buildCommercialActivityReport(
+        $report = $this->salesInvoiceStatsService->buildCommercialActivityReport(
             $this->commercial,
             $monday->copy()->startOfDay(),
             $monday->copy()->endOfWeek(),

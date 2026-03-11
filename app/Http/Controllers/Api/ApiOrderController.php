@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\CancelOrderRequest;
-use App\Http\Requests\CreateOrderRequest;
-use App\Http\Requests\DeliverOrderRequest;
-use App\Http\Requests\UpdateOrderItemsRequest;
+use App\Http\Requests\Api\CancelOrderRequest;
+use App\Http\Requests\Api\CreateOrderRequest;
+use App\Http\Requests\Api\DeliverOrderRequest;
+use App\Http\Requests\Api\UpdateOrderItemsRequest;
 use App\Models\Order;
 use App\Services\OrderService;
 use Exception;
@@ -16,11 +16,8 @@ use Throwable;
 
 class ApiOrderController extends Controller
 {
-
     //
-    public function __construct(readonly OrderService $orderService)
-    {
-    }
+    public function __construct(public readonly OrderService $orderService) {}
 
     public function getOrders(): JsonResponse
     {
@@ -107,5 +104,4 @@ class ApiOrderController extends Controller
             ], 500);
         }
     }
-
 }

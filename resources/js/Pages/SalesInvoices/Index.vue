@@ -110,6 +110,7 @@
             <thead>
               <tr>
                 <th>Date</th>
+                <th>Échéance</th>
                 <th>Client</th>
                 <th>Téléphone</th>
                 <th>Total</th>
@@ -124,12 +125,18 @@
               <tr v-for="invoice in filteredInvoices" :key="invoice.id">
                 <td>{{ formatDate(invoice.created_at) }}</td>
                 <td>
+                  <span v-if="invoice.should_be_paid_at" :class="isOverdue(invoice) ? 'text-error font-weight-bold' : ''">
+                    {{ formatDate(invoice.should_be_paid_at) }}
+                  </span>
+                  <span v-else class="text-grey">—</span>
+                </td>
+                <td>
                   <div>{{ invoice.customer.name }}</div>
                   <div class="text-caption text-grey">{{ invoice.customer.address }}</div>
                 </td>
                 <td>{{ invoice.customer.phone_number }}</td>
                 <td>{{ formatPrice(invoice.total) }}</td>
-                <td>{{ formatPrice(invoice.total - getRemainingAmount(invoice)) }}</td>
+                <td>{{ formatPrice(invoice.total_payments) }}</td>
                 <td>
                   <span :class="getRemainingAmount(invoice) > 0 ? 'text-error' : ''">
                     {{ formatPrice(getRemainingAmount(invoice)) }}
@@ -137,11 +144,12 @@
                 </td>
                 <td>
                   <span>
-                    {{ formatPrice(invoice.total_profit) }}
+                    {{ formatPrice(invoice.total_estimated_profit) }}
                   </span>
-                </td> <td>
+                </td>
+                <td>
                   <span>
-                    {{ formatPrice(invoice.total_profit_paid) }}
+                    {{ formatPrice(invoice.total_realized_profit) }}
                   </span>
                 </td>
                 <td>
@@ -204,6 +212,7 @@
       v-model="showItemsDialog"
       :invoice="selectedInvoice"
       :products="products"
+      :loading="loadingInvoiceDetails"
       @updated="refreshData"
     />
 
@@ -212,6 +221,7 @@
       v-if="selectedInvoice"
       v-model="showPaymentsDialog"
       :invoice="selectedInvoice"
+      :loading="loadingInvoiceDetails"
       @updated="refreshData"
     />
 
@@ -331,6 +341,7 @@ const showCreateDialog = ref(false)
 const showItemsDialog = ref(false)
 const showPaymentsDialog = ref(false)
 const selectedInvoice = ref(null)
+const loadingInvoiceDetails = ref(false)
 const showDeleteDialog = ref(false)
 const invoiceToDelete = ref(null)
 const showErrorDialog = ref(false)
@@ -489,22 +500,56 @@ const formatDate = (date) => {
 }
 
 const getRemainingAmount = (invoice) => {
-  const totalPaid = invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0
-  return invoice.total - totalPaid
+  return invoice.total_remaining
+}
+
+const isOverdue = (invoice) => {
+  return invoice.should_be_paid_at && new Date(invoice.should_be_paid_at) < new Date() && getRemainingAmount(invoice) > 0
+}
+
+const fetchInvoiceDetails = async (invoiceId) => {
+  const response = await fetch(route('sales-invoices.show', invoiceId), {
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Échec du chargement des détails de la facture')
+  }
+
+  const data = await response.json()
+  return data.invoice
+}
+
+const fetchAndUpdateSelectedInvoice = async (invoiceId) => {
+  loadingInvoiceDetails.value = true
+  try {
+    selectedInvoice.value = await fetchInvoiceDetails(invoiceId)
+  } catch (error) {
+    errorMessage.value = error.message
+    showErrorDialog.value = true
+  } finally {
+    loadingInvoiceDetails.value = false
+  }
 }
 
 const openItemsDialog = (invoice) => {
   selectedInvoice.value = invoice
   showItemsDialog.value = true
+  fetchAndUpdateSelectedInvoice(invoice.id)
 }
 
 const openPaymentsDialog = (invoice) => {
   selectedInvoice.value = invoice
   showPaymentsDialog.value = true
+  fetchAndUpdateSelectedInvoice(invoice.id)
 }
 
 const openDeleteDialog = (invoice) => {
-  if (invoice.payments && invoice.payments.length > 0) {
+  // Use stored total_payments to check for existing payments without loading the relation
+  if (invoice.total_payments > 0) {
     errorMessage.value = 'Impossible de supprimer une facture avec des paiements'
     showErrorDialog.value = true
     return
@@ -552,6 +597,16 @@ const exportFilteredInvoices = () => {
 }
 
 const refreshData = () => {
-  router.reload({ preserveScroll: true })
+  const activeInvoiceId = selectedInvoice.value?.id
+  const isDialogOpen = showItemsDialog.value || showPaymentsDialog.value
+
+  router.reload({
+    preserveScroll: true,
+    onSuccess: () => {
+      if (activeInvoiceId && isDialogOpen) {
+        fetchAndUpdateSelectedInvoice(activeInvoiceId)
+      }
+    },
+  })
 }
 </script> 

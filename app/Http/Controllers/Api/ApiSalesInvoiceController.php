@@ -8,8 +8,8 @@ use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvoicePaymentMismatchException;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\CreateSalesInvoiceRequest;
-use App\Http\Requests\PaySalesInvoiceRequest;
+use App\Http\Requests\Api\CreateSalesInvoiceRequest;
+use App\Http\Requests\Api\PaySalesInvoiceRequest;
 use App\Http\Resources\CustomerResource;
 use App\Http\Resources\ProductResource;
 use App\Models\Commercial;
@@ -18,6 +18,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Services\SalesInvoiceService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,7 @@ class ApiSalesInvoiceController extends Controller
 {
     public function __construct(
         private readonly SalesInvoiceService $salesInvoiceService,
+        private readonly SalesInvoiceStatsService $salesInvoiceStatsService,
     ) {}
 
     public function createSalesInvoice(CreateSalesInvoiceRequest $request): JsonResponse
@@ -66,7 +68,7 @@ class ApiSalesInvoiceController extends Controller
             ->where('user_id', $request->user()->id);
 
         $invoices = $invoicesQuery->get();
-        $activityReport = $this->salesInvoiceService->buildCommercialActivityReport(auth()->user()->commercial,
+        $activityReport = $this->salesInvoiceStatsService->buildCommercialActivityReport(auth()->user()->commercial,
             Carbon::parse($date), Carbon::parse($date));
         $totalSales = $activityReport->totalSales;
         $totalPayments = $activityReport->totalPayments;
@@ -114,7 +116,7 @@ class ApiSalesInvoiceController extends Controller
         $startDate = $validated['type'] === 'weekly' ? $date->copy()->startOfWeek() : $date->copy()->startOfDay();
         $endDate = $validated['type'] === 'weekly' ? $date->copy()->endOfWeek() : $date->copy()->endOfDay();
 
-        $activityReport = $this->salesInvoiceService->buildCommercialActivityReport($commercial, $startDate, $endDate);
+        $activityReport = $this->salesInvoiceStatsService->buildCommercialActivityReport($commercial, $startDate, $endDate);
 
         return response()->json([
             'period' => [

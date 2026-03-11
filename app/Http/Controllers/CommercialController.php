@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\SalesInvoiceStatus;
 use App\Models\Commercial;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,10 +15,10 @@ class CommercialController extends Controller
     public function index()
     {
         $commerciaux = Commercial::with('customers')
-            ->withCount('ventes')
-            ->withSum('ventes', DB::raw('price * quantity'))
-            ->withCount(['ventes as ventes_impayees_count' => function ($query) {
-                $query->where('paid', false);
+            ->withCount('invoices')
+            ->withSum('invoices', DB::raw('total_amount'))
+            ->withCount(['invoices as ventes_impayees_count' => function ($query) {
+                $query->where('status', '!=', SalesInvoiceStatus::FullyPaid);;
             }])
             ->get();
 
@@ -135,7 +136,7 @@ class CommercialController extends Controller
         $getStats = function ($startDate = null) use ($commercial) {
             // Base queries
             $customersQuery = $commercial->customers();
-            $ventesQuery = $commercial->ventes();
+            $ventesQuery = $commercial->invoices();
             
             if ($startDate) {
                 $customersQuery = $customersQuery->where('created_at', '>=', $startDate);
@@ -149,13 +150,14 @@ class CommercialController extends Controller
 
             // Get ventes stats
             $ventesAll = (clone $ventesQuery)->count();
-            $ventesPaid = (clone $ventesQuery)->where('paid', true)->count();
-            $ventesUnpaid = (clone $ventesQuery)->where('paid', false)->count();
+            $ventesPaid = (clone $ventesQuery)->where('status', "=", SalesInvoiceStatus::FullyPaid)->count();
+            $ventesUnpaid = (clone $ventesQuery)->where('status', "!=", SalesInvoiceStatus::FullyPaid)->count();
 
             // Get amounts
-            $totalAll = (clone $ventesQuery)->sum(DB::raw('price * quantity'));
-            $totalPaid = (clone $ventesQuery)->where('paid', true)->sum(DB::raw('price * quantity'));
-            $totalUnpaid = (clone $ventesQuery)->where('paid', false)->sum(DB::raw('price * quantity'));
+            $totalAll = (clone $ventesQuery)->sum(DB::raw('total_amount'));
+            $totalPaid = (clone $ventesQuery)->where('status', "=", SalesInvoiceStatus::FullyPaid)->sum(DB::raw('total_amount'));
+            $totalUnpaid = (clone $ventesQuery)->where('status', "!=", SalesInvoiceStatus::FullyPaid)
+                ->sum(DB::raw('CAST(total_amount AS SIGNED) - CAST(total_payments AS SIGNED)'));
             $commission = $totalPaid * 0.1; // 10% commission
             
             return [

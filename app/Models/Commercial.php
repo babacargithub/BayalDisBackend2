@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Hash;
 
 class Commercial extends Model
 {
-    use HasFactory;
 
     protected $fillable = [
         'name',
@@ -36,9 +35,9 @@ class Commercial extends Model
         return $this->hasMany(Customer::class);
     }
 
-    public function ventes(): HasMany
+    public function invoices(): HasMany
     {
-        return $this->hasMany(Vente::class);
+        return $this->hasMany(SalesInvoice::class);
     }
 
     public function orders(): HasMany
