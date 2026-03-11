@@ -218,7 +218,7 @@ class PurchaseInvoiceController extends Controller
                 if ($carLoad == null) {
                     throw new \Exception('CarLoad not found for team ' . $team->name);
                 }// Do NOT decrement main stock here since we just created StockEntry from the purchase invoice
-                $carLoadService->createItems($carLoad, $items, false);
+                $carLoadService->createItemsToCarLoad($carLoad, $items, false);
             }
 
             DB::commit();

@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use PDF;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class CarLoadController extends Controller
 {
@@ -29,7 +30,7 @@ class CarLoadController extends Controller
 
     public function index()
     {
-        $carLoads = $this->carLoadService->getCurrentCarLoad();
+        $carLoads = $this->carLoadService->getAllCarLoads();
         $teams = Team::select('id', 'name')
             ->orderBy('name')
             ->get();
@@ -152,6 +153,9 @@ class CarLoadController extends Controller
             ->with('success', 'Chargement supprimé avec succès');
     }
 
+    /**
+     * @throws Throwable
+     */
     public function addItems(Request $request, CarLoad $carLoad)
     {
 
@@ -167,9 +171,9 @@ class CarLoadController extends Controller
                 $item["quantity_left"] = $item["quantity_loaded"];
                 return $item;
             }, $validated['items']);
-            $this->carLoadService->createItems($carLoad, $items);
+            $this->carLoadService->createItemsToCarLoad($carLoad, $items);
             return redirect()->back()
-                ->with('success', 'Produit ajouté avec succès');
+                ->with('success', 'Produit(s) ajouté(s) avec succès');
         } catch (\Exception $e) {
             return back()->withErrors(["error"=>$e->getMessage()]);
         }
@@ -232,10 +236,13 @@ class CarLoadController extends Controller
         }
     }
 
+    /**
+     * @throws Throwable
+     */
     public function createFromPrevious(CarLoad $carLoad)
     {
         try {
-            $newCarLoad = $this->carLoadService->createFromPrevious($carLoad);
+            $newCarLoad = $this->carLoadService->createCarLoadFromAnotherPreviousCarLoad($carLoad);
             return redirect()->route('car-loads.show', $newCarLoad)
                 ->with('success', 'Nouveau chargement créé avec succès');
         } catch (\Exception $e) {
@@ -271,7 +278,7 @@ class CarLoadController extends Controller
     }
 
     /**
-     * @throws \Throwable
+     * @throws Throwable
      */
     public function addInventoryItems(Request $request, CarLoad $carLoad, CarLoadInventory $inventory)
     {
@@ -285,6 +292,7 @@ class CarLoadController extends Controller
         $endDate = $carLoad->return_date->toDateString();
 
         /** @noinspection UnknownColumnInspection */
+        /** @noinspection UnresolvedVariable */
         $salesByProduct = DB::select("
             SELECT 
                 product_id,
@@ -384,9 +392,9 @@ class CarLoadController extends Controller
         ];
 
        return view('pdf.inventory', $viewData);
-        $pdf = PDF::loadView('pdf.inventory', $viewData)->setPaper('a4', 'landscape');
-        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
-        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
+//        $pdf = PDF::loadView('pdf.inventory', $viewData)->setPaper('a4', 'landscape');
+//        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
+//        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
     }
 
     public function exportItemsPdf(CarLoad $carLoad)

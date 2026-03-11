@@ -87,7 +87,7 @@ class PurchaseInvoicePutInStockTest extends TestCase
 
         // Bind a mock CarLoadService so that we do not hit real logic
         $mock = $this->getMockBuilder(CarLoadService::class)
-            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItems'])
+            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItemsToCarLoad'])
             ->getMock();
 
         // Return a dummy CarLoad for the team
@@ -96,7 +96,7 @@ class PurchaseInvoicePutInStockTest extends TestCase
 
         // Expect createItems to be called once with the dummy car load and array of items
         $mock->expects($this->once())
-            ->method('createItems')
+            ->method('createItemsToCarLoad')
             ->with($this->equalTo($dummyCarLoad), $this->callback(function ($items) {
                 // Should contain two items derived from invoice
                 if (!is_array($items) || count($items) !== 2) return false;
@@ -139,11 +139,11 @@ class PurchaseInvoicePutInStockTest extends TestCase
 
         // Even if service were bound, controller should exit early; bind a dummy to ensure not called
         $mock = $this->getMockBuilder(CarLoadService::class)
-            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItems'])
+            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItemsToCarLoad'])
             ->getMock();
         // Neither method should be called
         $mock->expects($this->never())->method('getCurrentCarLoadForTeam');
-        $mock->expects($this->never())->method('createItems');
+        $mock->expects($this->never())->method('createItemsToCarLoad');
         $this->app->instance(CarLoadService::class, $mock);
 
         $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),[
@@ -164,11 +164,11 @@ class PurchaseInvoicePutInStockTest extends TestCase
 
         // Bind a mock CarLoadService that returns null to trigger exception path
         $mock = $this->getMockBuilder(CarLoadService::class)
-            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItems'])
+            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItemsToCarLoad'])
             ->getMock();
         $mock->method('getCurrentCarLoadForTeam')->willReturn(null);
         // createItems should never be called if no car load
-        $mock->expects($this->never())->method('createItems');
+        $mock->expects($this->never())->method('createItemsToCarLoad');
         $this->app->instance(CarLoadService::class, $mock);
 
         $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),

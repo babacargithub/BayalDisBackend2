@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\Depense;
 use App\Models\Payment;
 use App\Models\SalesInvoice;
+use App\Models\StockEntry;
 use App\Models\Vente;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -80,6 +81,56 @@ class SalesInvoiceStatsService
     {
         return (int) $this->buildBaseInvoicePaymentsQuery($invoice)
             ->sum('profit');
+    }
+
+    // =========================================================================
+    // Per-vente profit calculation
+    // =========================================================================
+
+    /**
+     * Calculate the profit for a single Vente using historical cost price from StockEntry records.
+     *
+     * The historical cost price is the weighted average of all stock entries for the product
+     * that existed at or before the time of the sale. This ensures profit is calculated against
+     * the actual cost paid at purchase time, not the product's current cost_price.
+     *
+     * Future: additional deductions (car load expenses, gas costs, etc.) will be applied here.
+     */
+    public function calculateProfitForVente(Vente $vente): int
+    {
+        if (! $vente->product) {
+            return 0;
+        }
+
+        $historicalCostPrice = $this->determineHistoricalCostPriceForVente($vente);
+
+        return (int) round(($vente->price - $historicalCostPrice) * $vente->quantity);
+    }
+
+    /**
+     * Determine the historical cost price for a vente using the weighted average
+     * of all stock entries for the product at or before the vente's creation date.
+     *
+     * Falls back to the product's current cost_price if no stock entries are found.
+     */
+    private function determineHistoricalCostPriceForVente(Vente $vente): float
+    {
+        $venteDate = $vente->created_at ?? now();
+
+        $stockEntries = StockEntry::where('product_id', $vente->product_id)
+            ->where('created_at', '<=', $venteDate)
+            ->get();
+
+        if ($stockEntries->isEmpty()) {
+            return (float) $vente->product->cost_price;
+        }
+
+        $totalQuantity = $stockEntries->sum('quantity');
+        $totalValue = $stockEntries->sum(fn (StockEntry $entry) => $entry->quantity * $entry->unit_price);
+
+        return $totalQuantity > 0
+            ? $totalValue / $totalQuantity
+            : (float) $vente->product->cost_price;
     }
 
     // =========================================================================

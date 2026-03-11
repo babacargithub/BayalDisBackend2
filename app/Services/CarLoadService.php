@@ -14,9 +14,11 @@ use App\Models\Product;
 use App\Models\Team;
 use App\Models\Vente;
 use Carbon\Carbon;
+use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use JetBrains\PhpStorm\ArrayShape;
+use Throwable;
 
 class CarLoadService
 {
@@ -53,7 +55,7 @@ class CarLoadService
     public function addItem(CarLoad $carLoad, array $data): CarLoadItem
     {
         if ($carLoad->status === 'UNLOADED') {
-            throw new \Exception('Cannot add items to an unloaded car load');
+            throw new Exception('Cannot add items to an unloaded car load');
         }
 
         return DB::transaction(function () use ($carLoad, $data) {
@@ -68,7 +70,7 @@ class CarLoadService
     public function updateItem(CarLoadItem $item, array $data): CarLoadItem
     {
         if ($item->carLoad->status === 'UNLOADED') {
-            throw new \Exception('Cannot update items of an unloaded car load');
+            throw new Exception('Cannot update items of an unloaded car load');
         }
 
         return DB::transaction(function () use ($item, $data) {
@@ -89,7 +91,7 @@ class CarLoadService
     public function deleteItem(CarLoadItem $item)
     {
         if ($item->carLoad->returned) {
-            throw new \Exception('Cannot delete items from an unloaded car load');
+            throw new Exception('Cannot delete items from an unloaded car load');
         }
 
         return DB::transaction(function () use ($item) {
@@ -109,11 +111,11 @@ class CarLoadService
     public function activateCarLoad(CarLoad $carLoad): CarLoad
     {
         if ($carLoad->status !== 'LOADING') {
-            throw new \Exception('Only loading car loads can be activated');
+            throw new Exception('Only loading car loads can be activated');
         }
 
         if ($carLoad->items()->count() === 0) {
-            throw new \Exception('Cannot activate a car load without items');
+            throw new Exception('Cannot activate a car load without items');
         }
 
         return DB::transaction(function () use ($carLoad) {
@@ -129,7 +131,7 @@ class CarLoadService
     public function unloadCarLoad(CarLoad $carLoad): CarLoad
     {
         if ($carLoad->status !== 'ACTIVE') {
-            throw new \Exception('Only active car loads can be unloaded');
+            throw new Exception('Only active car loads can be unloaded');
         }
 
         return DB::transaction(function () use ($carLoad) {
@@ -142,10 +144,13 @@ class CarLoadService
         });
     }
 
-    public function createFromPrevious(CarLoad $previousCarLoad): CarLoad
+    /**
+     * @throws Throwable
+     */
+    public function createCarLoadFromAnotherPreviousCarLoad(CarLoad $previousCarLoad): CarLoad
     {
         if ($previousCarLoad->status !== 'UNLOADED') {
-            throw new \Exception('Can only create new car load from unloaded car loads');
+            throw new Exception('Can only create new car load from unloaded car loads');
         }
 
         return DB::transaction(function () use ($previousCarLoad) {
@@ -188,7 +193,7 @@ class CarLoadService
             'inventory.items.product',
         ])
             ->orderBy('created_at', 'desc')
-            ->paginate(1000);
+            ->paginate(10000);
     }
 
     public function getCurrentCarLoad()
@@ -247,12 +252,13 @@ class CarLoadService
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
+     * @throws Throwable
      */
     public function createFromInventory(CarLoadInventory $inventory): CarLoad
     {
         if (! $inventory->closed) {
-            throw new \Exception('Impossible de créer un nouveau chargement à partir d\'un inventaire non fermé');
+            throw new Exception('Impossible de créer un nouveau chargement à partir d\'un inventaire non fermé');
         }
         // if there is a car load with the same team and the return date is in the future and the car load is not returned, throw an exception
         $carLoad = CarLoad::where('team_id', $inventory->carLoad->team_id)
@@ -260,7 +266,7 @@ class CarLoadService
             ->where('returned', false)
             ->exists();
         if ($carLoad) {
-            throw new \Exception('Cette équipe a déjà un chargement en cours et non retourné');
+            throw new Exception('Cette équipe a déjà un chargement en cours et non retourné');
         }
 
         $carLoad = $inventory->carLoad;
@@ -300,6 +306,9 @@ class CarLoadService
         });
     }
 
+    /**
+     * @throws Throwable
+     */
     public function transformToVariants(Product $product, array $data): void
     {
         // Get current car load for the team
@@ -309,7 +318,7 @@ class CarLoadService
             ->first();
 
         if (! $currentCarLoad) {
-            throw new \Exception('Aucun chargement actif trouvé pour votre équipe');
+            throw new ModelNotFoundException('Votre équipe/véhicule ne dispose pas d\'un chargement en cours dans le système.');
         }
 
         // Find the parent product in car load items
@@ -318,13 +327,13 @@ class CarLoadService
             ->first();
 
         if (! $parentItem) {
-            throw new \Exception('Ce produit n\'est pas dans votre chargement');
+            throw new Exception('Ce produit n\'est pas dans votre chargement');
         }
         $product = $parentItem->product;
 
         $quantityAvailableInCarLoad = $this->getTotalQuantityLeftOfProductInCarLoad($currentCarLoad, $product);
         if ($quantityAvailableInCarLoad < $data['quantityOfBaseProductToTransform']) {
-            throw new \Exception('Stock insuffisant dans le chargement. Stock disponible: '.$quantityAvailableInCarLoad);
+            throw new Exception('Stock insuffisant dans le chargement. Stock disponible: '.$quantityAvailableInCarLoad);
         }
 
         DB::transaction(function () use ($currentCarLoad, $product, $data) {
@@ -337,7 +346,7 @@ class CarLoadService
 
                 // Verify this is a valid parent-child relationship
                 if ($variant->parent_id !== $product->id) {
-                    throw new \Exception('Le produit '.$variant->name.' n\'est pas un variant de ce produit');
+                    throw new Exception('Le produit '.$variant->name.' n\'est pas un variant de ce produit');
                 }
 
                 // Calculate actual quantity after removing unused quantity
@@ -358,7 +367,10 @@ class CarLoadService
         });
     }
 
-    public function createItems(CarLoad $carLoad, array $items): CarLoad
+    /**
+     * @throws Throwable
+     */
+    public function createItemsToCarLoad(CarLoad $carLoad, array $items): CarLoad
     {
         return DB::transaction(function () use ($items, $carLoad) {
             foreach ($items as $item) {
@@ -575,54 +587,65 @@ class CarLoadService
 
     /**
      * @throws InsufficientStockException
+     * @throws Throwable
      */
     public function decreaseProductStockInCarLoadUsingFifo(Product $product, int $quantity, CarLoad $carLoad): void
     {
-        $totalQuantityLeft = $this->getTotalQuantityLeftOfProductInCarLoad($carLoad, $product);
+        DB::transaction(function () use ($product, $quantity, $carLoad): void {
+            // Lock rows for update to prevent concurrent overselling race conditions.
+            // NULL loaded_at rows are sorted last so they don't incorrectly consume FIFO first.
+            $itemsOrderedByOldestLoadedFirst = $carLoad->items()
+                ->where('product_id', $product->id)
+                ->orderByRaw('(loaded_at IS NULL) ASC, loaded_at ASC')
+                ->lockForUpdate()
+                ->get();
 
-        if ($totalQuantityLeft < $quantity) {
-            throw new InsufficientStockException(
-                'Stock insuffisant pour le produit '.$product->name.
-                ' dans le chargement '.$carLoad->name.
-                '. Qté restante : '.$totalQuantityLeft
-            );
-        }
+            $totalQuantityLeft = $itemsOrderedByOldestLoadedFirst->sum('quantity_left');
 
-        $itemsOrderedByOldestLoadedFirst = $carLoad->items()
-            ->where('product_id', $product->id)
-            ->orderBy('loaded_at', 'asc')
-            ->get();
-
-        $remainingQuantityToDeduct = $quantity;
-
-        foreach ($itemsOrderedByOldestLoadedFirst as $item) {
-            if ($item->quantity_left >= $remainingQuantityToDeduct) {
-                $item->quantity_left -= $remainingQuantityToDeduct;
-                $item->save();
-                break;
+            if ($totalQuantityLeft < $quantity) {
+                throw new InsufficientStockException(
+                    'Stock insuffisant pour le produit '.$product->name.
+                    ' dans le chargement '.$carLoad->name.
+                    '. Qté restante : '.$totalQuantityLeft
+                );
             }
 
-            $remainingQuantityToDeduct -= $item->quantity_left;
-            $item->quantity_left = 0;
-            $item->save();
-        }
+            $remainingQuantityToDeduct = $quantity;
+
+            foreach ($itemsOrderedByOldestLoadedFirst as $item) {
+                if ($item->quantity_left >= $remainingQuantityToDeduct) {
+                    $item->quantity_left -= $remainingQuantityToDeduct;
+                    $item->save();
+                    break;
+                }
+
+                $remainingQuantityToDeduct -= $item->quantity_left;
+                $item->quantity_left = 0;
+                $item->save();
+            }
+        });
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
+     * @throws Throwable
      */
     public function increaseProductStockInCarLoad(Product $product, int $quantity, CarLoad $carLoad): void
     {
-        try {
-            $latestItem = $carLoad->items()
-                ->where('product_id', $product->id)
-                ->orderBy('loaded_at', 'desc')
-                ->firstOrFail();
+        DB::transaction(function () use ($product, $quantity, $carLoad): void {
+            try {
+                // NULL loaded_at rows are sorted last so the most recent real batch is picked first.
+                $latestItem = $carLoad->items()
+                    ->where('product_id', $product->id)
+                    ->orderByRaw('(loaded_at IS NULL) ASC, loaded_at DESC')
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            $latestItem->quantity_left += $quantity;
-            $latestItem->save();
-        } catch (ModelNotFoundException) {
-            throw new \Exception("Ce produit n'est pas dans ce chargement du véhicule : ".$carLoad->name);
-        }
+                $latestItem->quantity_left += $quantity;
+                $latestItem->save();
+            } catch (ModelNotFoundException) {
+                throw new Exception("Ce produit n'est pas dans ce chargement du véhicule : ".$carLoad->name);
+            }
+        });
     }
 }

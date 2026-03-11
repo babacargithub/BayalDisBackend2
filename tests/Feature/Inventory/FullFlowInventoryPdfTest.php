@@ -860,7 +860,7 @@ class FullFlowInventoryPdfTest extends TestCase
         // Assert
         $resp->assertStatus(422);
         $this->assertStringContainsString(
-            'Aucun chargement actif trouvé pour votre équipe',
+            'Votre équipe/véhicule ne dispose pas d\'un chargement en cours dans le système',
             $resp->json('message') ?? ''
         );
     }
