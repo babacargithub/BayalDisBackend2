@@ -10,9 +10,12 @@ vi.mock('@inertiajs/vue3', () => ({
     router: { get: vi.fn() },
 }));
 
-// ResizeObserver polyfill — required by Vuetify in jsdom
-global.ResizeObserver = vi.fn(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-}));
+// ResizeObserver polyfill — required by Vuetify in jsdom.
+// Must be a real class constructor because components like VSlideGroup (used
+// internally by VTabs) call `new ResizeObserver(callback)`, not a plain function.
+global.ResizeObserver = class {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+    constructor(_callback) {}
+};

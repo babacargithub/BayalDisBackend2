@@ -4,19 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
 use App\Models\CarLoad;
-use App\Models\CarLoadItem;
-use App\Models\Commercial;
-use App\Models\Product;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
+use App\Models\CarLoadItem;
+use App\Models\Product;
 use App\Models\Team;
-use App\Models\Vente;
 use App\Services\CarLoadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use PDF;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class CarLoadController extends Controller
@@ -34,22 +32,10 @@ class CarLoadController extends Controller
         $teams = Team::select('id', 'name')
             ->orderBy('name')
             ->get();
-        $products = Product::select('id', 'name')
-            ->orderBy('name')
-            ->get();
-
-        // For each car load with inventory, get missing products
-        $carLoads->through(function ($carLoad) {
-            if ($carLoad->inventory) {
-                $carLoad->missing_products = $this->getMissingInventoryProducts($carLoad);
-            }
-            return $carLoad;
-        });
 
         return Inertia::render('CarLoads/Index', [
             'carLoads' => $carLoads,
             'teams' => $teams,
-            'products' => $products
         ]);
     }
 
@@ -72,12 +58,22 @@ class CarLoadController extends Controller
 
     public function show(CarLoad $carLoad)
     {
-        $carLoad->load(['items.product']);
-        $products = Product::all();
+        $carLoad->load([
+            'team',
+            'items.product',
+            'inventory.items.product',
+        ]);
+
+        $missingInventoryProducts = $carLoad->inventory
+            ? $this->getMissingInventoryProducts($carLoad)
+            : collect();
+
+        $products = Product::select('id', 'name', 'parent_id')->orderBy('name')->get();
 
         return Inertia::render('CarLoads/Show', [
             'carLoad' => $carLoad,
-            'products' => $products
+            'products' => $products,
+            'missingInventoryProducts' => $missingInventoryProducts,
         ]);
     }
 
@@ -164,18 +160,20 @@ class CarLoadController extends Controller
                 'items' => 'array',
                 'items.*.product_id' => 'required|exists:products,id',
                 'items.*.quantity_loaded' => 'required|integer|min:1',
-                "items.*.loaded_at" => "required|date",
+                'items.*.loaded_at' => 'required|date',
                 'items.*.comment' => 'nullable|string',
             ]);
             $items = array_map(function ($item) {
-                $item["quantity_left"] = $item["quantity_loaded"];
+                $item['quantity_left'] = $item['quantity_loaded'];
+
                 return $item;
             }, $validated['items']);
             $this->carLoadService->createItemsToCarLoad($carLoad, $items);
+
             return redirect()->back()
                 ->with('success', 'Produit(s) ajouté(s) avec succès');
         } catch (\Exception $e) {
-            return back()->withErrors(["error"=>$e->getMessage()]);
+            return back()->withErrors(['error' => $e->getMessage()]);
         }
 
     }
@@ -184,7 +182,7 @@ class CarLoadController extends Controller
     {
         $validated = $request->validate([
             'quantity_loaded' => 'required|integer|min:1',
-            "quantity_left" => "nullable|numeric",
+            'quantity_left' => 'nullable|numeric',
             'comment' => 'nullable|string',
             'loaded_at' => 'nullable|date',
         ]);
@@ -192,6 +190,7 @@ class CarLoadController extends Controller
         try {
 
             $this->carLoadService->updateItem($item, $validated);
+
             return redirect()->back()
                 ->with('success', 'Produit mis à jour avec succès');
         } catch (\Exception $e) {
@@ -204,6 +203,7 @@ class CarLoadController extends Controller
     {
         try {
             $this->carLoadService->deleteItem($item);
+
             return redirect()->back()
                 ->with('success', 'Produit supprimé avec succès');
         } catch (\Exception $e) {
@@ -216,6 +216,7 @@ class CarLoadController extends Controller
     {
         try {
             $this->carLoadService->activateCarLoad($carLoad);
+
             return redirect()->back()
                 ->with('success', 'Chargement activé avec succès');
         } catch (\Exception $e) {
@@ -228,6 +229,7 @@ class CarLoadController extends Controller
     {
         try {
             $this->carLoadService->unloadCarLoad($carLoad);
+
             return redirect()->back()
                 ->with('success', 'Chargement déchargé avec succès');
         } catch (\Exception $e) {
@@ -243,6 +245,7 @@ class CarLoadController extends Controller
     {
         try {
             $newCarLoad = $this->carLoadService->createCarLoadFromAnotherPreviousCarLoad($carLoad);
+
             return redirect()->route('car-loads.show', $newCarLoad)
                 ->with('success', 'Nouveau chargement créé avec succès');
         } catch (\Exception $e) {
@@ -255,23 +258,22 @@ class CarLoadController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            "comment" => "nullable|string",
-            "items" => "nullable|array",
-            "items.*.product_id" => "nullable|exists:products,id",
-            "items.*.total_sold" => "nullable|int",
-            "items.*.total_loaded" => "nullable|int",
-            "items.*.total_returned" => "nullable|int",
+            'comment' => 'nullable|string',
+            'items' => 'nullable|array',
+            'items.*.product_id' => 'nullable|exists:products,id',
+            'items.*.total_sold' => 'nullable|int',
+            'items.*.total_loaded' => 'nullable|int',
+            'items.*.total_returned' => 'nullable|int',
         ]);
         $carLoad->inventory()->create([
             'name' => $validated['name'],
             'user_id' => auth()->id(),
         ]);
 
-        if (isset($validated["items"])) {
+        if (isset($validated['items'])) {
             $inventory = $carLoad->inventory;
-            $inventory->items()->createMany($validated["items"]);
+            $inventory->items()->createMany($validated['items']);
         }
-
 
         return redirect()->back()
             ->with('success', 'Inventaire créé avec succès');
@@ -293,7 +295,7 @@ class CarLoadController extends Controller
 
         /** @noinspection UnknownColumnInspection */
         /** @noinspection UnresolvedVariable */
-        $salesByProduct = DB::select("
+        $salesByProduct = DB::select('
             SELECT 
                 product_id,
                 SUM(quantity) AS total_quantity_sold
@@ -301,28 +303,28 @@ class CarLoadController extends Controller
             WHERE DATE(created_at) BETWEEN ? AND ?
             GROUP BY product_id
             ORDER BY total_quantity_sold DESC
-        ", [$startDate, $endDate]);
+        ', [$startDate, $endDate]);
         $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
 
-
         $items = collect($validated['items'])
-            ->map(function ($item) use ($inventory, $carLoad, $salesByProductMap) {
+            ->map(function ($item) use ($carLoad, $salesByProductMap) {
                 $productId = $item['product_id'];
                 $totalQuantitySold = $salesByProductMap->has($productId) ? $salesByProductMap->get($productId)->total_quantity_sold : 0;
 
                 return [
                     'product_id' => $item['product_id'],
-                    "product"=> Product::where('id',$item['product_id'])->first()->name,
+                    'product' => Product::where('id', $item['product_id'])->first()->name,
                     'total_returned' => $item['total_returned'],
                     'comment' => $item['comment'] ?? null,
-                    "total_loaded" => $carLoad->items()->where('product_id', $item['product_id'])->sum('quantity_loaded'),
-                    "total_sold" => $totalQuantitySold,
+                    'total_loaded' => $carLoad->items()->where('product_id', $item['product_id'])->sum('quantity_loaded'),
+                    'total_sold' => $totalQuantitySold,
                 ];
             });
-        DB::transaction(function () use ($inventory,  $items) {
+        DB::transaction(function () use ($inventory, $items) {
 
             $inventory->items()->createMany($items);
         });
+
         return redirect()->back()
             ->with('success', 'Articles ajoutés avec succès');
     }
@@ -335,7 +337,7 @@ class CarLoadController extends Controller
         ]);
         // check if entry is closed
         if ($inventory->closed) {
-            //throw a validation error
+            // throw a validation error
             return redirect()->back()
                 ->with('error', 'L\'inventaire est clôturé');
         }
@@ -378,6 +380,7 @@ class CarLoadController extends Controller
             $price = $item->priceOfResultComputation;
             $item->resultSign = $resultSign;
             $item->price = $price;
+
             return $item;
         });
 
@@ -391,10 +394,10 @@ class CarLoadController extends Controller
             'date' => now()->format('d/m/Y H:i'),
         ];
 
-       return view('pdf.inventory', $viewData);
-//        $pdf = PDF::loadView('pdf.inventory', $viewData)->setPaper('a4', 'landscape');
-//        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
-//        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
+        return view('pdf.inventory', $viewData);
+        //        $pdf = PDF::loadView('pdf.inventory', $viewData)->setPaper('a4', 'landscape');
+        //        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
+        //        return $pdf->stream("inventaire_{$inventory->id}_{$carLoad->name}.pdf");
     }
 
     public function exportItemsPdf(CarLoad $carLoad)
@@ -404,7 +407,7 @@ class CarLoadController extends Controller
         $pdf = PDF::loadView('pdf.car-load-items', [
             'carLoad' => $carLoad,
             'items' => $carLoad->items,
-            'date' => now()->format('d/m/Y H:i')
+            'date' => now()->format('d/m/Y H:i'),
         ]);
 
         return $pdf->download("chargement_{$carLoad->id}_{$carLoad->name}.pdf");
@@ -414,13 +417,14 @@ class CarLoadController extends Controller
     {
         try {
             $this->carLoadService->createFromInventory($inventory);
+
             return redirect()->route('car-loads.index')
                 ->with('success', 'Nouveau chargement créé avec succès à partir de l\'inventaire');
         } catch (\Exception $e) {
             // If we're handling an AJAX/Inertia request
             if (request()->wantsJson()) {
                 return response()->json([
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ], 422);
             }
 
@@ -429,10 +433,10 @@ class CarLoadController extends Controller
         }
     }
 
-    public function productHistoryInCarLoad(CarLoad $carLoad, Product $product )
+    public function productHistoryInCarLoad(CarLoad $carLoad, Product $product)
     {
 
         return Inertia::render('CarLoad/ProductHistory', $this->carLoadService->productHistoryInCarLoad($product, $carLoad));
 
     }
-} 
+}
