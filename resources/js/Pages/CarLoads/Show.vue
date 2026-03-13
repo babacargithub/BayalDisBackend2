@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Swal from 'sweetalert2';
@@ -298,16 +298,42 @@ const createNewCarLoadFromInventory = () => {
     });
 };
 
-// ─── Inventaire tab — Missing products & PDF ──────────────────────────────────
-const addMissingProductsForm = useForm({ items: [] });
-const addMissingProduct = (items) => {
-    addMissingProductsForm.items = items.map((p) => ({ product_id: p.id, total_returned: p.total_returned ?? 0, comment: '' }));
-    addMissingProductsForm.post(route('car-loads.inventories.items.store', {
+// ─── Inventaire tab — Bulk entry form ────────────────────────────────────────
+// One row per product not yet inventoried. User types total_returned for each,
+// then submits everything in a single request.
+const buildInventoryEntryRows = (missingProducts) =>
+    missingProducts.map((product) => ({
+        product_id: product.id,
+        product_name: product.name,
+        quantity_loaded: product.quantity_loaded,
+        total_returned: null,
+        comment: '',
+    }));
+
+const inventoryEntryRows = ref(buildInventoryEntryRows(props.missingInventoryProducts));
+
+// Keep in sync after Inertia page refreshes (e.g. after a partial submit).
+watch(
+    () => props.missingInventoryProducts,
+    (updatedMissingProducts) => {
+        inventoryEntryRows.value = buildInventoryEntryRows(updatedMissingProducts);
+    },
+);
+
+const inventoryEntryForm = useForm({ items: [] });
+
+const submitInventoryEntries = () => {
+    inventoryEntryForm.items = inventoryEntryRows.value.map((row) => ({
+        product_id: row.product_id,
+        total_returned: row.total_returned ?? 0,
+        comment: row.comment,
+    }));
+    inventoryEntryForm.post(route('car-loads.inventories.items.store', {
         carLoad: props.carLoad.id,
         inventory: props.carLoad.inventory.id,
     }), {
         preserveScroll: true,
-        onSuccess: () => notifySuccess('Produit(s) ajouté(s) à l\'inventaire'),
+        onSuccess: () => notifySuccess('Inventaire saisi avec succès'),
         onError: notifyError,
     });
 };
@@ -320,7 +346,7 @@ const exportInventoryPdf = () => {
 };
 
 // ─── Expose computed properties for testing ──────────────────────────────────
-defineExpose({ groupedCarLoadItems, filteredProducts, inventoryResultValue, statusLabel, statusColor, activeTab, showParentProductsOnly });
+defineExpose({ groupedCarLoadItems, filteredProducts, inventoryResultValue, statusLabel, statusColor, activeTab, showParentProductsOnly, inventoryEntryRows });
 
 // ─── Table headers ─────────────────────────────────────────────────────────
 const groupedItemTableHeaders = [
@@ -764,34 +790,56 @@ const inventoryTableHeaders = [
                                         </template>
                                     </v-data-table>
 
-                                    <!-- Missing products warning -->
-                                    <template v-if="!carLoad.inventory.closed && missingInventoryProducts.length > 0">
-                                        <v-divider class="my-3" />
-                                        <div>
-                                            <p class="text-sm font-medium text-orange-600 mb-2">
-                                                <v-icon size="small" color="orange">mdi-alert</v-icon>
-                                                {{ missingInventoryProducts.length }} produit(s) non inventorié(s)
-                                            </p>
-                                            <div class="flex gap-2 flex-wrap mb-2">
-                                                <v-chip
-                                                    v-for="product in missingInventoryProducts"
-                                                    :key="product.id"
-                                                    color="warning"
-                                                    size="small"
-                                                    closable
-                                                    @click:close="addMissingProduct([{ id: product.id, total_returned: 0 }])"
+                                    <!-- Inventory bulk entry form — one input row per un-inventoried product -->
+                                    <template v-if="!carLoad.inventory.closed && inventoryEntryRows.length > 0">
+                                        <v-divider class="my-4" />
+                                        <p class="text-sm font-semibold mb-3">
+                                            <v-icon size="small" color="primary" class="mr-1">mdi-clipboard-edit</v-icon>
+                                            Saisie physique — {{ inventoryEntryRows.length }} produit(s) à inventorier
+                                        </p>
+
+                                        <v-table density="compact" class="mb-4 rounded border">
+                                            <thead>
+                                                <tr class="bg-grey-lighten-4">
+                                                    <th class="text-left text-xs font-semibold">Produit</th>
+                                                    <th class="text-right text-xs font-semibold">Qté chargée</th>
+                                                    <th class="text-right text-xs font-semibold" style="width:160px">Qté retournée</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr
+                                                    v-for="(row, index) in inventoryEntryRows"
+                                                    :key="row.product_id"
                                                 >
-                                                    {{ product.name }} ({{ product.quantity_loaded }})
-                                                </v-chip>
-                                            </div>
+                                                    <td class="text-sm py-2">{{ row.product_name }}</td>
+                                                    <td class="text-right text-sm text-gray-400 py-2">{{ row.quantity_loaded }}</td>
+                                                    <td class="text-right py-1">
+                                                        <v-text-field
+                                                            v-model.number="row.total_returned"
+                                                            type="number"
+                                                            density="compact"
+                                                            hide-details
+                                                            min="0"
+                                                            placeholder="0"
+                                                            class="w-28 ml-auto"
+                                                            :error-messages="inventoryEntryForm.errors[`items.${index}.total_returned`]"
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </v-table>
+
+                                        <div class="flex justify-end">
                                             <v-btn
-                                                size="small"
-                                                color="warning"
+                                                color="primary"
                                                 variant="flat"
-                                                prepend-icon="mdi-plus-circle"
-                                                :loading="addMissingProductsForm.processing"
-                                                @click="addMissingProduct(missingInventoryProducts.map(p => ({ id: p.id, total_returned: 0 })))"
-                                            >Ajouter tous</v-btn>
+                                                size="small"
+                                                prepend-icon="mdi-check-all"
+                                                :loading="inventoryEntryForm.processing"
+                                                @click="submitInventoryEntries"
+                                            >
+                                                Soumettre l'inventaire
+                                            </v-btn>
                                         </div>
                                     </template>
 

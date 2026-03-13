@@ -36,6 +36,16 @@ readonly class SalesInvoiceService
             $user = auth()->user();
             $user->load('commercial');
 
+            // Resolve the active car load first so car_load_id is stored on the invoice.
+            // This is the single source of truth linking sales to the car load they belong to,
+            // and is used when computing total_sold during inventory aggregation.
+            $currentCarLoad = $this->carLoadService->getCurrentCarLoadForTeam($user->commercial->team);
+            if ($currentCarLoad === null) {
+                throw new UnprocessableEntityHttpException(
+                    'Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !'
+                );
+            }
+
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
                 'invoice_number' => 'F'.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
@@ -43,6 +53,7 @@ readonly class SalesInvoiceService
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
                 'commercial_id' => $user->commercial->id,
                 'status' => SalesInvoiceStatus::Issued,
+                'car_load_id' => $currentCarLoad->id,
             ]);
             $salesInvoice->refresh();
 
@@ -60,12 +71,6 @@ readonly class SalesInvoiceService
             }
             $salesInvoice->items()->saveMany($itemsToSave);
 
-            $currentCarLoad = $this->carLoadService->getCurrentCarLoadForTeam($user->commercial->team);
-            if ($currentCarLoad === null) {
-                throw new UnprocessableEntityHttpException(
-                    'Pour pourvoir faire une vente, il faut un chargement de véhicule attribué à votre équipe !'
-                );
-            }
             foreach ($itemsToSave as $salesInvoiceItem) {
                 $this->carLoadService->decreaseProductStockInCarLoadUsingFifo(
                     $salesInvoiceItem->product,

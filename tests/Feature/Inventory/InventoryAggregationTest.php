@@ -7,13 +7,13 @@ use App\Models\CarLoadInventory;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
 use App\Services\CarLoadService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class InventoryAggregationTest extends TestCase
@@ -105,22 +105,31 @@ class InventoryAggregationTest extends TestCase
 
         $customer = $this->makeCustomer();
 
-        // Record ventes within the date range: 4 parent and 6 variant
+        // Record sales linked to this car load: 4 parent and 6 variant.
+        // Ventes must be linked through a SalesInvoice with car_load_id set so
+        // the inventory total_sold query (JOIN sales_invoices WHERE car_load_id = ?)
+        // can find them.
+        $invoice = SalesInvoice::create([
+            'customer_id' => $customer->id,
+            'commercial_id' => $commercial->id,
+            'car_load_id' => $carLoad->id,
+            'paid' => false,
+        ]);
         Vente::create([
             'product_id' => $parent->id,
-            'customer_id' => $customer->id,
+            'sales_invoice_id' => $invoice->id,
             'quantity' => 4,
             'price' => 3000,
-            'type' => 'SINGLE',
-            'paid' => true,
+            'type' => 'INVOICE_ITEM',
+            'paid' => false,
         ]);
         Vente::create([
             'product_id' => $variant->id,
-            'customer_id' => $customer->id,
+            'sales_invoice_id' => $invoice->id,
             'quantity' => 6,
             'price' => 1700,
-            'type' => 'SINGLE',
-            'paid' => true,
+            'type' => 'INVOICE_ITEM',
+            'paid' => false,
         ]);
 
         // Create an inventory first
@@ -149,7 +158,7 @@ class InventoryAggregationTest extends TestCase
         $this->assertSame(15, (int) $parentItem->total_loaded);
         $this->assertSame(8, (int) $variantItem->total_loaded);
 
-        // total_sold is computed from ventes between dates (global), in our isolated test DB it should match
+        // total_sold is computed by joining ventes → sales_invoices WHERE car_load_id = carLoad.id
         $this->assertSame(4, (int) $parentItem->total_sold, 'Parent direct sales counted');
         $this->assertSame(6, (int) $variantItem->total_sold, 'Variant direct sales counted');
     }
@@ -189,22 +198,28 @@ class InventoryAggregationTest extends TestCase
         ]);
 
         $customer = $this->makeCustomer();
-        // 3 sold of parent, 6 of child within period
+        // 3 sold of parent, 6 of child — linked to this car load via SalesInvoice.car_load_id
+        $invoice = SalesInvoice::create([
+            'customer_id' => $customer->id,
+            'commercial_id' => $commercial->id,
+            'car_load_id' => $carLoad->id,
+            'paid' => false,
+        ]);
         Vente::create([
             'product_id' => $parent->id,
-            'customer_id' => $customer->id,
+            'sales_invoice_id' => $invoice->id,
             'quantity' => 3,
             'price' => 2400,
-            'type' => 'SINGLE',
-            'paid' => true,
+            'type' => 'INVOICE_ITEM',
+            'paid' => false,
         ]);
         Vente::create([
             'product_id' => $child->id,
-            'customer_id' => $customer->id,
+            'sales_invoice_id' => $invoice->id,
             'quantity' => 6,
             'price' => 1300,
-            'type' => 'SINGLE',
-            'paid' => true,
+            'type' => 'INVOICE_ITEM',
+            'paid' => false,
         ]);
 
         $service = new CarLoadService;

@@ -290,20 +290,17 @@ class CarLoadController extends Controller
             'items.*.total_returned' => 'required|numeric',
             'items.*.comment' => 'nullable|string',
         ]);
-        $startDate = $carLoad->load_date->toDateString();
-        $endDate = $carLoad->return_date->toDateString();
-
-        /** @noinspection UnknownColumnInspection */
-        /** @noinspection UnresolvedVariable */
+        // Join through sales_invoices to filter by car_load_id precisely.
+        // Date-range filtering was unreliable when car loads overlap in time.
         $salesByProduct = DB::select('
-            SELECT 
-                product_id,
-                SUM(quantity) AS total_quantity_sold
-            FROM ventes
-            WHERE DATE(created_at) BETWEEN ? AND ?
-            GROUP BY product_id
-            ORDER BY total_quantity_sold DESC
-        ', [$startDate, $endDate]);
+            SELECT
+                v.product_id,
+                SUM(v.quantity) AS total_quantity_sold
+            FROM ventes v
+            INNER JOIN sales_invoices si ON si.id = v.sales_invoice_id
+            WHERE si.car_load_id = ?
+            GROUP BY v.product_id
+        ', [$carLoad->id]);
         $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
 
         $items = collect($validated['items'])
