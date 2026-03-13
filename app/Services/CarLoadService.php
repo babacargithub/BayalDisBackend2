@@ -389,29 +389,27 @@ class CarLoadService
         $children = Product::select('id')
             ->where('parent_id', $parentProduct->id)->get();
 
-        // Initialize total sold for parent computed strictly from ventes (avoid inventory duplicates)
-        $startDate = $carLoad->load_date->toDateTime();
-        $endDate = $carLoad->return_date->toDateTime();
         $totalSoldOfParent = 0;
         $productIds = $children->pluck('id')->toArray();
 
-        // If there are no child variants, we can return the parent ventes sum directly
         if (empty($productIds)) {
             return $totalSoldOfParent;
         }
 
         $placeholders = implode(',', array_fill(0, count($productIds), '?'));
-        // TODO find a way to link ventes with car load
+
+        // Join through sales_invoices to filter by car_load_id precisely.
+        // Date-range filtering was unreliable when car loads overlap in time.
         $salesByProduct = DB::select("
-                                        SELECT 
-                                            product_id,
-                                            SUM(quantity) AS total_quantity_sold
-                                        FROM ventes
-                                        WHERE created_at BETWEEN ? AND ?
-                                        AND product_id IN ($placeholders)
-                                        GROUP BY product_id
-                                        ORDER BY total_quantity_sold DESC
-                                    ", array_merge([$startDate, $endDate], $productIds));
+            SELECT
+                v.product_id,
+                SUM(v.quantity) AS total_quantity_sold
+            FROM ventes v
+            INNER JOIN sales_invoices si ON si.id = v.sales_invoice_id
+            WHERE si.car_load_id = ?
+            AND v.product_id IN ($placeholders)
+            GROUP BY v.product_id
+        ", array_merge([$carLoad->id], $productIds));
         //        $salesByProductMap = collect($salesByProduct)->keyBy('product_id');
         // For each variant, sum quantity from ventes between the car load dates
         foreach ($salesByProduct as $child) {
@@ -539,15 +537,16 @@ class CarLoadService
             // Result in parent decimal units
             $resultDecimal = $calculatedTotalSold + $calculatedTotalReturnedParent - $calculatedTotalLoaded;
 
-            //            return [
-            //                'product_name' => $parentProduct->name,
-            //                'product' => $parentProduct,
-            //                'total_loaded' => $calculatedTotalLoaded,
-            //                'total_sold' => $totalSold,
-            //                'total_returned' => $totalReturnedParent, // parent cartons only, children listed separately
-            //                'children' => $children,
-            //                'result' => $resultDecimal,
-            //            ];
+            // Compute monetary value using the variant unit price × result in variant units.
+            // If no variant exists, fall back to the parent price × decimal parent quantity.
+            $firstVariant = $parentProduct->variants()->first();
+            if ($firstVariant && $firstVariant->base_quantity > 0 && $parentProduct->base_quantity > 0) {
+                $paquetsPerCarton = $parentProduct->base_quantity / $firstVariant->base_quantity;
+                $resultInVariantUnits = $resultDecimal * $paquetsPerCarton;
+                $priceOfResultComputation = (int) round($firstVariant->price * $resultInVariantUnits);
+            } else {
+                $priceOfResultComputation = (int) round($parentProduct->price * $resultDecimal);
+            }
 
             return new CarLoadInventoryResultItemDTO(
                 parent: InventoryParentProductDTO::fromProduct($parentProduct),
@@ -560,8 +559,7 @@ class CarLoadService
                 totalReturnedConverted: $this->convertQuantity($parentProduct, $calculatedTotalReturnedParent),
                 resultConverted: $this->convertQuantity($parentProduct, $resultDecimal),
                 resultOfComputation: $resultDecimal,
-                priceOfResultComputation: $parentProduct->price * $resultDecimal,
-
+                priceOfResultComputation: $priceOfResultComputation,
             );
         })->filter()->values();
 

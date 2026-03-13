@@ -159,7 +159,7 @@ readonly class ProductService
     public function getFormattedDisplayOfCartonAndPaquets(Product $product, float $quantity): array
     {
         $result = [
-            'cartons' => intval($quantity),
+            'cartons' => abs(intval($quantity)),
             'paquets' => 0,
             'first_variant_name' => '',
         ];
@@ -172,7 +172,8 @@ readonly class ProductService
         );
 
         if ($firstVariant) {
-            $decimalPartOfQuantity = $quantity - floor($quantity);
+            $absoluteQuantity = abs($quantity);
+            $decimalPartOfQuantity = $absoluteQuantity - floor($absoluteQuantity);
             $result['paquets'] = (int) number_format(
                 ($decimalPartOfQuantity * ($product->base_quantity / $firstVariant->base_quantity)),
                 0

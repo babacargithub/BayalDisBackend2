@@ -14,6 +14,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\CarLoadService;
 use Carbon\Carbon;
+use Database\Seeders\ProductSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Testing\TestResponse;
@@ -179,7 +180,7 @@ class FullFlowInventoryPdfTest extends TestCase
 
     private function makeCatalog(): array
     {
-        \Artisan::call('db:seed', ['--class' => \Database\Seeders\ProductSeeder::class]);
+        \Artisan::call('db:seed', ['--class' => ProductSeeder::class]);
         $parents = Product::whereNull('parent_id')->get();
         $children = Product::whereNotNull('parent_id')->get();
 
@@ -599,7 +600,8 @@ class FullFlowInventoryPdfTest extends TestCase
         $this->assertEquals($expectedTotalReturnedParent, $p1KGCarton1000pcsInventored->totalReturned);
         $expectedResultOfComputation = $expectedTotalSold + $expectedTotalReturnedParent - $expectedTotalLoaded * 2;
         $this->assertEquals($expectedResultOfComputation, $p1KGCarton1000pcsInventored->resultOfComputation);
-        $expectedPriceOfComputation = $expectedResultOfComputation * $this->p1KGCarton1000pcs->price;
+        $paquetsPerCarton = $this->p1KGCarton1000pcs->base_quantity / $this->c1KGPaquet20pcs->base_quantity;
+        $expectedPriceOfComputation = (int) round($this->c1KGPaquet20pcs->price * $expectedResultOfComputation * $paquetsPerCarton);
         $this->assertEquals($expectedPriceOfComputation, $p1KGCarton1000pcsInventored->priceOfResultComputation);
         $expectedPaquetsOfC1KG20pcs = $this->p1KGCarton1000pcs->getFormattedDisplayOfCartonAndParquets($this->c1KGPaquet20pcs->convertQuantityToParentQuantity(self::$sold1KGPaquet20pcs)['decimal_parent_quantity'])['paquets'];
         $this->assertEquals($expectedPaquetsOfC1KG20pcs,
@@ -638,8 +640,8 @@ class FullFlowInventoryPdfTest extends TestCase
         // Assert cartons/paquets small span appears somewhere
         $this->assertStringContainsString('<span class="small">', $html);
 
-        // Nested children table label
-        $response->assertSee('sois');
+        // Assert the hardcoded 'sois' placeholder is gone from the PDF
+        $response->assertDontSee('sois');
     }
 
     private function saveInvoice(Customer $customer, Product $product, int $quantity, Commercial $managerCommercial,

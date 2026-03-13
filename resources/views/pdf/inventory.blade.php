@@ -128,7 +128,6 @@
                         </tr>
                     @endforeach
                 </table>--}}
-                {{'sois'}}<br>
                 {{ $item->totalReturnedConverted->parentQuantity }} cartons<br>
                 @if($item->totalReturnedConverted->isMixed())
                     <span class="small">{{$item->totalReturnedConverted->childQuantity }} paquets
