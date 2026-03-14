@@ -17,9 +17,10 @@ class ApiCarLoadController extends Controller
         $this->carLoadService = $carLoadService;
     }
 
-    public function getCurrentItems(): JsonResponse
+    public function getCurrentItems(Request $request): JsonResponse
     {
-        $items = $this->carLoadService->getCurrentCarLoadItems();
+        $team = $request->user()->commercial->team;
+        $items = $this->carLoadService->getCurrentCarLoadItems($team);
 
         return response()->json($items);
     }
@@ -38,6 +39,9 @@ class ApiCarLoadController extends Controller
         }));
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function transformToVariants(Request $request, Product $product)
     {
         $validated = $request->validate([
@@ -49,10 +53,18 @@ class ApiCarLoadController extends Controller
         ]);
 
         try {
-            $this->carLoadService->transformToVariants($product, $validated);
+            $team = $request->user()->commercial->team;
+            $currentCarLoad = $this->carLoadService->getCurrentCarLoadForTeam($team);
+
+            if (! $currentCarLoad) {
+                return response()->json(['message' => "Votre équipe/véhicule ne dispose pas d'un chargement en cours dans le système."], 422);
+            }
+
+            $this->carLoadService->transformToVariants($product, $validated, $currentCarLoad);
+
             return response()->json(['message' => 'Transformation effectuée avec succès']);
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()],      status: 422);
+            return response()->json(['message' => $e->getMessage()], status: 422);
         }
     }
-} 
+}

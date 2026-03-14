@@ -33,8 +33,6 @@ class CarLoadItem extends Model
         'source' => CarLoadItemSource::class,
     ];
 
-    protected $guarded = ['id', 'quantity_left'];
-
     /**
      * Backward-compatible accessor: true when this item rolled over from a previous
      * car load. Driven by the FK so the boolean DB column is no longer the source

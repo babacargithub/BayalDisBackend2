@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 
 class CarLoad extends Model
 {
@@ -46,18 +47,14 @@ class CarLoad extends Model
     public function getStockValueAttribute(): int
     {
         // Terminated car loads have transferred all remaining stock to the next car load.
-        // Their quantity_left values are already zeroed, but we short-circuit here to make
-        // the intent explicit and avoid unnecessary queries.
         if ($this->status === CarLoadStatus::TerminatedAndTransferred) {
             return 0;
         }
 
-        // Use a fresh query to avoid stale cached relations when items are modified
-        $totalValue = 0;
-        foreach ($this->items()->with('product')->get() as $item) {
-            $totalValue += $item->quantity_left * $item->product->cost_price;
-        }
-
-        return $totalValue;
+        return (int) DB::table('car_load_items')
+            ->join('products', 'products.id', '=', 'car_load_items.product_id')
+            ->where('car_load_items.car_load_id', $this->id)
+            ->where('car_load_items.quantity_left', '>', 0)
+            ->sum(DB::raw('car_load_items.quantity_left * products.cost_price'));
     }
 }

@@ -263,8 +263,9 @@ class CarLoadController extends Controller
             'items' => 'nullable|array',
             'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.total_sold' => 'nullable|int',
-            'items.*.total_loaded' => 'nullable|int',
             'items.*.total_returned' => 'nullable|int',
+            // total_loaded is intentionally excluded: the UI field is display-only
+            // and the value must always be computed server-side from car load items.
         ]);
         $carLoad->inventory()->create([
             'name' => $validated['name'],
@@ -275,7 +276,14 @@ class CarLoadController extends Controller
 
         if (isset($validated['items'])) {
             $inventory = $carLoad->inventory;
-            $inventory->items()->createMany($validated['items']);
+            $itemsWithComputedTotalLoaded = collect($validated['items'])->map(function (array $item) use ($carLoad) {
+                return array_merge($item, [
+                    'total_loaded' => $carLoad->items()
+                        ->where('product_id', $item['product_id'])
+                        ->sum('quantity_loaded'),
+                ]);
+            })->all();
+            $inventory->items()->createMany($itemsWithComputedTotalLoaded);
         }
 
         return redirect()->back()
