@@ -45,6 +45,13 @@ class CarLoad extends Model
 
     public function getStockValueAttribute(): int
     {
+        // Terminated car loads have transferred all remaining stock to the next car load.
+        // Their quantity_left values are already zeroed, but we short-circuit here to make
+        // the intent explicit and avoid unnecessary queries.
+        if ($this->status === CarLoadStatus::TerminatedAndTransferred) {
+            return 0;
+        }
+
         // Use a fresh query to avoid stale cached relations when items are modified
         $totalValue = 0;
         foreach ($this->items()->with('product')->get() as $item) {

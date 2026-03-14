@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
 use App\Data\CarLoadInventory\ConvertedQuantityDTO;
 use App\Data\CarLoadInventory\InventoryParentProductDTO;
+use App\Enums\CarLoadItemSource;
 use App\Enums\CarLoadStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Models\CarLoad;
@@ -67,6 +68,8 @@ class CarLoadService
                 'product_id' => $data['product_id'],
                 'quantity_loaded' => $data['quantity_loaded'],
                 'comment' => $data['comment'] ?? null,
+                'source' => CarLoadItemSource::Warehouse,
+                'loaded_at' => now(),
             ]);
         });
     }
@@ -99,16 +102,17 @@ class CarLoadService
         }
 
         return DB::transaction(function () use ($item) {
-            $quantity_left = $item->quantity_left;
+            // Only restore warehouse stock for items that were originally loaded from the warehouse.
+            // Items rolled over from a previous car load (FromPreviousCarLoad) or created by
+            // transformation (TransformedFromParent) never consumed warehouse stock, so restoring
+            // them would create phantom warehouse inventory.
+            if ($item->source === CarLoadItemSource::Warehouse) {
+                $product = Product::findOrFail($item->product_id);
+                $product->incrementStock($item->quantity_left, updateMainStock: true);
+                $product->save();
+            }
 
-            // increment stock
-            $product = Product::findOrFail($item->product_id);
-            $product->incrementStock($quantity_left, updateMainStock: true);
-            $product->save();
-            //             dd($quantity_left, $product->stock_available);
-            //             throw new \Exception('Cannot delete items from an unloaded car load');
             $item->delete();
-
         });
     }
 
@@ -176,6 +180,8 @@ class CarLoadService
                     'product_id' => $item->product_id,
                     'quantity_loaded' => $item->quantity_loaded,
                     'comment' => $item->comment,
+                    'source' => CarLoadItemSource::FromPreviousCarLoad,
+                    'from_previous_car_load_id' => $previousCarLoad->id,
                 ]);
             }
 
@@ -295,7 +301,8 @@ class CarLoadService
                         'product_id' => $item->product_id,
                         'quantity_loaded' => $remainingQuantity,
                         'quantity_left' => $remainingQuantity,
-                        'from_previous_car_load' => true,
+                        'source' => CarLoadItemSource::FromPreviousCarLoad,
+                        'from_previous_car_load_id' => $carLoad->id,
                         'loaded_at' => Carbon::now()->toDateString(),
                     ]);
                 }
@@ -359,13 +366,15 @@ class CarLoadService
                     continue;
                 }
 
-                // Create car load item for variant
+                // Create car load item for variant — source is TransformedFromParent because
+                // the stock came from the parent product in this car load, not from the warehouse.
                 $currentCarLoad->items()->create([
                     'product_id' => $variant->id,
                     'quantity_loaded' => $actualQuantity,
                     'quantity_left' => $actualQuantity,
                     'loaded_at' => now(),
                     'comment' => 'Transformé à partir de '.$product->name,
+                    'source' => CarLoadItemSource::TransformedFromParent,
                 ]);
             }
         });
@@ -520,17 +529,23 @@ class CarLoadService
                     ->convertQuantityToParentQuantity($childItem->total_sold)['decimal_parent_quantity'];
             }
 
-            // Loaded including previous car load items of children converted to parent units
+            // Loaded including previous car load items of children converted to parent units.
+            // Only Warehouse and FromPreviousCarLoad items count as "loaded" — TransformedFromParent
+            // items must be excluded because their stock was already consumed from the parent
+            // product's car load stock, so counting them again would double-count.
             $calculatedTotalLoaded = $parentItem?->total_loaded ?? 0;
-            $fromPreviousItems = $carLoad->items()
+            $childItemsCountingAsLoaded = $carLoad->items()
                 ->join('products', 'products.id', '=', 'car_load_items.product_id')
                 ->where('products.parent_id', $parentProduct->id)
-                ->where('from_previous_car_load', true)
+                ->whereIn('source', [
+                    CarLoadItemSource::Warehouse->value,
+                    CarLoadItemSource::FromPreviousCarLoad->value,
+                ])
                 ->get();
 
-            foreach ($fromPreviousItems as $previousItem) {
-                $calculatedTotalLoaded += $previousItem->product
-                    ->convertQuantityToParentQuantity($previousItem->quantity_loaded)['decimal_parent_quantity'];
+            foreach ($childItemsCountingAsLoaded as $childItem) {
+                $calculatedTotalLoaded += $childItem->product
+                    ->convertQuantityToParentQuantity($childItem->quantity_loaded)['decimal_parent_quantity'];
             }
             // Children (variants) within this inventory for display of returns
             $children = CarLoadInventoryItem::join('products', 'car_load_inventory_items.product_id', '=', 'products.id')
@@ -626,6 +641,31 @@ class CarLoadService
                 $item->save();
             }
         });
+    }
+
+    /**
+     * Computes the total cost value of all stock currently remaining in the car load.
+     *
+     * Value = SUM(quantity_left × product.cost_price) across all items with stock left.
+     *
+     * Terminated car loads always return 0 — their stock has been physically transferred
+     * to the next car load and their quantity_left values are already zeroed.
+     *
+     * A single JOIN query is used to avoid N+1 product lookups.
+     */
+    public function calculateCarLoadStockValue(CarLoad $carLoad): int
+    {
+        if ($carLoad->status === CarLoadStatus::TerminatedAndTransferred) {
+            return 0;
+        }
+
+        $totalStockValue = (int) DB::table('car_load_items')
+            ->join('products', 'products.id', '=', 'car_load_items.product_id')
+            ->where('car_load_items.car_load_id', $carLoad->id)
+            ->where('car_load_items.quantity_left', '>', 0)
+            ->sum(DB::raw('car_load_items.quantity_left * products.cost_price'));
+
+        return $totalStockValue;
     }
 
     /**
