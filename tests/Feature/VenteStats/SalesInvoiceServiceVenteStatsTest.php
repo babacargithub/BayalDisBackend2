@@ -4,6 +4,7 @@ namespace Tests\Feature\VenteStats;
 
 use App\Data\Vente\PaidStatus;
 use App\Data\Vente\VenteStatsFilter;
+use App\Enums\CarLoadStatus;
 use App\Models\CarLoad;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -103,7 +104,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
         return CarLoad::create([
             'name' => 'CarLoad '.uniqid(),
             'team_id' => $team->id,
-            'status' => 'ACTIVE',
+            'status' => CarLoadStatus::Selling,
             'load_date' => Carbon::now()->subDays(2),
             'return_date' => Carbon::now()->addDays(2),
             'returned' => false,

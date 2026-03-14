@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\CarLoadStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -24,6 +25,11 @@ use Illuminate\Support\Facades\DB;
  *            Backfills car_load_id on invoices that predate the field. Runs
  *            last because it only needs invoices to exist and be final.
  *
+ *  Step 4 — backfillCarLoadStatuses (inline)
+ *            Sets all car loads to TERMINATED_AND_TRANSFERRED except the most
+ *            recent one (ordered by id), which is set to ONGOING_INVENTORY to
+ *            reflect that the current cycle is at the inventory stage.
+ *
  * The --dry-run flag is forwarded to every sub-command so you can preview
  * the full impact of all three steps without writing anything.
  */
@@ -43,15 +49,15 @@ class RefactorOldData extends Command
     private const PIPELINE = [
         [
             'command' => 'bayal:migrate-single-ventes-to-invoices',
-            'label' => 'Step 1/3 — Migrate legacy TYPE_SINGLE ventes to SalesInvoices',
+            'label' => 'Step 1/4 — Migrate legacy TYPE_SINGLE ventes to SalesInvoices',
         ],
         [
             'command' => 'bayal:correct-cost-prices-and-profits',
-            'label' => 'Step 2/3 — Correct cost prices and recalculate all profits',
+            'label' => 'Step 2/4 — Correct cost prices and recalculate all profits',
         ],
         [
             'command' => 'bayal:link-invoices-to-car-loads',
-            'label' => 'Step 3/3 — Backfill car_load_id on legacy invoices',
+            'label' => 'Step 3/4 — Backfill car_load_id on legacy invoices',
         ],
     ];
 
@@ -92,6 +98,13 @@ class RefactorOldData extends Command
             }
         }
 
+        // Step 4 runs inline (no sub-command)
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 4/4 — Backfill car load statuses');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->backfillCarLoadStatuses($isDryRun);
+
         $this->newLine();
         $this->info('═══════════════════════════════════════════════════════════');
 
@@ -104,6 +117,54 @@ class RefactorOldData extends Command
         $this->info('═══════════════════════════════════════════════════════════');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Sets all car loads to TERMINATED_AND_TRANSFERRED, except the most recent
+     * one (by id) which is set to ONGOING_INVENTORY to reflect that the current
+     * cycle is still being reconciled.
+     *
+     * This is idempotent — re-running it is safe.
+     */
+    private function backfillCarLoadStatuses(bool $isDryRun): void
+    {
+        $allCarLoads = DB::table('car_loads')->orderBy('id')->get(['id', 'name', 'status']);
+
+        if ($allCarLoads->isEmpty()) {
+            $this->info('  No car loads found. Nothing to do.');
+
+            return;
+        }
+
+        $latestCarLoadId = $allCarLoads->last()->id;
+
+        $terminatedCount = 0;
+        $skippedCount = 0;
+
+        foreach ($allCarLoads as $carLoad) {
+            $targetStatus = $carLoad->id === $latestCarLoadId
+                ? CarLoadStatus::OngoingInventory->value
+                : CarLoadStatus::TerminatedAndTransferred->value;
+
+            if ($carLoad->status === $targetStatus) {
+                $this->line("  Skip car load #{$carLoad->id} «{$carLoad->name}»: already {$targetStatus}");
+                $skippedCount++;
+
+                continue;
+            }
+
+            $this->line("  Car load #{$carLoad->id} «{$carLoad->name}»: {$carLoad->status} → {$targetStatus}");
+
+            if (! $isDryRun) {
+                DB::table('car_loads')
+                    ->where('id', $carLoad->id)
+                    ->update(['status' => $targetStatus]);
+            }
+
+            $terminatedCount++;
+        }
+
+        $this->info("  Done — {$terminatedCount} car loads updated, {$skippedCount} already correct.");
     }
 
     private function allMigrationsHaveBeenRun(): bool

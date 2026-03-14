@@ -55,7 +55,7 @@ class InventoryAggregationTest extends TestCase
         return CarLoad::create([
             'name' => 'Inventory Load',
             'team_id' => $team->id,
-            'status' => 'ACTIVE',
+            'status' => 'SELLING',
             'load_date' => Carbon::now()->subDays(2),
             'return_date' => Carbon::now()->addDays(2),
             'returned' => false,

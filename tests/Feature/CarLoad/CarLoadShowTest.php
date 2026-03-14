@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\CarLoad;
 
+use App\Enums\CarLoadStatus;
 use App\Models\CarLoad;
 use App\Models\Product;
 use App\Models\Team;
@@ -48,7 +49,7 @@ class CarLoadShowTest extends TestCase
         return CarLoad::create([
             'name' => 'Chargement Mbacké',
             'team_id' => $this->team->id,
-            'status' => 'ACTIVE',
+            'status' => CarLoadStatus::Selling,
             'load_date' => Carbon::now()->subDay()->toDateString(),
             'return_date' => Carbon::now()->addWeek()->toDateString(),
             'returned' => false,
@@ -114,7 +115,7 @@ class CarLoadShowTest extends TestCase
                 ->has('carLoad')
                 ->where('carLoad.id', $carLoad->id)
                 ->where('carLoad.name', 'Chargement Mbacké')
-                ->where('carLoad.status', 'ACTIVE')
+                ->where('carLoad.status', 'SELLING')
             );
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
+use App\Enums\CarLoadStatus;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
@@ -270,6 +271,8 @@ class CarLoadController extends Controller
             'user_id' => auth()->id(),
         ]);
 
+        $carLoad->update(['status' => CarLoadStatus::OngoingInventory]);
+
         if (isset($validated['items'])) {
             $inventory = $carLoad->inventory;
             $inventory->items()->createMany($validated['items']);
@@ -356,8 +359,10 @@ class CarLoadController extends Controller
     public function closeInventory(CarLoad $carLoad, CarLoadInventory $inventory)
     {
         $inventory->update(['closed' => true]);
-        $carLoad->returned = true;
-        $carLoad->save();
+        $carLoad->update([
+            'returned' => true,
+            'status' => CarLoadStatus::FullInventory,
+        ]);
 
         return redirect()->back()
             ->with('success', 'Inventaire clôturé avec succès');

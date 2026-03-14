@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Enums\CarLoadStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Models\CarLoad;
 use App\Models\Product;
@@ -45,7 +46,7 @@ class CarLoadStockTest extends TestCase
         return CarLoad::create([
             'name' => 'CarLoad '.uniqid(),
             'team_id' => $team->id,
-            'status' => 'ACTIVE',
+            'status' =>  CarLoadStatus::Selling,
             'load_date' => Carbon::now()->subDay(),
             'return_date' => Carbon::now()->addDay(),
             'returned' => false,

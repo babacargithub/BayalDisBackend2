@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\SalespersonApi;
 
+use App\Enums\CarLoadStatus;
 use App\Enums\SalesInvoiceStatus;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
@@ -125,7 +126,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
         $this->carLoad = CarLoad::create([
             'name' => 'Chargement du Jour',
             'team_id' => $this->team->id,
-            'status' => 'ACTIVE',
+            'status' => CarLoadStatus::Selling,
             'load_date' => today()->subDay(),
             'return_date' => today()->addDays(30),
             'returned' => false,

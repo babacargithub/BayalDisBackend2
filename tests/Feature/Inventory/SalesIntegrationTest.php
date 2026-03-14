@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Enums\CarLoadStatus;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
@@ -12,7 +13,6 @@ use App\Models\Team;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class SalesIntegrationTest extends TestCase
@@ -22,15 +22,16 @@ class SalesIntegrationTest extends TestCase
     private function makeUser(string $email = 'manager@example.com'): User
     {
         return User::factory()->create([
-            'email' => rand(1000,99999).$email,
+            'email' => rand(1000, 99999).$email,
         ]);
     }
 
     private function makeTeamWithManager(): Team
     {
         $manager = $this->makeUser();
+
         return Team::create([
-            'name' => 'Team A'.rand(1000,99999),
+            'name' => 'Team A'.rand(1000, 99999),
             'user_id' => $manager->id,
         ]);
     }
@@ -41,12 +42,13 @@ class SalesIntegrationTest extends TestCase
         /** @var Commercial $commercial */
         $commercial = Commercial::create([
             'name' => 'Jean Dupont',
-            'phone_number' => '221777777'.rand(1000,99999),
+            'phone_number' => '221777777'.rand(1000, 99999),
             'gender' => 'male',
             'user_id' => $user->id,
         ]);
         $commercial->team()->associate($team);
         $commercial->save();
+
         return $commercial;
     }
 
@@ -68,7 +70,7 @@ class SalesIntegrationTest extends TestCase
         return CarLoad::create([
             'name' => 'CarLoad A',
             'team_id' => $team->id,
-            'status' => 'ACTIVE',
+            'status' => CarLoadStatus::Selling,
             'load_date' => Carbon::now()->subDay(),
             'return_date' => Carbon::now()->addDay(),
             'returned' => false,

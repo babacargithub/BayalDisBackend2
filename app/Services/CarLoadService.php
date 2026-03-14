@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
 use App\Data\CarLoadInventory\ConvertedQuantityDTO;
 use App\Data\CarLoadInventory\InventoryParentProductDTO;
+use App\Enums\CarLoadStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
@@ -29,7 +30,7 @@ class CarLoadService
             'team_id' => $data['team_id'],
             'comment' => $data['comment'] ?? null,
             'return_date' => $data['return_date'],
-            'status' => 'LOADING',
+            'status' => CarLoadStatus::Loading,
             'load_date' => now(),
         ]);
 
@@ -52,10 +53,13 @@ class CarLoadService
         return $carLoad;
     }
 
+    /**
+     * @throws Throwable
+     */
     public function addItem(CarLoad $carLoad, array $data): CarLoadItem
     {
-        if ($carLoad->status === 'UNLOADED') {
-            throw new Exception('Cannot add items to an unloaded car load');
+        if ($carLoad->status !== CarLoadStatus::Loading && $carLoad->status !== CarLoadStatus::Selling) {
+            throw new Exception('Items can only be added to a car load in LOADING status');
         }
 
         return DB::transaction(function () use ($carLoad, $data) {
@@ -69,8 +73,8 @@ class CarLoadService
 
     public function updateItem(CarLoadItem $item, array $data): CarLoadItem
     {
-        if ($item->carLoad->status === 'UNLOADED') {
-            throw new Exception('Cannot update items of an unloaded car load');
+        if ($item->carLoad->status !== CarLoadStatus::Loading) {
+            throw new Exception('Items can only be updated on a car load in LOADING status');
         }
 
         return DB::transaction(function () use ($item, $data) {
@@ -108,10 +112,13 @@ class CarLoadService
         });
     }
 
+    /**
+     * @throws Throwable
+     */
     public function activateCarLoad(CarLoad $carLoad): CarLoad
     {
-        if ($carLoad->status !== 'LOADING') {
-            throw new Exception('Only loading car loads can be activated');
+        if ($carLoad->status !== CarLoadStatus::Loading) {
+            throw new Exception('Only car loads in LOADING status can be activated');
         }
 
         if ($carLoad->items()->count() === 0) {
@@ -120,7 +127,7 @@ class CarLoadService
 
         return DB::transaction(function () use ($carLoad) {
             $carLoad->update([
-                'status' => 'ACTIVE',
+                'status' => CarLoadStatus::Selling,
                 'load_date' => Carbon::now(),
             ]);
 
@@ -130,13 +137,13 @@ class CarLoadService
 
     public function unloadCarLoad(CarLoad $carLoad): CarLoad
     {
-        if ($carLoad->status !== 'ACTIVE') {
-            throw new Exception('Only active car loads can be unloaded');
+        if ($carLoad->status !== CarLoadStatus::Selling) {
+            throw new Exception('Only car loads in SELLING status can be directly unloaded');
         }
 
         return DB::transaction(function () use ($carLoad) {
             $carLoad->update([
-                'status' => 'UNLOADED',
+                'status' => CarLoadStatus::TerminatedAndTransferred,
                 'return_date' => Carbon::now(),
             ]);
 
@@ -149,15 +156,17 @@ class CarLoadService
      */
     public function createCarLoadFromAnotherPreviousCarLoad(CarLoad $previousCarLoad): CarLoad
     {
-        if ($previousCarLoad->status !== 'UNLOADED') {
-            throw new Exception('Can only create new car load from unloaded car loads');
+        if (! $previousCarLoad->status->isTerminal()) {
+            throw new Exception('Can only create a new car load from a fully settled car load (FULL_INVENTORY or TERMINATED_AND_TRANSFERRED)');
         }
 
         return DB::transaction(function () use ($previousCarLoad) {
+            $previousCarLoad->update(['status' => CarLoadStatus::TerminatedAndTransferred]);
+
             $newCarLoad = CarLoad::create([
                 'name' => $previousCarLoad->name.' (Copy)',
                 'team_id' => $previousCarLoad->team_id,
-                'status' => 'LOADING',
+                'status' => CarLoadStatus::Loading,
                 'load_date' => Carbon::now(),
                 'previous_car_load_id' => $previousCarLoad->id,
             ]);
@@ -265,10 +274,12 @@ class CarLoadService
         $carLoad = $inventory->carLoad;
 
         return DB::transaction(function () use ($carLoad, $inventory) {
+            $carLoad->update(['status' => CarLoadStatus::TerminatedAndTransferred]);
+
             $newCarLoad = CarLoad::create([
                 'name' => "Crée à partir de {$inventory->name}",
                 'team_id' => $carLoad->team_id,
-                'status' => 'LOADING',
+                'status' => CarLoadStatus::Loading,
                 'load_date' => Carbon::now(),
                 'return_date' => Carbon::now()->endOfWeek(),
                 'comment' => "Créé à partir de l'inventaire #{$inventory->id}",

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CarLoadStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,7 +15,7 @@ class CarLoad extends Model
         'load_date',
         'return_date',
         'team_id',
-        'status', // LOADING, ACTIVE, UNLOADED
+        'status',
         'comment',
         'returned',
         'previous_car_load_id',
@@ -24,6 +25,7 @@ class CarLoad extends Model
         'load_date' => 'datetime',
         'return_date' => 'datetime',
         'returned' => 'boolean',
+        'status' => CarLoadStatus::class,
     ];
 
     public function team(): BelongsTo

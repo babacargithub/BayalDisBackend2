@@ -12,18 +12,31 @@ const props = defineProps({
 });
 
 // ─── Computed helpers ────────────────────────────────────────────────────────
-const isActive = computed(() => props.carLoad.status === 'ACTIVE');
 const isLoading = computed(() => props.carLoad.status === 'LOADING');
-const isUnloaded = computed(() => props.carLoad.status === 'UNLOADED');
+const isSelling = computed(() => props.carLoad.status === 'SELLING');
+const isOngoingInventory = computed(() => props.carLoad.status === 'ONGOING_INVENTORY');
+const isFullInventory = computed(() => props.carLoad.status === 'FULL_INVENTORY');
+const isTerminatedAndTransferred = computed(() => props.carLoad.status === 'TERMINATED_AND_TRANSFERRED');
+// Terminal = no further item or inventory modifications allowed
+const isTerminal = computed(() => isFullInventory.value || isTerminatedAndTransferred.value);
+// Kept for template compatibility: true when car load can no longer accept new items
+const isUnloaded = computed(() => isTerminal.value);
+
 const statusColor = computed(() => {
-    if (isActive.value) return 'success';
     if (isLoading.value) return 'warning';
+    if (isSelling.value) return 'success';
+    if (isOngoingInventory.value) return 'orange';
+    if (isFullInventory.value) return 'purple';
+    if (isTerminatedAndTransferred.value) return 'default';
     return 'default';
 });
 const statusLabel = computed(() => {
-    if (isActive.value) return 'Actif';
     if (isLoading.value) return 'En chargement';
-    return 'Terminé';
+    if (isSelling.value) return 'En vente';
+    if (isOngoingInventory.value) return 'Inventaire en cours';
+    if (isFullInventory.value) return 'Inventaire terminé';
+    if (isTerminatedAndTransferred.value) return 'Terminé';
+    return 'Inconnu';
 });
 const formatDate = (dateStr) =>
     dateStr ? new Date(dateStr).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-';
@@ -467,11 +480,12 @@ const inventoryTableHeaders = [
                                 <!-- Toolbar -->
                                 <div class="flex gap-2 flex-wrap mb-3">
                                     <v-btn
-                                        v-if="!isUnloaded"
+                                        v-if="isLoading"
                                         color="primary"
                                         variant="flat"
                                         size="small"
                                         prepend-icon="mdi-plus"
+                                        :disabled="!!carLoad.inventory"
                                         @click="showAddItemsForm = !showAddItemsForm"
                                     >
                                         <span class="hidden sm:inline">Ajouter des articles</span>

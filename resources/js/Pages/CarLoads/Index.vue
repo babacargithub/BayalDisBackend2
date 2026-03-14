@@ -28,14 +28,18 @@ const headers = [
 ];
 
 const statusColor = (status) => {
-    if (status === 'ACTIVE') return 'success';
     if (status === 'LOADING') return 'warning';
+    if (status === 'SELLING') return 'success';
+    if (status === 'ONGOING_INVENTORY') return 'orange';
+    if (status === 'FULL_INVENTORY') return 'purple';
     return 'default';
 };
 
 const statusLabel = (status) => {
-    if (status === 'ACTIVE') return 'Actif';
-    if (status === 'LOADING') return 'En cours';
+    if (status === 'LOADING') return 'En chargement';
+    if (status === 'SELLING') return 'En vente';
+    if (status === 'ONGOING_INVENTORY') return 'Inventaire en cours';
+    if (status === 'FULL_INVENTORY') return 'Inventaire terminé';
     return 'Terminé';
 };
 
