@@ -8,6 +8,7 @@ import Swal from 'sweetalert2';
 const props = defineProps({
     carLoads: { type: Object, required: true },
     teams: { type: Array, required: true },
+    vehicles: { type: Array, required: true },
 });
 
 const showCarLoadDialog = ref(false);
@@ -16,6 +17,7 @@ const editingCarLoad = ref(null);
 const form = useForm({
     name: '',
     team_id: null,
+    vehicle_id: null,
     comment: '',
     return_date: null,
 });
@@ -23,6 +25,7 @@ const form = useForm({
 const headers = [
     { title: 'Chargement', key: 'name', minWidth: '200px' },
     { title: 'Équipe', key: 'team.name' },
+    { title: 'Véhicule', key: 'vehicle' },
     { title: 'Statut', key: 'status' },
     { title: 'Actions', key: 'actions', sortable: false, align: 'end' },
 ];
@@ -57,6 +60,7 @@ const openEditDialog = (carLoad) => {
     editingCarLoad.value = carLoad;
     form.name = carLoad.name;
     form.team_id = carLoad.team_id;
+    form.vehicle_id = carLoad.vehicle_id ?? null;
     form.comment = carLoad.comment || '';
     form.return_date = carLoad.return_date ? new Date(carLoad.return_date).toISOString().split('T')[0] : null;
     showCarLoadDialog.value = true;
@@ -131,6 +135,17 @@ const deleteCarLoad = async (id) => {
                                         {{ formatDate(item.load_date) }} → {{ formatDate(item.return_date) }}
                                     </div>
                                 </div>
+                            </template>
+
+                            <!-- Vehicle cell -->
+                            <template #item.vehicle="{ item }">
+                                <span v-if="item.vehicle" class="text-body-2">
+                                    {{ item.vehicle.name }}
+                                    <span v-if="item.vehicle.plate_number" class="text-grey text-caption ml-1">
+                                        ({{ item.vehicle.plate_number }})
+                                    </span>
+                                </span>
+                                <span v-else class="text-grey text-caption">—</span>
                             </template>
 
                             <!-- Status chip -->
@@ -219,6 +234,16 @@ const deleteCarLoad = async (id) => {
                         item-value="id"
                         label="Équipe"
                         :error-messages="form.errors.team_id"
+                        class="mb-2"
+                    />
+                    <v-select
+                        v-model="form.vehicle_id"
+                        :items="vehicles"
+                        :item-title="(v) => v.plate_number ? `${v.name} (${v.plate_number})` : v.name"
+                        item-value="id"
+                        label="Véhicule (optionnel)"
+                        clearable
+                        :error-messages="form.errors.vehicle_id"
                         class="mb-2"
                     />
                     <v-text-field

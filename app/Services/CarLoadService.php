@@ -29,6 +29,7 @@ class CarLoadService
         $carLoad = CarLoad::create([
             'name' => $data['name'],
             'team_id' => $data['team_id'],
+            'vehicle_id' => $data['vehicle_id'] ?? null,
             'comment' => $data['comment'] ?? null,
             'return_date' => $data['return_date'],
             'status' => CarLoadStatus::Loading,
@@ -47,6 +48,7 @@ class CarLoadService
         $carLoad->update([
             'name' => $data['name'],
             'team_id' => $data['team_id'],
+            'vehicle_id' => $data['vehicle_id'] ?? null,
             'comment' => $data['comment'] ?? null,
             'return_date' => $data['return_date'],
         ]);
@@ -180,6 +182,8 @@ class CarLoadService
                 $newCarLoad->items()->create([
                     'product_id' => $item->product_id,
                     'quantity_loaded' => $item->quantity_loaded,
+                    'cost_price_per_unit' => $item->cost_price_per_unit,
+                    'loaded_at' => Carbon::now(),
                     'comment' => $item->comment,
                     'source' => CarLoadItemSource::FromPreviousCarLoad,
                     'from_previous_car_load_id' => $previousCarLoad->id,
@@ -200,7 +204,7 @@ class CarLoadService
 
     public function getAllCarLoads()
     {
-        return CarLoad::with(['team', 'inventory'])
+        return CarLoad::with(['team', 'inventory', 'vehicle'])
             ->orderBy('created_at', 'desc')
             ->paginate(10000);
     }
@@ -340,7 +344,15 @@ class CarLoadService
             throw new Exception('Stock insuffisant dans le chargement. Stock disponible: '.$quantityAvailableInCarLoad);
         }
 
-        DB::transaction(function () use ($carLoad, $product, $data) {
+        // Compute the FIFO-weighted cost of the parent carton batches being consumed
+        // BEFORE decrementing stock, so we can snapshot the cost onto the variant items.
+        $parentCostPerCarton = $this->computeFifoWeightedCostPriceForQuantityInCarLoad(
+            $product,
+            $data['quantityOfBaseProductToTransform'],
+            $carLoad
+        );
+
+        DB::transaction(function () use ($carLoad, $product, $data, $parentCostPerCarton) {
             // Decrease parent stock
             $this->decreaseProductStockInCarLoadUsingFifo($product, $data['quantityOfBaseProductToTransform'], $carLoad);
 
@@ -359,12 +371,23 @@ class CarLoadService
                     continue;
                 }
 
+                // Compute cost_price_per_unit for this variant:
+                //   base = parent_cost_per_carton / (carton_base_quantity / variant_base_quantity)
+                //   final = base + variant.packaging_cost  (plastic bag cost per paquet)
+                $variantCostPricePerUnit = null;
+                if ($parentCostPerCarton !== null && $product->base_quantity > 0 && $variant->base_quantity > 0) {
+                    $paquetsPerCarton = $product->base_quantity / $variant->base_quantity;
+                    $baseCostPerVariant = (int) round($parentCostPerCarton / $paquetsPerCarton);
+                    $variantCostPricePerUnit = $baseCostPerVariant + $variant->packaging_cost;
+                }
+
                 // Create car load item for variant — source is TransformedFromParent because
                 // the stock came from the parent product in this car load, not from the warehouse.
                 $carLoad->items()->create([
                     'product_id' => $variant->id,
                     'quantity_loaded' => $actualQuantity,
                     'quantity_left' => $actualQuantity,
+                    'cost_price_per_unit' => $variantCostPricePerUnit,
                     'loaded_at' => now(),
                     'comment' => 'Transformé à partir de '.$product->name,
                     'source' => CarLoadItemSource::TransformedFromParent,
@@ -374,22 +397,60 @@ class CarLoadService
     }
 
     /**
+     * Load items from the warehouse into a car load, consuming StockEntry batches in FIFO order
+     * and locking cost_price_per_unit on each CarLoadItem at load time.
+     *
+     * When a single quantity spans multiple StockEntry batches, multiple CarLoadItem rows are
+     * created (one per batch), each carrying its own cost_price_per_unit.
+     *
+     * @param  bool  $decrementWarehouseStock  Pass false when the caller has already created
+     *                                         StockEntry rows and does not want warehouse stock
+     *                                         decremented again (e.g. PurchaseInvoice put-in-stock).
+     *
      * @throws Throwable
      */
-    public function createItemsToCarLoad(CarLoad $carLoad, array $items): CarLoad
+    public function createItemsToCarLoad(CarLoad $carLoad, array $items, bool $decrementWarehouseStock = true): CarLoad
     {
-        return DB::transaction(function () use ($items, $carLoad) {
+        return DB::transaction(function () use ($items, $carLoad, $decrementWarehouseStock) {
+            $productService = app(ProductService::class);
+
             foreach ($items as $item) {
-                $carLoad->items()->create([
-                    'product_id' => $item['product_id'],
-                    'quantity_loaded' => $item['quantity_loaded'],
-                    'quantity_left' => $item['quantity_left'],
-                    'loaded_at' => $item['loaded_at'] ?? now()->toDateString(),
-                    'comment' => $item['comment'] ?? null,
-                    'source' => CarLoadItemSource::Warehouse,
-                ]);
-                $product = Product::find($item['product_id']);
-                $product->decrementStock($item['quantity_loaded'], updateMainStock: true, carLoad: null);
+                $product = Product::findOrFail($item['product_id']);
+                $quantityLoaded = $item['quantity_loaded'];
+                $loadedAt = $item['loaded_at'] ?? now()->toDateString();
+                $comment = $item['comment'] ?? null;
+
+                if ($decrementWarehouseStock) {
+                    // Consume warehouse stock in FIFO order and create one CarLoadItem per batch,
+                    // each carrying the exact cost locked at load time.
+                    $consumedBatches = $productService->consumeWarehouseStockInFifoReturningBatchCosts(
+                        $product,
+                        $quantityLoaded
+                    );
+
+                    foreach ($consumedBatches as $batch) {
+                        $carLoad->items()->create([
+                            'product_id' => $product->id,
+                            'quantity_loaded' => $batch['quantity'],
+                            'quantity_left' => $batch['quantity'],
+                            'cost_price_per_unit' => $batch['cost_price_per_unit'],
+                            'loaded_at' => $loadedAt,
+                            'comment' => $comment,
+                            'source' => CarLoadItemSource::Warehouse,
+                        ]);
+                    }
+                } else {
+                    // Caller manages stock externally; create a single item without cost tracking.
+                    $carLoad->items()->create([
+                        'product_id' => $product->id,
+                        'quantity_loaded' => $quantityLoaded,
+                        'quantity_left' => $item['quantity_left'] ?? $quantityLoaded,
+                        'cost_price_per_unit' => null,
+                        'loaded_at' => $loadedAt,
+                        'comment' => $comment,
+                        'source' => CarLoadItemSource::Warehouse,
+                    ]);
+                }
             }
 
             return $carLoad;
@@ -597,6 +658,53 @@ class CarLoadService
     public function getTotalQuantityLeftOfProductInCarLoad(CarLoad $carLoad, Product $product): int
     {
         return $carLoad->items()->where('product_id', $product->id)->sum('quantity_left');
+    }
+
+    /**
+     * Simulate FIFO consumption of a given quantity from a product's CarLoadItems and return
+     * the weighted average cost_price_per_unit of the batches that would be consumed.
+     *
+     * This does NOT modify any data — it is a read-only cost snapshot used before calling
+     * decreaseProductStockInCarLoadUsingFifo() to know the cost basis of the items being consumed.
+     *
+     * Returns null if any of the consumed batches has no cost_price_per_unit set (legacy item).
+     */
+    public function computeFifoWeightedCostPriceForQuantityInCarLoad(
+        Product $product,
+        int $quantityToConsume,
+        CarLoad $carLoad
+    ): ?int {
+        $carLoadItemsOrderedByOldestFirst = $carLoad->items()
+            ->where('product_id', $product->id)
+            ->where('quantity_left', '>', 0)
+            ->orderByRaw('(loaded_at IS NULL) ASC, loaded_at ASC')
+            ->get();
+
+        $remainingQuantityToConsume = $quantityToConsume;
+        $weightedCostTotal = 0;
+        $totalQuantityAccounted = 0;
+
+        foreach ($carLoadItemsOrderedByOldestFirst as $carLoadItem) {
+            if ($remainingQuantityToConsume <= 0) {
+                break;
+            }
+
+            if ($carLoadItem->cost_price_per_unit === null) {
+                // A legacy item with no cost data — cannot produce a reliable cost.
+                return null;
+            }
+
+            $quantityFromThisItem = min($carLoadItem->quantity_left, $remainingQuantityToConsume);
+            $weightedCostTotal += $quantityFromThisItem * $carLoadItem->cost_price_per_unit;
+            $totalQuantityAccounted += $quantityFromThisItem;
+            $remainingQuantityToConsume -= $quantityFromThisItem;
+        }
+
+        if ($totalQuantityAccounted === 0) {
+            return null;
+        }
+
+        return (int) round($weightedCostTotal / $totalQuantityAccounted);
     }
 
     public function getTotalQuantityLoadedOfProductInCarLoad(CarLoad $carLoad, Product $product): int

@@ -7,15 +7,31 @@ import { useForm } from '@inertiajs/vue3';
 const props = defineProps({
     products: Array,
     total_stock_value: Number,
-    base_products: Array
+    base_products: Array,
+    product_categories: Array,
 });
 
 const form = useForm({
     name: '',
     price: '',
     cost_price: '',
+    packaging_cost: 0,
+    weight_kg: null,
+    volume_m3: null,
+    product_category_id: null,
     parent_id: null,
     base_quantity: 0
+});
+
+const showParentProductsOnly = ref(false);
+const selectedCategoryIdFilter = ref(null);
+
+const filteredProducts = computed(() => {
+    return props.products.filter(product => {
+        if (showParentProductsOnly.value && product.parent_id) return false;
+        return !(selectedCategoryIdFilter.value && product.product_category_id !== selectedCategoryIdFilter.value);
+
+    });
 });
 
 const dialog = ref(false);
@@ -88,6 +104,10 @@ const openDialog = (item = null) => {
         form.name = item.name;
         form.price = item.price;
         form.cost_price = item.cost_price;
+        form.packaging_cost = item.packaging_cost ?? 0;
+        form.weight_kg = item.weight_kg ?? null;
+        form.volume_m3 = item.volume_m3 ?? null;
+        form.product_category_id = item.product_category_id ?? null;
         form.parent_id = item.parent_id;
         form.base_quantity = item.base_quantity;
     } else {
@@ -108,6 +128,8 @@ const openStockEntriesDialog = (product) => {
         quantity_left: entry.quantity_left,
         quantity: entry.quantity,
         unit_price: entry.unit_price,
+        transportation_cost: entry.transportation_cost ?? 0,
+        packaging_cost: entry.packaging_cost ?? 0,
         created_at: entry.created_at
     })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     stockEntriesDialog.value = true;
@@ -212,9 +234,30 @@ const calculateMargin = (price, costPrice) => {
                         Valeur totale du stock: {{ formatPrice(props.total_stock_value) }}
                     </div>
                 </div>
-                <v-btn color="primary" @click="openDialog()">
-                    Ajouter un produit
-                </v-btn>
+                <div class="d-flex gap-2 align-center">
+                    <v-select
+                        v-model="selectedCategoryIdFilter"
+                        :items="product_categories"
+                        item-title="name"
+                        item-value="id"
+                        label="Filtrer par catégorie"
+                        clearable
+                        hide-details
+                        density="compact"
+                        style="min-width: 200px"
+                    />
+                    <v-btn
+                        :color="showParentProductsOnly ? 'primary' : 'default'"
+                        :variant="showParentProductsOnly ? 'flat' : 'outlined'"
+                        @click="showParentProductsOnly = !showParentProductsOnly"
+                        prepend-icon="mdi-package-variant"
+                    >
+                        Produits parents uniquement
+                    </v-btn>
+                    <v-btn color="primary" @click="openDialog()">
+                        Ajouter un produit
+                    </v-btn>
+                </div>
             </div>
         </template>
 
@@ -237,7 +280,7 @@ const calculateMargin = (price, costPrice) => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="product in products" :key="product.id">
+                            <tr v-for="product in filteredProducts" :key="product.id">
                                 <td>{{ product.name }}</td>
                                 <td>
                                     <v-icon
@@ -302,6 +345,15 @@ const calculateMargin = (price, costPrice) => {
                             :error-messages="form.errors.name"
                         />
                         <v-select
+                            v-model="form.product_category_id"
+                            :items="product_categories"
+                            item-title="name"
+                            item-value="id"
+                            label="Catégorie"
+                            clearable
+                            :error-messages="form.errors.product_category_id"
+                        />
+                        <v-select
                             v-model="form.parent_id"
                             :items="base_products"
                             item-title="name"
@@ -325,6 +377,13 @@ const calculateMargin = (price, costPrice) => {
                             :error-messages="form.errors.cost_price"
                         />
                         <v-text-field
+                            v-model.number="form.packaging_cost"
+                            label="Coût d'emballage"
+                            type="number"
+                            min="0"
+                            :error-messages="form.errors.packaging_cost"
+                        />
+                        <v-text-field
                             v-model="form.price"
                             label="Prix de Vente"
                             type="number"
@@ -333,6 +392,28 @@ const calculateMargin = (price, costPrice) => {
                         <div v-if="form.price && form.cost_price" class="text-subtitle-1 mb-4">
                             Marge: {{ margin }}%
                         </div>
+                        <v-row>
+                            <v-col cols="6">
+                                <v-text-field
+                                    v-model.number="form.weight_kg"
+                                    label="Poids (kg)"
+                                    type="number"
+                                    min="0"
+                                    step="0.001"
+                                    :error-messages="form.errors.weight_kg"
+                                />
+                            </v-col>
+                            <v-col cols="6">
+                                <v-text-field
+                                    v-model.number="form.volume_m3"
+                                    label="Volume (m³)"
+                                    type="number"
+                                    min="0"
+                                    step="0.001"
+                                    :error-messages="form.errors.volume_m3"
+                                />
+                            </v-col>
+                        </v-row>
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="dialog = false">Annuler</v-btn>
@@ -391,7 +472,7 @@ const calculateMargin = (price, costPrice) => {
         </v-dialog>
 
         <!-- Stock Entries Dialog -->
-        <v-dialog v-model="stockEntriesDialog" max-width="800px">
+        <v-dialog v-model="stockEntriesDialog" max-width="1000px">
             <v-card>
                 <v-card-title class="text-h5">
                     Gestion du stock - {{ selectedProduct?.name }}
@@ -401,9 +482,11 @@ const calculateMargin = (price, costPrice) => {
                         <thead>
                             <tr>
                                 <th>Date d'entrée</th>
-                                <th>Quantité initiale</th>
-                                <th>Quantité restante</th>
+                                <th>Qté initiale</th>
+                                <th>Qté restante</th>
                                 <th>Prix unitaire</th>
+                                <th>Transport/u</th>
+                                <th>Emballage/u</th>
                                 <th>Valeur du stock</th>
                             </tr>
                         </thead>
@@ -423,6 +506,8 @@ const calculateMargin = (price, costPrice) => {
                                     />
                                 </td>
                                 <td>{{ formatPrice(entry.unit_price) }}</td>
+                                <td>{{ formatPrice(entry.transportation_cost) }}</td>
+                                <td>{{ formatPrice(entry.packaging_cost) }}</td>
                                 <td>{{ formatPrice(entry.quantity_left * entry.unit_price) }}</td>
                             </tr>
                         </tbody>

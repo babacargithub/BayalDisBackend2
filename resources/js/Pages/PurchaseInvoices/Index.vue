@@ -47,21 +47,21 @@
                                     </v-chip>
                                 </td>
                                 <td>
-                                    <v-btn 
+                                    <v-btn
                                         icon="mdi-eye"
                                         variant="text"
                                         color="info"
                                         class="mr-2"
                                         @click="viewInvoice(invoice)"
                                     />
-                                    <v-btn 
+                                    <v-btn
                                         icon="mdi-pencil"
                                         variant="text"
                                         color="primary"
                                         class="mr-2"
                                         @click="editInvoice(invoice)"
                                     />
-                                    <v-btn 
+                                    <v-btn
                                         icon="mdi-delete"
                                         variant="text"
                                         color="error"
@@ -74,7 +74,7 @@
                                         color="success"
                                         class="mr-2"
                                         v-if="!invoice.is_stocked"
-                                        @click="putInStock(invoice)"
+                                        @click="openPutInStockDialog(invoice)"
                                         v-tooltip="'Mettre en stock'"
                                     />
                                 </td>
@@ -90,6 +90,9 @@
             <v-card>
                 <v-card-title>
                     {{ editingInvoice ? 'Modifier la facture' : 'Nouvelle facture' }}
+                    <v-chip v-if="editingInvoice?.is_stocked" color="warning" class="ml-2" size="small">
+                        En stock — articles verrouillés
+                    </v-chip>
                 </v-card-title>
                 <v-card-text>
                     <div class="d-flex justify-end mb-4">
@@ -113,9 +116,10 @@
                             <v-col cols="12" md="6">
                                 <v-text-field
                                     v-model="form.invoice_number"
-                                    label="Numéro de facture"
-                                    required
+                                    label="Numéro de facture (optionnel)"
                                     :error-messages="form.errors.invoice_number"
+                                    hint="Laissez vide pour générer automatiquement"
+                                    persistent-hint
                                 />
                             </v-col>
                             <v-col cols="12" md="6">
@@ -129,6 +133,22 @@
                             </v-col>
                             <v-col cols="12" md="6">
                                 <v-text-field
+                                    v-model.number="form.transportation_cost"
+                                    label="Frais de transport"
+                                    type="number"
+                                    min="0"
+                                    :error-messages="form.errors.transportation_cost"
+                                />
+                            </v-col>
+                            <v-col cols="12" md="6">
+                                <v-checkbox
+                                    v-model="form.is_paid"
+                                    label="Facture payée"
+                                    hide-details
+                                />
+                            </v-col>
+                            <v-col cols="12" md="6" v-if="!form.is_paid">
+                                <v-text-field
                                     v-model="form.due_date"
                                     label="Date d'échéance"
                                     type="date"
@@ -140,7 +160,6 @@
                         <div class="mt-4">
                             <div class="d-flex justify-space-between align-center mb-4">
                                 <h3 class="text-h6">Articles</h3>
-                              
                             </div>
 
                             <div v-for="(item, index) in form.items" :key="index" class="mb-4">
@@ -153,6 +172,7 @@
                                             item-value="id"
                                             label="Produit"
                                             required
+                                            :disabled="!!editingInvoice?.is_stocked"
                                             :error-messages="form.errors[`items.${index}.product_id`]"
                                         />
                                     </v-col>
@@ -162,6 +182,7 @@
                                             label="Quantité"
                                             type="number"
                                             required
+                                            :disabled="!!editingInvoice?.is_stocked"
                                             :error-messages="form.errors[`items.${index}.quantity`]"
                                         />
                                     </v-col>
@@ -171,6 +192,7 @@
                                             label="Prix unitaire"
                                             type="number"
                                             required
+                                            :disabled="!!editingInvoice?.is_stocked"
                                             :error-messages="form.errors[`items.${index}.unit_price`]"
                                         />
                                     </v-col>
@@ -183,6 +205,7 @@
                                     </v-col>
                                     <v-col cols="12" md="1">
                                         <v-btn
+                                            v-if="!editingInvoice?.is_stocked"
                                             icon="mdi-delete"
                                             variant="text"
                                             color="error"
@@ -191,12 +214,11 @@
                                     </v-col>
                                 </v-row>
                             </div>
-                            <div class="d-flex justify-center"><v-btn icon color="primary" @click="addItem">
+                            <div v-if="!editingInvoice?.is_stocked" class="d-flex justify-center">
+                                <v-btn icon color="primary" @click="addItem">
                                     <v-icon>mdi-plus</v-icon>
-                                    
                                 </v-btn>
                             </div>
-                              
                         </div>
 
                         <div class="d-flex justify-end mt-4 mb-4">
@@ -206,9 +228,9 @@
                         </div>
 
                         <v-textarea
-                            v-model="form.notes"
+                            v-model="form.comment"
                             label="Notes"
-                            :error-messages="form.errors.notes"
+                            :error-messages="form.errors.comment"
                         />
                     </v-form>
                 </v-card-text>
@@ -304,6 +326,54 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+
+        <!-- Put In Stock Dialog -->
+        <v-dialog v-model="putInStockDialog" max-width="600px">
+            <v-card>
+                <v-card-title>Mettre en stock</v-card-title>
+                <v-card-text>
+                    <p class="mb-4 text-body-2 text-medium-emphasis">
+                        Choisissez un chargement pour transférer les articles directement dans un chargement,
+                        ou sélectionnez un entrepôt pour les conserver en stock entrepôt.
+                    </p>
+
+                    <v-radio-group v-model="putInStockForm.car_load_id" label="Destination">
+                        <v-radio
+                            :value="null"
+                            label="Entrepôt seulement (pas de chargement)"
+                        />
+                        <v-radio
+                            v-for="carLoad in activeCarLoads"
+                            :key="carLoad.id"
+                            :value="carLoad.id"
+                            :label="`${carLoad.name} — ${carLoad.team?.name} (${getCarLoadStatusLabel(carLoad.status)})`"
+                        />
+                    </v-radio-group>
+
+                    <v-select
+                        v-if="putInStockForm.car_load_id === null"
+                        v-model="putInStockForm.warehouse_id"
+                        :items="warehouses"
+                        item-title="name"
+                        item-value="id"
+                        label="Entrepôt de destination"
+                        clearable
+                        :error-messages="putInStockForm.errors.warehouse_id"
+                    />
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="error" @click="putInStockDialog = false">Annuler</v-btn>
+                    <v-btn
+                        color="success"
+                        @click="confirmPutInStock"
+                        :loading="putInStockForm.processing"
+                    >
+                        Confirmer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
@@ -324,6 +394,14 @@ const props = defineProps({
     products: {
         type: Array,
         default: () => []
+    },
+    activeCarLoads: {
+        type: Array,
+        default: () => []
+    },
+    warehouses: {
+        type: Array,
+        default: () => []
     }
 });
 
@@ -333,17 +411,26 @@ const editingInvoice = ref(null);
 const invoiceToDelete = ref(null);
 const viewDialog = ref(false);
 const selectedInvoice = ref(null);
+const putInStockDialog = ref(false);
+const invoiceForPutInStock = ref(null);
 
 const form = useForm({
     supplier_id: '',
     invoice_number: '',
     invoice_date: '',
     due_date: '',
-    notes: '',
+    comment: '',
+    transportation_cost: 0,
+    is_paid: true,
     items: []
 });
 
 const deleteForm = useForm({});
+
+const putInStockForm = useForm({
+    car_load_id: null,
+    warehouse_id: null,
+});
 
 const totalInvoicesAmount = computed(() => {
     return props.purchaseInvoices.reduce((total, invoice) => {
@@ -370,7 +457,9 @@ watch(() => ({
     invoice_number: form.invoice_number,
     invoice_date: form.invoice_date,
     due_date: form.due_date,
-    notes: form.notes,
+    comment: form.comment,
+    transportation_cost: form.transportation_cost,
+    is_paid: form.is_paid,
     items: form.items
 }), (newValue) => {
     if (!editingInvoice.value && !isRestoringDraft.value) {
@@ -395,7 +484,9 @@ onMounted(() => {
             form.invoice_number = draftData.invoice_number;
             form.invoice_date = draftData.invoice_date;
             form.due_date = draftData.due_date;
-            form.notes = draftData.notes;
+            form.comment = draftData.comment;
+            form.transportation_cost = draftData.transportation_cost ?? 0;
+            form.is_paid = draftData.is_paid ?? true;
             form.items = draftData.items;
             dialog.value = true;
             isRestoringDraft.value = false;
@@ -408,6 +499,8 @@ onMounted(() => {
 function showCreateDialog() {
     editingInvoice.value = null;
     form.reset();
+    form.is_paid = true;
+    form.transportation_cost = 0;
     form.items = [{ product_id: '', quantity: 1, unit_price: 0 }];
     dialog.value = true;
 }
@@ -418,7 +511,9 @@ function editInvoice(invoice) {
     form.invoice_number = invoice.invoice_number;
     form.invoice_date = formatDateForInput(invoice.invoice_date);
     form.due_date = formatDateForInput(invoice.due_date);
-    form.notes = invoice.notes;
+    form.comment = invoice.comment;
+    form.transportation_cost = invoice.transportation_cost ?? 0;
+    form.is_paid = invoice.is_paid ?? false;
     form.items = invoice.items.map(item => ({
         product_id: item.product_id,
         quantity: item.quantity,
@@ -475,6 +570,22 @@ function saveInvoice() {
     }
 }
 
+function openPutInStockDialog(invoice) {
+    invoiceForPutInStock.value = invoice;
+    putInStockForm.reset();
+    putInStockDialog.value = true;
+}
+
+function confirmPutInStock() {
+    putInStockForm.post(route('purchase-invoices.put-in-stock', invoiceForPutInStock.value.id), {
+        onSuccess: () => {
+            putInStockDialog.value = false;
+            invoiceForPutInStock.value = null;
+            putInStockForm.reset();
+        }
+    });
+}
+
 function formatDate(date) {
     if (!date) return '';
     return new Date(date).toLocaleDateString('fr-FR');
@@ -509,22 +620,35 @@ function getStatusLabel(status) {
     }
 }
 
+function getCarLoadStatusLabel(status) {
+    switch (status) {
+        case 'LOADING':
+            return 'En chargement';
+        case 'SELLING':
+            return 'En vente';
+        case 'ONGOING_INVENTORY':
+            return 'Inventaire en cours';
+        default:
+            return status;
+    }
+}
+
 function formatDateForInput(date) {
     if (!date) return '';
     return new Date(date).toISOString().split('T')[0];
 }
 
-// Add a method to discard draft
 function discardDraft() {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce brouillon ?')) {
         clearDraft();
         form.reset();
+        form.is_paid = true;
+        form.transportation_cost = 0;
         form.items = [{ product_id: '', quantity: 1, unit_price: 0 }];
         dialog.value = false;
     }
 }
 
-// Update dialog close handling
 function closeDialog() {
     if (!editingInvoice.value && form.isDirty) {
         if (window.confirm('Voulez-vous sauvegarder ce brouillon pour plus tard ?')) {
@@ -537,10 +661,4 @@ function closeDialog() {
         dialog.value = false;
     }
 }
-
-const putInStock = (invoice) => {
-    if (confirm('Êtes-vous sûr de vouloir mettre les articles de cette facture en stock ?')) {
-        router.post(route('purchase-invoices.put-in-stock', invoice.id),{'put_in_car_current_car_load': true});
-    }
-};
-</script> 
+</script>

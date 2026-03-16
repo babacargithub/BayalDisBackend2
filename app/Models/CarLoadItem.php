@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property int $quantity_left
+ * @property int|null $cost_price_per_unit
  * @property CarLoadItemSource $source
  * @property int|null $from_previous_car_load_id
  * @property-read bool $from_previous_car_load
@@ -19,6 +20,7 @@ class CarLoadItem extends Model
         'product_id',
         'quantity_loaded',
         'quantity_left',
+        'cost_price_per_unit',
         'comment',
         'loaded_at',
         'source',
@@ -26,7 +28,9 @@ class CarLoadItem extends Model
     ];
 
     protected $casts = [
-        //        'quantity_loaded' => 'integer',
+        'quantity_loaded' => 'integer',
+        'quantity_left' => 'integer',
+        'cost_price_per_unit' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'loaded_at' => 'datetime',

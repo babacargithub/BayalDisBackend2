@@ -37,10 +37,19 @@ class CarLoadController extends Controller
         $teams = Team::select('id', 'name')
             ->orderBy('name')
             ->get();
+        $vehicles = Vehicle::query()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Vehicle $vehicle): array => [
+                'id' => $vehicle->id,
+                'name' => $vehicle->name,
+                'plate_number' => $vehicle->plate_number,
+            ]);
 
         return Inertia::render('CarLoads/Index', [
             'carLoads' => $carLoads,
             'teams' => $teams,
+            'vehicles' => $vehicles,
         ]);
     }
 
@@ -130,6 +139,7 @@ class CarLoadController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'team_id' => 'required|exists:teams,id',
+            'vehicle_id' => 'nullable|exists:vehicles,id',
             'return_date' => 'required|date|after:today',
             'comment' => 'nullable|string',
             'items' => 'array',

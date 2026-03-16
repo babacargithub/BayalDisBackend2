@@ -322,7 +322,7 @@ class FullFlowInventoryPdfTest extends TestCase
         ]);
         $resInvoice2->assertSessionHasNoErrors();
         $invoice2 = PurchaseInvoice::where('invoice_number', 'INV-E2E-2')->firstOrFail();
-        $resp = $this->post(route('purchase-invoices.put-in-stock', $invoice2), ['put_in_current_car_load' => true]);
+        $resp = $this->post(route('purchase-invoices.put-in-stock', $invoice2), ['car_load_id' => $carLoad->id]);
         $resp->assertSessionHasNoErrors();
         $resp->assertStatus(302);
 
@@ -371,7 +371,7 @@ class FullFlowInventoryPdfTest extends TestCase
         $invoice = PurchaseInvoice::where('invoice_number', 'INV-E2E-1')->firstOrFail();
 
         // Put in stock through route
-        $resp = $this->post(route('purchase-invoices.put-in-stock', $invoice), ['put_in_current_car_load' => true]);
+        $resp = $this->post(route('purchase-invoices.put-in-stock', $invoice), ['car_load_id' => $carLoad->id]);
         $resp->assertSessionHasNoErrors();
         $resp->assertStatus(302);
 

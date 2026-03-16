@@ -64,8 +64,8 @@ class PurchaseInvoiceTransportationCostTest extends TestCase
 
     public function test_distributes_cost_equally_when_it_divides_evenly_across_items(): void
     {
-        // 9 000 XOF across 3 lines → 3 000 each, no remainder.
-        $invoice = $this->makeInvoiceWithItems(9_000, [1, 2, 3]);
+        // 9 000 XOF across 3 lines of equal value → 3 000 each, no remainder.
+        $invoice = $this->makeInvoiceWithItems(9_000, [1, 1, 1]);
 
         $this->service->distributeTransportationCostToInvoiceItems($invoice);
 

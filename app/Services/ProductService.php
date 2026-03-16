@@ -67,27 +67,62 @@ readonly class ProductService
      */
     public function decreaseWarehouseStockUsingFifo(Product $product, int $quantity): void
     {
+        $this->consumeWarehouseStockInFifoReturningBatchCosts($product, $quantity);
+    }
+
+    /**
+     * Consume warehouse stock for a product in FIFO order (oldest StockEntry first),
+     * decrement StockEntry.quantity_left accordingly, and return the batches consumed
+     * with their locked unit cost (unit_price + transportation_cost + packaging_cost).
+     *
+     * Each entry in the returned array represents one StockEntry batch (or partial batch)
+     * consumed during this operation.
+     *
+     * @return array<int, array{quantity: int, cost_price_per_unit: int}>
+     *
+     * @throws InsufficientStockException
+     */
+    public function consumeWarehouseStockInFifoReturningBatchCosts(Product $product, int $quantity): array
+    {
         $totalAvailableStock = $product->stockEntries()->sum('quantity_left');
 
         if ($totalAvailableStock < $quantity) {
             throw new InsufficientStockException(
-                "Stock insuffisant pour {$product->name} . Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}"
+                "Stock insuffisant pour {$product->name}. Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantity}"
             );
         }
 
-        $stockEntriesOrderedByOldestFirst = $product->stockEntries()->orderBy('created_at', 'asc')->get();
+        $stockEntriesOrderedByOldestFirst = $product->stockEntries()
+            ->where('quantity_left', '>', 0)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
         $remainingQuantityToDeduct = $quantity;
+        $consumedBatches = [];
 
         foreach ($stockEntriesOrderedByOldestFirst as $stockEntry) {
-            if ($stockEntry->quantity_left >= $remainingQuantityToDeduct) {
-                $stockEntry->decrement('quantity_left', $remainingQuantityToDeduct);
+            if ($remainingQuantityToDeduct <= 0) {
                 break;
             }
 
-            $remainingQuantityToDeduct -= $stockEntry->quantity_left;
-            $stockEntry->quantity_left = 0;
-            $stockEntry->save();
+            $quantityConsumedFromThisBatch = min($stockEntry->quantity_left, $remainingQuantityToDeduct);
+
+            $consumedBatches[] = [
+                'quantity' => $quantityConsumedFromThisBatch,
+                'cost_price_per_unit' => $stockEntry->total_unit_cost,
+            ];
+
+            if ($stockEntry->quantity_left >= $remainingQuantityToDeduct) {
+                $stockEntry->decrement('quantity_left', $remainingQuantityToDeduct);
+                $remainingQuantityToDeduct = 0;
+            } else {
+                $remainingQuantityToDeduct -= $stockEntry->quantity_left;
+                $stockEntry->quantity_left = 0;
+                $stockEntry->save();
+            }
         }
+
+        return $consumedBatches;
     }
 
     /**

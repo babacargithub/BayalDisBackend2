@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\PurchaseInvoiceController;
 use App\Models\CarLoad;
 use App\Models\Product;
 use App\Models\PurchaseInvoice;
@@ -12,7 +11,6 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\CarLoadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PurchaseInvoicePutInStockTest extends TestCase
@@ -27,6 +25,13 @@ class PurchaseInvoicePutInStockTest extends TestCase
         $team = Team::create([
             'name' => 'Test Team',
             'user_id' => $user->id,
+        ]);
+
+        $carLoad = CarLoad::create([
+            'name' => 'CL-TEST',
+            'team_id' => $team->id,
+            'load_date' => now(),
+            'status' => \App\Enums\CarLoadStatus::Selling,
         ]);
 
         // Minimal supplier
@@ -77,7 +82,7 @@ class PurchaseInvoicePutInStockTest extends TestCase
             'unit_price' => 2000,
         ]);
 
-        return compact('user', 'team', 'supplier', 'p1', 'p2', 'invoice');
+        return compact('user', 'team', 'supplier', 'p1', 'p2', 'invoice', 'carLoad');
     }
 
     public function test_put_items_to_stock_success_creates_stock_entries_and_marks_invoice(): void
@@ -85,32 +90,38 @@ class PurchaseInvoicePutInStockTest extends TestCase
         $data = $this->seedBasicData();
         $this->actingAs($data['user']);
 
-        // Bind a mock CarLoadService so that we do not hit real logic
+        // Bind a mock CarLoadService so that we do not hit real warehouse-decrement logic
         $mock = $this->getMockBuilder(CarLoadService::class)
-            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItemsToCarLoad'])
+            ->onlyMethods(['createItemsToCarLoad'])
             ->getMock();
 
-        // Return a dummy CarLoad for the team
-        $dummyCarLoad = new CarLoad(['name' => 'CL-1', 'team_id' => $data['team']->id]);
-        $mock->method('getCurrentCarLoadForTeam')->willReturn($dummyCarLoad);
-
-        // Expect createItems to be called once with the dummy car load and array of items
+        // Expect createItems to be called once with the real car load and array of items
         $mock->expects($this->once())
             ->method('createItemsToCarLoad')
-            ->with($this->equalTo($dummyCarLoad), $this->callback(function ($items) {
-                // Should contain two items derived from invoice
-                if (!is_array($items) || count($items) !== 2) return false;
-                foreach ($items as $it) {
-                    if (!isset($it['product_id'], $it['quantity_loaded'], $it['quantity_left'])) return false;
-                }
-                return true;
-            }))
-            ->willReturn($dummyCarLoad);
+            ->with(
+                $this->callback(fn ($cl) => $cl instanceof CarLoad && $cl->id === $data['carLoad']->id),
+                $this->callback(function ($items) {
+                    // Should contain two items derived from invoice
+                    if (! is_array($items) || count($items) !== 2) {
+                        return false;
+                    }
+                    foreach ($items as $it) {
+                        if (! isset($it['product_id'], $it['quantity_loaded'], $it['quantity_left'])) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                })
+            )
+            ->willReturn($data['carLoad']);
 
         $this->app->instance(CarLoadService::class, $mock);
 
-        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),
-            ["put_in_current_car_load"=>true]);
+        $response = $this->post(
+            route('purchase-invoices.put-in-stock', $data['invoice']),
+            ['car_load_id' => $data['carLoad']->id]
+        );
 
         $response->assertRedirect();
         $response->assertSessionHas('success');
@@ -118,7 +129,7 @@ class PurchaseInvoicePutInStockTest extends TestCase
         // Assert invoice is marked stocked
         $this->assertTrue($data['invoice']->fresh()->is_stocked);
 
-        // Assert two stock entries created
+        // Assert two stock entries created (mock prevents warehouse decrement so quantity_left stays full)
         $this->assertEquals(2, StockEntry::count());
 
         // Validate values of one of the entries
@@ -139,15 +150,13 @@ class PurchaseInvoicePutInStockTest extends TestCase
 
         // Even if service were bound, controller should exit early; bind a dummy to ensure not called
         $mock = $this->getMockBuilder(CarLoadService::class)
-            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItemsToCarLoad'])
+            ->onlyMethods(['createItemsToCarLoad'])
             ->getMock();
-        // Neither method should be called
-        $mock->expects($this->never())->method('getCurrentCarLoadForTeam');
         $mock->expects($this->never())->method('createItemsToCarLoad');
         $this->app->instance(CarLoadService::class, $mock);
 
-        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),[
-            "put_in_current_car_load"=>true
+        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']), [
+            'car_load_id' => $data['carLoad']->id,
         ]);
 
         $response->assertRedirect();
@@ -157,22 +166,23 @@ class PurchaseInvoicePutInStockTest extends TestCase
         $this->assertEquals(0, StockEntry::count());
     }
 
-    public function test_put_items_to_stock_rolls_back_when_no_current_car_load(): void
+    public function test_put_items_to_stock_rolls_back_when_create_items_throws_exception(): void
     {
         $data = $this->seedBasicData();
         $this->actingAs($data['user']);
 
-        // Bind a mock CarLoadService that returns null to trigger exception path
+        // Bind a mock CarLoadService that throws to simulate a failure (e.g. insufficient stock)
         $mock = $this->getMockBuilder(CarLoadService::class)
-            ->onlyMethods(['getCurrentCarLoadForTeam', 'createItemsToCarLoad'])
+            ->onlyMethods(['createItemsToCarLoad'])
             ->getMock();
-        $mock->method('getCurrentCarLoadForTeam')->willReturn(null);
-        // createItems should never be called if no car load
-        $mock->expects($this->never())->method('createItemsToCarLoad');
+        $mock->method('createItemsToCarLoad')
+            ->willThrowException(new \Exception('Stock insuffisant'));
         $this->app->instance(CarLoadService::class, $mock);
 
-        $response = $this->post(route('purchase-invoices.put-in-stock', $data['invoice']),
-            ['put_in_current_car_load'=>true]);
+        $response = $this->post(
+            route('purchase-invoices.put-in-stock', $data['invoice']),
+            ['car_load_id' => $data['carLoad']->id]
+        );
 
         $response->assertRedirect();
         $response->assertSessionHasErrors();

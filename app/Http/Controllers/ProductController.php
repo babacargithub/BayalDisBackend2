@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\StockEntry;
 use App\Services\CarLoadService;
 use Illuminate\Http\Request;
@@ -24,6 +25,10 @@ class ProductController extends Controller
                         'name' => $product->name,
                         'description' => $product->description,
                         'cost_price' => $product->cost_price,
+                        'packaging_cost' => $product->packaging_cost,
+                        'weight_kg' => $product->weight_kg,
+                        'volume_m3' => $product->volume_m3,
+                        'product_category_id' => $product->product_category_id,
                         'price' => $product->price,
                         'stock_available' => $product->stock_available,
                         'stock_value' => $product->stock_value,
@@ -37,6 +42,7 @@ class ProductController extends Controller
                                 'quantity' => $entry->quantity,
                                 'quantity_left' => $entry->quantity_left,
                                 'unit_price' => $entry->unit_price,
+                                'packaging_cost' => $entry->packaging_cost,
                                 'created_at' => $entry->created_at,
                             ];
                         }),
@@ -48,6 +54,7 @@ class ProductController extends Controller
             'base_products' => Product::whereNull('parent_id')
                 ->select('id', 'name')
                 ->get(),
+            'product_categories' => ProductCategory::select('id', 'name')->orderBy('name')->get(),
         ]);
     }
 
@@ -57,6 +64,10 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:0',
             'cost_price' => 'required|numeric|min:0',
+            'product_category_id' => 'nullable|exists:product_categories,id',
+            'packaging_cost' => 'nullable|integer|min:0',
+            'weight_kg' => 'nullable|numeric|min:0',
+            'volume_m3' => 'nullable|numeric|min:0',
             'parent_id' => 'nullable|exists:products,id',
             'base_quantity' => 'required|integer|min:0',
         ]);
@@ -72,6 +83,10 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:0',
             'cost_price' => 'required|numeric|min:0',
+            'product_category_id' => 'nullable|exists:product_categories,id',
+            'packaging_cost' => 'nullable|integer|min:0',
+            'weight_kg' => 'nullable|numeric|min:0',
+            'volume_m3' => 'nullable|numeric|min:0',
             'parent_id' => 'nullable|exists:products,id',
             'base_quantity' => 'required|integer|min:0',
         ]);

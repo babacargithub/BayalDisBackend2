@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\CarLoadStatus;
+use App\Models\CarLoad;
 use App\Models\Product;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseInvoiceItem;
 use App\Models\StockEntry;
 use App\Models\Supplier;
-use App\Models\Team;
+use App\Models\Warehouse;
 use App\Services\CarLoadService;
 use App\Services\PurchaseInvoiceService;
 use Illuminate\Http\RedirectResponse;
@@ -20,16 +22,30 @@ class PurchaseInvoiceController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(): \Inertia\Response
     {
         $purchaseInvoices = PurchaseInvoice::with(['supplier', 'items.product'])
             ->latest()
             ->get();
 
+        $activeCarLoads = CarLoad::with('team')
+            ->whereNotIn('status', [
+                CarLoadStatus::FullInventory->value,
+                CarLoadStatus::TerminatedAndTransferred->value,
+            ])
+            ->where(function ($query) {
+                $query->whereNull('return_date')
+                    ->orWhereDate('return_date', '>=', now()->toDateString());
+            })
+            ->orderBy('load_date', 'desc')
+            ->get(['id', 'name', 'team_id', 'load_date', 'status']);
+
         return Inertia::render('PurchaseInvoices/Index', [
             'purchaseInvoices' => $purchaseInvoices,
             'suppliers' => Supplier::select('id', 'name')->get(),
             'products' => Product::select('id', 'name', 'price')->get(),
+            'activeCarLoads' => $activeCarLoads,
+            'warehouses' => Warehouse::select('id', 'name')->get(),
         ]);
     }
 
@@ -48,10 +64,11 @@ class PurchaseInvoiceController extends Controller
     {
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
-            'invoice_number' => 'required|string|unique:purchase_invoices',
+            'invoice_number' => 'nullable|string|unique:purchase_invoices',
             'invoice_date' => 'required|date',
             'due_date' => 'nullable|date',
             'comment' => 'nullable|string',
+            'is_paid' => 'boolean',
             'transportation_cost' => 'nullable|integer|min:0',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
@@ -63,13 +80,17 @@ class PurchaseInvoiceController extends Controller
             DB::beginTransaction();
 
             $transportationCost = (int) ($validated['transportation_cost'] ?? 0);
+            $invoiceNumber = ! empty($validated['invoice_number'])
+                ? $validated['invoice_number']
+                : $this->generateUniqueInvoiceNumber();
 
             $invoice = PurchaseInvoice::create([
                 'supplier_id' => $validated['supplier_id'],
-                'invoice_number' => $validated['invoice_number'],
+                'invoice_number' => $invoiceNumber,
                 'invoice_date' => $validated['invoice_date'],
                 'due_date' => $validated['due_date'] ?? null,
                 'comment' => $validated['comment'] ?? null,
+                'is_paid' => $validated['is_paid'] ?? false,
                 'transportation_cost' => $transportationCost,
                 'status' => 'pending',
             ]);
@@ -126,6 +147,8 @@ class PurchaseInvoiceController extends Controller
             'invoice_date' => 'required|date',
             'due_date' => 'nullable|date',
             'comment' => 'nullable|string',
+            'is_paid' => 'boolean',
+            'transportation_cost' => 'nullable|integer|min:0',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -138,32 +161,23 @@ class PurchaseInvoiceController extends Controller
             $purchaseInvoice->update([
                 'invoice_number' => $validated['invoice_number'],
                 'invoice_date' => $validated['invoice_date'],
-                'due_date' => $validated['due_date'],
-                'notes' => $validated['notes'],
+                'due_date' => $validated['due_date'] ?? null,
+                'comment' => $validated['comment'] ?? null,
+                'is_paid' => $validated['is_paid'] ?? false,
+                'transportation_cost' => (int) ($validated['transportation_cost'] ?? 0),
             ]);
 
-            // Delete old items and their stock entries
-            foreach ($purchaseInvoice->items as $item) {
-                $item->stockEntries()->delete();
-            }
-            $purchaseInvoice->items()->delete();
+            // Items are frozen once the invoice is stocked — do not modify them
+            if (! $purchaseInvoice->is_stocked) {
+                $purchaseInvoice->items()->delete();
 
-            // Create new items and stock entries
-            foreach ($validated['items'] as $item) {
-                $invoiceItem = $purchaseInvoice->items()->create([
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                ]);
-
-                // Create stock entry for each item
-                StockEntry::create([
-                    'product_id' => $item['product_id'],
-                    'purchase_invoice_item_id' => $invoiceItem->id,
-                    'quantity' => $item['quantity'],
-                    'quantity_left' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                ]);
+                foreach ($validated['items'] as $item) {
+                    $purchaseInvoice->items()->create([
+                        'product_id' => $item['product_id'],
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                    ]);
+                }
             }
 
             DB::commit();
@@ -172,7 +186,7 @@ class PurchaseInvoiceController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise à jour de la facture']);
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise à jour de la facture: '.$e->getMessage()]);
         }
     }
 
@@ -190,18 +204,25 @@ class PurchaseInvoiceController extends Controller
         return redirect()->route('purchase-invoices.index');
     }
 
-    /**
-     * @throws \Throwable
-     */
-    public function putItemsToStock(PurchaseInvoice $purchaseInvoice): RedirectResponse
+    public function putItemsToStock(Request $request, PurchaseInvoice $purchaseInvoice): RedirectResponse
     {
         if ($purchaseInvoice->is_stocked) {
             return redirect()->back()->withErrors(['error' => 'Cette facture est déjà en stock']);
         }
 
+        $validated = $request->validate([
+            'car_load_id' => 'nullable|integer|exists:car_loads,id',
+            'warehouse_id' => 'nullable|integer|exists:warehouses,id',
+        ]);
+
+        $carLoadId = $validated['car_load_id'] ?? null;
+        $warehouseId = $validated['warehouse_id'] ?? null;
+
         try {
             DB::beginTransaction();
-            $items = [];
+
+            $carLoadItemsToCreate = [];
+
             foreach ($purchaseInvoice->items as $item) {
                 /** @var PurchaseInvoiceItem $item */
                 StockEntry::create([
@@ -211,28 +232,28 @@ class PurchaseInvoiceController extends Controller
                     'quantity_left' => $item->quantity,
                     'unit_price' => $item->unit_price,
                     'transportation_cost' => $item->transportation_cost_per_unit,
+                    'warehouse_id' => $carLoadId === null ? $warehouseId : null,
                 ]);
-                $items[] = [
+
+                $carLoadItemsToCreate[] = [
                     'product_id' => $item->product_id,
                     'quantity_loaded' => $item->quantity,
                     'quantity_left' => $item->quantity,
                     'loaded_at' => now(),
                     'comment' => 'Chargée depuis facture '.$purchaseInvoice->invoice_number.' du '
-                        .$purchaseInvoice->invoice_date->format('d/m/Y H:s:i'),
+                        .$purchaseInvoice->invoice_date->format('d/m/Y H:i:s'),
                 ];
             }
 
             $purchaseInvoice->update(['is_stocked' => true]);
 
-            if (request()->input('put_in_current_car_load')) {
+            if ($carLoadId !== null) {
+                $carLoad = CarLoad::find($carLoadId);
+                if ($carLoad === null) {
+                    throw new \Exception('Chargement introuvable avec l\'identifiant '.$carLoadId);
+                }
                 $carLoadService = app(CarLoadService::class);
-                // TODO make this dynamic later
-                $team = Team::firstOrFail();
-                $carLoad = $carLoadService->getCurrentCarLoadForTeam($team);
-                if ($carLoad == null) {
-                    throw new \Exception('CarLoad not found for team '.$team->name);
-                }// Do NOT decrement main stock here since we just created StockEntry from the purchase invoice
-                $carLoadService->createItemsToCarLoad($carLoad, $items, false);
+                $carLoadService->createItemsToCarLoad($carLoad, $carLoadItemsToCreate);
             }
 
             DB::commit();
@@ -241,7 +262,23 @@ class PurchaseInvoiceController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise en stock des articles '.$e->getMessage()]);
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise en stock des articles: '.$e->getMessage()]);
         }
+    }
+
+    private function generateUniqueInvoiceNumber(): string
+    {
+        $datePrefix = 'PINV-'.now()->format('Ymd');
+        $existingCountForToday = PurchaseInvoice::where('invoice_number', 'like', $datePrefix.'%')->count();
+        $sequenceNumber = $existingCountForToday + 1;
+
+        $generatedInvoiceNumber = $datePrefix.str_pad((string) $sequenceNumber, 2, '0', STR_PAD_LEFT);
+
+        while (PurchaseInvoice::where('invoice_number', $generatedInvoiceNumber)->exists()) {
+            $sequenceNumber++;
+            $generatedInvoiceNumber = $datePrefix.str_pad((string) $sequenceNumber, 2, '0', STR_PAD_LEFT);
+        }
+
+        return $generatedInvoiceNumber;
     }
 }

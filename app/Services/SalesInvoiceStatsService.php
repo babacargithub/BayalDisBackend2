@@ -7,6 +7,7 @@ use App\Data\Dashboard\DashboardStats;
 use App\Data\Vente\PaidStatus;
 use App\Data\Vente\VenteStatsFilter;
 use App\Enums\SalesInvoiceStatus;
+use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Depense;
@@ -90,9 +91,29 @@ class SalesInvoiceStatsService
     /**
      * Calculate the profit for a single Vente using historical cost price from StockEntry records.
      *
-     * The historical cost price is the weighted average of all stock entries for the product
-     * that existed at or before the time of the sale. This ensures profit is calculated against
-     * the actual cost paid at purchase time, not the product's current cost_price.
+     * TODO: REVERT TO FIFO COST PRICE
+     * The current weighted-average mechanism was introduced as a temporary fix to back-fill
+     * profit on historical sales that pre-dated per-batch cost tracking. It is NOT the intended
+     * long-term design.
+     *
+     * The correct approach is FIFO cost price propagation:
+     *   1. When a CarLoad is loaded, each CarLoadItem must carry the cost price of the
+     *      StockEntry batch(es) it was drawn from (unit_price + transportation_cost + packaging_cost).
+     *      This requires adding cost columns to CarLoadItem (e.g. cost_price_per_unit) and
+     *      populating them at load time by consuming StockEntry rows in FIFO order.
+     *   2. When a Vente is created, the profit is calculated from the CarLoadItem's stored
+     *      cost price, not by re-querying StockEntry at sale time.
+     *   3. This ensures that selling from a cheap batch vs an expensive batch yields
+     *      correctly different profits — which the weighted average silently obscures.
+     *
+     * Migration plan when reverting:
+     *   - Add `cost_price_per_unit` (integer) to car_load_items table.
+     *   - In CarLoadService::createItemsToCarLoad(), consume StockEntry rows in FIFO order
+     *     and set cost_price_per_unit on each CarLoadItem from the matching batch(es).
+     *   - Update this method to read cost from vente->carLoadItem->cost_price_per_unit
+     *     instead of querying StockEntry.
+     *   - Keep this weighted-average path as a fallback for legacy ventes that have no
+     *     CarLoadItem link (ventes created before the migration).
      *
      * Future: additional deductions (car load expenses, gas costs, etc.) will be applied here.
      */
@@ -108,18 +129,42 @@ class SalesInvoiceStatsService
     }
 
     /**
-     * Determine the full historical unit cost for a vente using the weighted average
-     * of all stock entries for the product at or before the vente's creation date.
+     * Determine the full unit cost for a vente.
      *
-     * The total unit cost includes:
-     *   - unit_price:          actual purchase cost per unit (FIFO batch price)
-     *   - transportation_cost: freight cost allocated to this batch at stock entry time
-     *   - packaging_cost:      packaging material cost per unit at stock entry time
+     * Primary path — FIFO cost from CarLoadItem:
+     *   When the vente's invoice is linked to a car load, look up CarLoadItems for that
+     *   product in that car load that have cost_price_per_unit set. Use the weighted average
+     *   of those items (weighted by quantity_loaded). This is the FIFO-correct cost locked at
+     *   load time for warehouse items, or (parent_cost / base_quantity_ratio) + packaging_cost
+     *   for paquets transformed from cartons.
      *
-     * Falls back to the product's current cost_price (purchase only) if no stock entries exist.
+     * Legacy fallback — weighted average across all StockEntry records:
+     *   Used when no car load is linked, or when the car load's items pre-date
+     *   cost_price_per_unit tracking (legacy items with null cost).
+     *   TODO: Remove this fallback once all historical ventes have been backfilled.
      */
     private function determineHistoricalCostPriceForVente(Vente $vente): float
     {
+        // Primary path: use cost locked on CarLoadItems at load/transformation time.
+        if ($vente->salesInvoice?->car_load_id !== null) {
+            $carLoadItems = CarLoadItem::where('car_load_id', $vente->salesInvoice->car_load_id)
+                ->where('product_id', $vente->product_id)
+                ->whereNotNull('cost_price_per_unit')
+                ->get();
+
+            if ($carLoadItems->isNotEmpty()) {
+                $totalQuantityLoaded = $carLoadItems->sum('quantity_loaded');
+                $weightedCostTotal = $carLoadItems->sum(
+                    fn (CarLoadItem $item) => $item->quantity_loaded * $item->cost_price_per_unit
+                );
+
+                return $totalQuantityLoaded > 0
+                    ? $weightedCostTotal / $totalQuantityLoaded
+                    : (float) $vente->product->cost_price;
+            }
+        }
+
+        // Legacy fallback: weighted average of all StockEntry batches up to sale date.
         $venteDate = $vente->created_at ?? now();
 
         $stockEntries = StockEntry::where('product_id', $vente->product_id)
