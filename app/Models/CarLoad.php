@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CarLoadStatus;
+use App\Services\Abc\AbcVehicleCostService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,6 +17,8 @@ class CarLoad extends Model
         'load_date',
         'return_date',
         'team_id',
+        'vehicle_id',
+        'fixed_daily_cost',
         'status',
         'comment',
         'returned',
@@ -27,11 +30,42 @@ class CarLoad extends Model
         'return_date' => 'datetime',
         'returned' => 'boolean',
         'status' => CarLoadStatus::class,
+        'fixed_daily_cost' => 'integer',
     ];
+
+    protected static function booted(): void
+    {
+        // Snapshot the vehicle's daily fixed cost rate whenever vehicle_id changes.
+        // This freezes the rate at assignment time so historical trip costs stay accurate
+        // even if the vehicle's monthly cost structure is updated later.
+        static::saving(function (CarLoad $carLoad): void {
+            if ($carLoad->isDirty('vehicle_id')) {
+                if ($carLoad->vehicle_id === null) {
+                    $carLoad->fixed_daily_cost = null;
+                } else {
+                    $vehicle = Vehicle::find($carLoad->vehicle_id);
+                    if ($vehicle !== null) {
+                        $carLoad->fixed_daily_cost = app(AbcVehicleCostService::class)
+                            ->computeDailyFixedCost($vehicle);
+                    }
+                }
+            }
+        });
+    }
 
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    public function vehicle(): BelongsTo
+    {
+        return $this->belongsTo(Vehicle::class);
+    }
+
+    public function fuelEntries(): HasMany
+    {
+        return $this->hasMany(CarLoadFuelEntry::class);
     }
 
     public function items(): HasMany

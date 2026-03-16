@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseInvoiceItem;
-use App\Models\Supplier;
-use App\Models\Product;
 use App\Models\StockEntry;
+use App\Models\Supplier;
 use App\Models\Team;
 use App\Services\CarLoadService;
+use App\Services\PurchaseInvoiceService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Illuminate\Http\RedirectResponse;
 
 class PurchaseInvoiceController extends Controller
 {
@@ -24,11 +25,11 @@ class PurchaseInvoiceController extends Controller
         $purchaseInvoices = PurchaseInvoice::with(['supplier', 'items.product'])
             ->latest()
             ->get();
-        
+
         return Inertia::render('PurchaseInvoices/Index', [
             'purchaseInvoices' => $purchaseInvoices,
             'suppliers' => Supplier::select('id', 'name')->get(),
-            'products' => Product::select('id', 'name', 'price')->get()
+            'products' => Product::select('id', 'name', 'price')->get(),
         ]);
     }
 
@@ -43,7 +44,7 @@ class PurchaseInvoiceController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, PurchaseInvoiceService $purchaseInvoiceService): RedirectResponse
     {
         $validated = $request->validate([
             'supplier_id' => 'required|exists:suppliers,id',
@@ -51,6 +52,7 @@ class PurchaseInvoiceController extends Controller
             'invoice_date' => 'required|date',
             'due_date' => 'nullable|date',
             'comment' => 'nullable|string',
+            'transportation_cost' => 'nullable|integer|min:0',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
@@ -60,31 +62,37 @@ class PurchaseInvoiceController extends Controller
         try {
             DB::beginTransaction();
 
+            $transportationCost = (int) ($validated['transportation_cost'] ?? 0);
+
             $invoice = PurchaseInvoice::create([
                 'supplier_id' => $validated['supplier_id'],
                 'invoice_number' => $validated['invoice_number'],
                 'invoice_date' => $validated['invoice_date'],
-                'due_date' => $validated['due_date'],
+                'due_date' => $validated['due_date'] ?? null,
                 'comment' => $validated['comment'] ?? null,
-                'status' => 'pending'
+                'transportation_cost' => $transportationCost,
+                'status' => 'pending',
             ]);
 
             foreach ($validated['items'] as $item) {
-                $invoiceItem = $invoice->items()->create([
+                $invoice->items()->create([
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'unit_price' => $item['unit_price'],
                 ]);
+            }
 
-                // Create stock entry for each item
-               
+            if ($transportationCost > 0) {
+                $purchaseInvoiceService->distributeTransportationCostToInvoiceItems($invoice);
             }
 
             DB::commit();
+
             return redirect()->route('purchase-invoices.index')->with('success', 'Facture créée avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
-            return redirect()->back()->withErrors(['error' => 'Erreur lors de la création de la facture ' . $e->getMessage()]);
+
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la création de la facture '.$e->getMessage()]);
         }
     }
 
@@ -94,9 +102,9 @@ class PurchaseInvoiceController extends Controller
     public function show(PurchaseInvoice $purchaseInvoice)
     {
         $purchaseInvoice->load(['supplier', 'items.product']);
-        
+
         return Inertia::render('PurchaseInvoices/Show', [
-            'purchaseInvoice' => $purchaseInvoice
+            'purchaseInvoice' => $purchaseInvoice,
         ]);
     }
 
@@ -114,7 +122,7 @@ class PurchaseInvoiceController extends Controller
     public function update(Request $request, PurchaseInvoice $purchaseInvoice): RedirectResponse
     {
         $validated = $request->validate([
-            'invoice_number' => 'required|string|unique:purchase_invoices,invoice_number,' . $purchaseInvoice->id,
+            'invoice_number' => 'required|string|unique:purchase_invoices,invoice_number,'.$purchaseInvoice->id,
             'invoice_date' => 'required|date',
             'due_date' => 'nullable|date',
             'comment' => 'nullable|string',
@@ -131,7 +139,7 @@ class PurchaseInvoiceController extends Controller
                 'invoice_number' => $validated['invoice_number'],
                 'invoice_date' => $validated['invoice_date'],
                 'due_date' => $validated['due_date'],
-                'notes' => $validated['notes']
+                'notes' => $validated['notes'],
             ]);
 
             // Delete old items and their stock entries
@@ -154,14 +162,16 @@ class PurchaseInvoiceController extends Controller
                     'purchase_invoice_item_id' => $invoiceItem->id,
                     'quantity' => $item['quantity'],
                     'quantity_left' => $item['quantity'],
-                    'unit_price' => $item['unit_price']
+                    'unit_price' => $item['unit_price'],
                 ]);
             }
 
             DB::commit();
+
             return redirect()->route('purchase-invoices.index')->with('success', 'Facture mise à jour avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise à jour de la facture']);
         }
     }
@@ -180,6 +190,9 @@ class PurchaseInvoiceController extends Controller
         return redirect()->route('purchase-invoices.index');
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function putItemsToStock(PurchaseInvoice $purchaseInvoice): RedirectResponse
     {
         if ($purchaseInvoice->is_stocked) {
@@ -190,45 +203,45 @@ class PurchaseInvoiceController extends Controller
             DB::beginTransaction();
             $items = [];
             foreach ($purchaseInvoice->items as $item) {
-                /** @var  PurchaseInvoiceItem $item */
+                /** @var PurchaseInvoiceItem $item */
                 StockEntry::create([
                     'product_id' => $item->product_id,
                     'purchase_invoice_item_id' => $item->id,
                     'quantity' => $item->quantity,
                     'quantity_left' => $item->quantity,
-                    'unit_price' => $item->unit_price
+                    'unit_price' => $item->unit_price,
+                    'transportation_cost' => $item->transportation_cost_per_unit,
                 ]);
-                $items[]=[
+                $items[] = [
                     'product_id' => $item->product_id,
                     'quantity_loaded' => $item->quantity,
                     'quantity_left' => $item->quantity,
                     'loaded_at' => now(),
-                    'comment'=>"Chargée depuis facture ".$purchaseInvoice->invoice_number." du "
+                    'comment' => 'Chargée depuis facture '.$purchaseInvoice->invoice_number.' du '
                         .$purchaseInvoice->invoice_date->format('d/m/Y H:s:i'),
                 ];
             }
 
             $purchaseInvoice->update(['is_stocked' => true]);
 
-            if (request()->input('put_in_current_car_load')== true) {
+            if (request()->input('put_in_current_car_load')) {
                 $carLoadService = app(CarLoadService::class);
-                //TODO make this dynamic later
+                // TODO make this dynamic later
                 $team = Team::firstOrFail();
                 $carLoad = $carLoadService->getCurrentCarLoadForTeam($team);
                 if ($carLoad == null) {
-                    throw new \Exception('CarLoad not found for team ' . $team->name);
+                    throw new \Exception('CarLoad not found for team '.$team->name);
                 }// Do NOT decrement main stock here since we just created StockEntry from the purchase invoice
                 $carLoadService->createItemsToCarLoad($carLoad, $items, false);
             }
 
             DB::commit();
+
             return redirect()->back()->with('success', 'Articles mis en stock avec succès');
         } catch (\Exception $e) {
-            if (app()->environment('testing')) {
-                dump($e->getMessage());
-            }
             DB::rollBack();
-            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise en stock des articles ' . $e->getMessage()]);
+
+            return redirect()->back()->withErrors(['error' => 'Erreur lors de la mise en stock des articles '.$e->getMessage()]);
         }
     }
 }

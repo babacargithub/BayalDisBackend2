@@ -3,6 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Enums\CarLoadStatus;
+use App\Enums\MonthlyFixedCostPool;
+use App\Enums\MonthlyFixedCostSubCategory;
+use App\Models\MonthlyFixedCost;
+use App\Models\Vehicle;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -56,6 +60,51 @@ class RefactorOldData extends Command
      *
      * @var array<int, array{command: string, label: string}>
      */
+    /**
+     * Fleet vehicles to seed on every fresh database.
+     * Add new vehicles here as the fleet grows.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    private const FLEET_VEHICLES = [
+        [
+            'plate_number' => 'AA-531-WL',
+            'name' => 'AA-531-WL',
+            'insurance_monthly' => 7_000,
+            'maintenance_monthly' => 13_500,
+            'repair_reserve_monthly' => 25_000,
+            'depreciation_monthly' => 60_000,
+            'driver_salary_monthly' => 100_000,
+            'working_days_per_month' => 26,
+        ],
+    ];
+
+    /**
+     * Monthly fixed cost entries to seed on every fresh database.
+     * Each entry is matched by (cost_pool + sub_category + period_year + period_month)
+     * to avoid duplicates — safe to re-run.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    private const MONTHLY_FIXED_COSTS = [
+        [
+            'cost_pool' => MonthlyFixedCostPool::Overhead,
+            'sub_category' => MonthlyFixedCostSubCategory::ManagerSalary,
+            'amount' => 100_000,
+            'label' => 'Salaire manager',
+            'period_year' => 2026,
+            'period_month' => 3,
+        ],
+        [
+            'cost_pool' => MonthlyFixedCostPool::Storage,
+            'sub_category' => MonthlyFixedCostSubCategory::WarehouseRent,
+            'amount' => 1_000,
+            'label' => 'Loyer dépôt',
+            'period_year' => 2026,
+            'period_month' => 3,
+        ],
+    ];
+
     private const PIPELINE = [
         [
             'command' => 'bayal:migrate-single-ventes-to-invoices',
@@ -90,6 +139,20 @@ class RefactorOldData extends Command
             $this->info('  bayal:refactor-old-data — starting full pipeline');
             $this->info('═══════════════════════════════════════════════════════════');
         }
+
+        // Step 0: seed fleet vehicles (idempotent — skips existing plate numbers)
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0/5 — Seed fleet vehicles');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->seedFleetVehicles($isDryRun);
+
+        // Step 0.5: seed monthly fixed costs (idempotent — skips existing pool+sub_category+period)
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0.5/5 — Seed monthly fixed costs');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->seedMonthlyFixedCosts($isDryRun);
 
         foreach (self::PIPELINE as $step) {
             $this->newLine();
@@ -134,6 +197,76 @@ class RefactorOldData extends Command
         $this->info('═══════════════════════════════════════════════════════════');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Ensures every entry in MONTHLY_FIXED_COSTS exists in the database.
+     * Matches by (cost_pool + sub_category + period_year + period_month) — skips if already present.
+     * Idempotent: safe to re-run on an already-seeded database.
+     */
+    private function seedMonthlyFixedCosts(bool $isDryRun): void
+    {
+        foreach (self::MONTHLY_FIXED_COSTS as $costData) {
+            $existing = MonthlyFixedCost::where('cost_pool', $costData['cost_pool'])
+                ->where('sub_category', $costData['sub_category'])
+                ->where('period_year', $costData['period_year'])
+                ->where('period_month', $costData['period_month'])
+                ->first();
+
+            $label = $costData['label'];
+            $period = $costData['period_year'].'-'.str_pad((string) $costData['period_month'], 2, '0', STR_PAD_LEFT);
+
+            if ($existing !== null) {
+                $this->line("  Monthly cost «{$label}» {$period} already exists (id #{$existing->id}). Skipping.");
+
+                continue;
+            }
+
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would create monthly cost «{$label}» {$period} — {$costData['amount']} F.");
+
+                continue;
+            }
+
+            $cost = MonthlyFixedCost::create($costData);
+            $this->info("  Created monthly cost «{$label}» {$period} — {$costData['amount']} F (id #{$cost->id}).");
+        }
+    }
+
+    /**
+     * Ensures every vehicle in FLEET_VEHICLES exists in the database.
+     * Matches by plate_number — skips the vehicle if it already exists.
+     * Idempotent: safe to re-run on an already-seeded database.
+     */
+    private function seedFleetVehicles(bool $isDryRun): void
+    {
+        foreach (self::FLEET_VEHICLES as $vehicleData) {
+            $plateNumber = $vehicleData['plate_number'];
+
+            $existingVehicle = Vehicle::where('plate_number', $plateNumber)->first();
+
+            if ($existingVehicle !== null) {
+                $this->line("  Vehicle «{$plateNumber}» already exists (id #{$existingVehicle->id}). Skipping.");
+
+                continue;
+            }
+
+            $dailyRate = (int) round(
+                ($vehicleData['insurance_monthly'] + $vehicleData['maintenance_monthly']
+                + $vehicleData['repair_reserve_monthly'] + $vehicleData['depreciation_monthly']
+                + $vehicleData['driver_salary_monthly'])
+                / $vehicleData['working_days_per_month']
+            );
+
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would create vehicle «{$plateNumber}» — daily rate: {$dailyRate} F/jour.");
+
+                continue;
+            }
+
+            $vehicle = Vehicle::create($vehicleData);
+            $this->info("  Created vehicle «{$plateNumber}» (id #{$vehicle->id}) — daily rate: {$dailyRate} F/jour.");
+        }
     }
 
     /**

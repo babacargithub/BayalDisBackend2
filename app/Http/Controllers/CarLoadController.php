@@ -10,6 +10,8 @@ use App\Models\CarLoadInventoryItem;
 use App\Models\CarLoadItem;
 use App\Models\Product;
 use App\Models\Team;
+use App\Models\Vehicle;
+use App\Services\Abc\AbcCarLoadProfitabilityService;
 use App\Services\CarLoadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,8 +24,10 @@ class CarLoadController extends Controller
 {
     protected $carLoadService;
 
-    public function __construct(CarLoadService $carLoadService)
-    {
+    public function __construct(
+        CarLoadService $carLoadService,
+        private readonly AbcCarLoadProfitabilityService $abcCarLoadProfitabilityService,
+    ) {
         $this->carLoadService = $carLoadService;
     }
 
@@ -63,6 +67,7 @@ class CarLoadController extends Controller
             'team',
             'items.product',
             'inventory.items.product',
+            'vehicle',
         ]);
 
         $missingInventoryProducts = $carLoad->inventory
@@ -71,10 +76,52 @@ class CarLoadController extends Controller
 
         $products = Product::select('id', 'name', 'parent_id')->orderBy('name')->get();
 
+        $vehicles = Vehicle::query()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Vehicle $vehicle): array => [
+                'id' => $vehicle->id,
+                'name' => $vehicle->name,
+                'plate_number' => $vehicle->plate_number,
+                'daily_fixed_cost' => $vehicle->daily_fixed_cost,
+            ]);
+
+        $profitability = $this->abcCarLoadProfitabilityService->computeProfitability($carLoad);
+
+        $fuelEntries = $carLoad->fuelEntries()
+            ->orderBy('filled_at', 'desc')
+            ->get()
+            ->map(fn ($entry): array => [
+                'id' => $entry->id,
+                'amount' => $entry->amount,
+                'liters' => $entry->liters,
+                'filled_at' => $entry->filled_at?->format('Y-m-d'),
+                'notes' => $entry->notes,
+            ]);
+
         return Inertia::render('CarLoads/Show', [
             'carLoad' => $carLoad,
             'products' => $products,
             'missingInventoryProducts' => $missingInventoryProducts,
+            'vehicles' => $vehicles,
+            'fuelEntries' => $fuelEntries,
+            'profitability' => [
+                'totalRevenue' => $profitability->totalRevenue,
+                'totalGrossProfit' => $profitability->totalGrossProfit,
+                'vehicleFixedCost' => $profitability->vehicleFixedCost,
+                'vehicleFuelCost' => $profitability->vehicleFuelCost,
+                'storageAllocation' => $profitability->storageAllocation,
+                'overheadAllocation' => $profitability->overheadAllocation,
+                'isMonthFinalized' => $profitability->isMonthFinalized,
+                'totalVehicleCost' => $profitability->totalVehicleCost(),
+                'totalFixedCostBurden' => $profitability->totalFixedCostBurden(),
+                'netProfit' => $profitability->netProfit(),
+                'grossMarginPercent' => $profitability->grossMarginPercent(),
+                'netMarginPercent' => $profitability->netMarginPercent(),
+                'breakEvenRevenue' => $profitability->breakEvenRevenue(),
+                'remainingRevenueToBreakEven' => $profitability->remainingRevenueToBreakEven(),
+                'isDeficit' => $profitability->isDeficit(),
+            ],
         ]);
     }
 
@@ -116,6 +163,8 @@ class CarLoadController extends Controller
             'team_id' => 'required|exists:teams,id',
             'return_date' => 'required|date|after:today',
             'comment' => 'nullable|string',
+            'vehicle_id' => 'nullable|exists:vehicles,id',
+            'load_date' => 'nullable|date',
         ]);
 
         // Check for active car loads for the same team (excluding current car load)

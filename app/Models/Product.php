@@ -16,9 +16,13 @@ class Product extends Model
 
     protected $fillable = [
         'name',
+        'product_category_id',
         'description',
         'price',
         'cost_price',
+        'packaging_cost',
+        'weight_kg',
+        'volume_m3',
         'parent_id',
         'base_quantity',
     ];
@@ -26,10 +30,24 @@ class Product extends Model
     protected $casts = [
         'price' => 'integer',
         'cost_price' => 'integer',
+        'packaging_cost' => 'integer',
+        'weight_kg' => 'decimal:3',
+        'volume_m3' => 'decimal:3',
         'base_quantity' => 'integer',
+        'product_category_id' => 'integer',
     ];
 
     protected $appends = ['is_base_product'];
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(ProductCategory::class, 'product_category_id');
+    }
+
+    public function productCommissionRates(): HasMany
+    {
+        return $this->hasMany(CommercialProductCommissionRate::class);
+    }
 
     public function ventes(): HasMany
     {

@@ -16,25 +16,40 @@ class PurchaseInvoiceItem extends Model
         'product_id',
         'quantity',
         'unit_price',
+        'transportation_cost',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'integer',
+        'transportation_cost' => 'integer',
     ];
 
-    protected $appends = ["total_price"];
+    /**
+     * Per-unit transportation cost: the line's allocated share divided by quantity.
+     * This is what gets stored on the StockEntry when the invoice is put in stock.
+     */
+    public function getTransportationCostPerUnitAttribute(): int
+    {
+        if ($this->quantity <= 0) {
+            return 0;
+        }
+
+        return (int) round($this->transportation_cost / $this->quantity);
+    }
+
+    protected $appends = ['total_price'];
 
     public function getTotalPriceAttribute()
     {
         return $this->quantity * $this->unit_price;
     }
 
-
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
     }
+
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(PurchaseInvoice::class);

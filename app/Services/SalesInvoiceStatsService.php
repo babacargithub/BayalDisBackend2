@@ -108,10 +108,15 @@ class SalesInvoiceStatsService
     }
 
     /**
-     * Determine the historical cost price for a vente using the weighted average
+     * Determine the full historical unit cost for a vente using the weighted average
      * of all stock entries for the product at or before the vente's creation date.
      *
-     * Falls back to the product's current cost_price if no stock entries are found.
+     * The total unit cost includes:
+     *   - unit_price:          actual purchase cost per unit (FIFO batch price)
+     *   - transportation_cost: freight cost allocated to this batch at stock entry time
+     *   - packaging_cost:      packaging material cost per unit at stock entry time
+     *
+     * Falls back to the product's current cost_price (purchase only) if no stock entries exist.
      */
     private function determineHistoricalCostPriceForVente(Vente $vente): float
     {
@@ -126,7 +131,14 @@ class SalesInvoiceStatsService
         }
 
         $totalQuantity = $stockEntries->sum('quantity');
-        $totalValue = $stockEntries->sum(fn (StockEntry $entry) => $entry->quantity * $entry->unit_price);
+
+        $totalValue = $stockEntries->sum(
+            fn (StockEntry $entry) => $entry->quantity * (
+                $entry->unit_price
+                + $entry->transportation_cost
+                + $entry->packaging_cost
+            )
+        );
 
         return $totalQuantity > 0
             ? $totalValue / $totalQuantity

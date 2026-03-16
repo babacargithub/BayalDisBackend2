@@ -1,18 +1,20 @@
-<?php namespace App\Models;
+<?php
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+namespace App\Models;
+
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Support\Facades\Hash;
 
 class Commercial extends Model
 {
-
     protected $fillable = [
         'name',
         'phone_number',
         'gender',
+        'salary',
         'secret_code',
         'user_id',
     ];
@@ -21,15 +23,23 @@ class Commercial extends Model
         'secret_code',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'salary' => 'integer',
+        ];
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
+
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
     }
-    
+
     public function customers(): HasMany
     {
         return $this->hasMany(Customer::class);
@@ -48,7 +58,36 @@ class Commercial extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class, 'user_id', 'user_id');
+    }
 
+    public function categoryCommissionRates(): HasMany
+    {
+        return $this->hasMany(CommercialCategoryCommissionRate::class);
+    }
+
+    public function productCommissionRates(): HasMany
+    {
+        return $this->hasMany(CommercialProductCommissionRate::class);
+    }
+
+    public function workPeriods(): HasMany
+    {
+        return $this->hasMany(CommercialWorkPeriod::class);
+    }
+
+    public function commissions(): HasManyThrough
+    {
+        return $this->hasManyThrough(Commission::class, CommercialWorkPeriod::class);
+    }
+
+    public function objectiveTiers(): HasManyThrough
+    {
+        return $this->hasManyThrough(CommercialObjectiveTier::class, CommercialWorkPeriod::class);
+    }
+
+    public function penalties(): HasManyThrough
+    {
+        return $this->hasManyThrough(CommercialPenalty::class, CommercialWorkPeriod::class);
     }
 
     public function verifySecretCode(string $secretCode): bool
@@ -60,12 +99,10 @@ class Commercial extends Model
     {
         $commercial = self::where('phone_number', $phoneNumber)->first();
 
-        if (!$commercial || !$commercial->verifySecretCode($secretCode)) {
+        if (! $commercial || ! $commercial->verifySecretCode($secretCode)) {
             return null;
         }
 
         return $commercial;
     }
-
-    
-} 
+}

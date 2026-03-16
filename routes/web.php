@@ -1,32 +1,31 @@
 <?php
 
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CaisseController;
-use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\CarLoadController;
 use App\Http\Controllers\CommercialController;
+use App\Http\Controllers\CustomerCategoryController;
 use App\Http\Controllers\CustomerController;
-use App\Http\Controllers\ProductController;
-use App\Http\Controllers\VenteController;
+use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\ZoneController;
+use App\Http\Controllers\DeliveryBatchController;
+use App\Http\Controllers\DepenseController;
+use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\LigneController;
 use App\Http\Controllers\OrderController;
-use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\SalesInvoiceController;
-use App\Http\Controllers\VisitBatchController;
-use App\Http\Controllers\CustomerVisitController;
-use App\Http\Controllers\InvestmentController;
-use App\Http\Controllers\DepenseController;
-use App\Http\Controllers\CustomerCategoryController;
-use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseInvoiceController;
-use App\Http\Controllers\AdminController;
+use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SectorController;
-use App\Http\Controllers\CarLoadController;
+use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\VenteController;
+use App\Http\Controllers\VisitBatchController;
+use App\Http\Controllers\ZoneController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,7 +37,6 @@ use Inertia\Inertia;
 | contains the "web" middleware group. Now create something great!
 |
 */
-
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'verified'])->name('dashboard');
 Route::get('/', [DashboardController::class, 'index']);
@@ -65,8 +63,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/orders/{order}/items', [OrderController::class, 'addItem'])->name('orders.items.store');
     Route::delete('/orders/{order}/items/{item}', [OrderController::class, 'removeItem'])->name('orders.items.destroy');
     Route::post('/orders/{order}/create-invoice', [OrderController::class, 'createInvoice'])
-    ->name('orders.create-invoice');
-    
+        ->name('orders.create-invoice');
+
     Route::get('/delivery-batches', [DeliveryBatchController::class, 'index'])->name('delivery-batches.index');
     Route::post('/delivery-batches', [DeliveryBatchController::class, 'store'])->name('delivery-batches.store');
     Route::put('/delivery-batches/{deliveryBatch}', [DeliveryBatchController::class, 'update'])->name('delivery-batches.update');
@@ -76,12 +74,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/delivery-batches/{deliveryBatch}/assign-livreur', [DeliveryBatchController::class, 'assignLivreur'])->name('delivery-batches.assign-livreur');
     Route::get('/delivery-batches/available-orders', [DeliveryBatchController::class, 'getAvailableOrders'])->name('delivery-batches.available-orders');
     Route::get('/delivery-batches/{deliveryBatch}/export-pdf', [DeliveryBatchController::class, 'exportPdf'])
-    ->name('delivery-batches.export-pdf');
-    
+        ->name('delivery-batches.export-pdf');
+
     Route::get('/clients/{client}/history', [CustomerController::class, 'history'])->name('clients.history');
     Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index'])->name('orders.payments.index');
-    
+
     Route::resource('sales-invoices', SalesInvoiceController::class);
     Route::get('/sales-invoices/{salesInvoice}/pdf', [SalesInvoiceController::class, 'exportPdf'])->name('sales-invoices.pdf');
     Route::get('/sales-invoices-unpaid/pdf', [SalesInvoiceController::class, 'exportUnpaidPdf'])->name('sales-invoices.unpaid-pdf');
@@ -92,7 +90,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/sales-invoices/{salesInvoice}/payments', [SalesInvoiceController::class, 'addPayment'])->name('sales-invoices.payments.store');
     Route::put('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'updatePayment'])->name('sales-invoices.payments.update');
     Route::delete('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'removePayment'])->name('sales-invoices.payments.destroy');
-    
+
     // Visit Management Routes
     Route::prefix('visits')->name('visits.')->group(function () {
         // Visit Batches
@@ -104,7 +102,7 @@ Route::middleware('auth')->group(function () {
         Route::put('/{visitBatch}', [VisitBatchController::class, 'update'])->name('update');
         Route::delete('/{visitBatch}', [VisitBatchController::class, 'destroy'])->name('destroy');
         Route::post('/{visitBatch}/add-customers', [VisitBatchController::class, 'addCustomers'])->name('add-customers');
-        
+
         // Customer Visits
         Route::post('/customer-visits', [CustomerVisitController::class, 'store'])->name('customer-visits.store');
         Route::get('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'show'])->name('customer-visits.show');
@@ -112,7 +110,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/customer-visits/{customerVisit}/cancel', [CustomerVisitController::class, 'cancel'])->name('customer-visits.cancel');
         Route::delete('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'destroy'])->name('customer-visits.destroy');
     });
-    
+
     // Investment Management Routes
     Route::prefix('investments')->name('investments.')->group(function () {
         Route::get('/', [InvestmentController::class, 'index'])->name('index');
@@ -120,20 +118,20 @@ Route::middleware('auth')->group(function () {
         Route::put('/{investment}', [InvestmentController::class, 'update'])->name('update');
         Route::delete('/{investment}', [InvestmentController::class, 'destroy'])->name('destroy');
     });
-    
+
     // Expense Management Routes
     Route::prefix('depenses')->name('depenses.')->group(function () {
         Route::get('/', [DepenseController::class, 'index'])->name('index');
         Route::post('/', [DepenseController::class, 'store'])->name('store');
         Route::delete('/{depense}', [DepenseController::class, 'destroy'])->name('destroy');
         Route::put('/{depense}', [DepenseController::class, 'update'])->name('update');
-        
+
         // Type Depense Routes
         Route::post('/types', [DepenseController::class, 'storeType'])->name('types.store');
         Route::put('/types/{typeDepense}', [DepenseController::class, 'updateType'])->name('types.update');
         Route::delete('/types/{typeDepense}', [DepenseController::class, 'destroyType'])->name('types.destroy');
     });
-    
+
     // Customer Management Routes
     Route::prefix('clients')->name('clients.')->group(function () {
         Route::get('/', [CustomerController::class, 'index'])->name('index');
@@ -144,27 +142,27 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{client}', [CustomerController::class, 'destroy'])->name('destroy');
     });
     Route::resource('clients', CustomerController::class);
-    
+
     Route::resource('customer-categories', CustomerCategoryController::class);
     Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');
-    
+
     // Supplier Management Routes
     Route::resource('suppliers', SupplierController::class);
-    
+
     // Purchase Invoice Management Routes
     Route::resource('purchase-invoices', PurchaseInvoiceController::class);
     Route::post('purchase-invoices/{purchaseInvoice}/put-in-stock', [PurchaseInvoiceController::class, 'putItemsToStock'])
-    ->name('purchase-invoices.put-in-stock');
-    
+        ->name('purchase-invoices.put-in-stock');
+
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
     Route::post('products/{product}/transform', [ProductController::class, 'transformToVariants'])->name('products.transform');
-    
+
     Route::get('caisses/{caisse}/transactions', [CaisseController::class, 'transactions'])->name('caisses.transactions');
     Route::post('caisses/{caisse}/transactions', [CaisseController::class, 'storeTransaction'])->name('caisses.transactions.store');
     Route::delete('caisses/{caisse}/transactions/{transaction}', [CaisseController::class, 'destroyTransaction'])->name('caisses.transactions.destroy');
     Route::post('caisses/transfer', [CaisseController::class, 'transfer'])->name('caisses.transfer');
     Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
-    
+
     // Sector routes
     Route::post('/sectors', [SectorController::class, 'store'])->name('sectors.store');
     Route::put('/sectors/{sector}', [SectorController::class, 'update'])->name('sectors.update');
@@ -182,12 +180,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/car-loads', [CarLoadController::class, 'store'])->name('car-loads.store');
     Route::put('/car-loads/{carLoad}', [CarLoadController::class, 'update'])->name('car-loads.update');
     Route::delete('/car-loads/{carLoad}', [CarLoadController::class, 'destroy'])->name('car-loads.destroy');
-    
+
     // Car Load Items
     Route::post('/car-loads/{carLoad}/items', [CarLoadController::class, 'addItems'])->name('car-loads.items.store');
     Route::put('/car-loads/{carLoad}/items/{item}', [CarLoadController::class, 'updateItem'])->name('car-loads.items.update');
     Route::delete('/car-loads/{carLoad}/items/{item}', [CarLoadController::class, 'deleteItem'])->name('car-loads.items.destroy');
-    
+
     // Car Load Actions
     Route::post('/car-loads/{carLoad}/activate', [CarLoadController::class, 'activate'])->name('car-loads.activate');
     Route::post('/car-loads/{carLoad}/unload', [CarLoadController::class, 'unload'])->name('car-loads.unload');
@@ -210,8 +208,7 @@ Route::middleware('auth')->group(function () {
         ->name('car-loads.inventories.close');
     Route::get('/car-loads/{carLoad}/items/export-pdf', [CarLoadController::class, 'exportItemsPdf'])
         ->name('car-loads.items.export-pdf');
-    Route::get('/car-loads/{carLoad}/{product}/history', [CarLoadController::class, 'productHistoryInCarLoad'])->name
-    ('car-loads.product.history');
+    Route::get('/car-loads/{carLoad}/{product}/history', [CarLoadController::class, 'productHistoryInCarLoad'])->name('car-loads.product.history');
 
 });
 Route::middleware(['auth', 'verified'])->group(function () {
