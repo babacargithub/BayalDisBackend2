@@ -153,4 +153,12 @@ class Product extends Model
             $product->clearFormattedDisplayCache();
         });
     }
+
+    /**
+     * @return BelongsTo
+     */
+    public function productCategory() : BelongsTo
+    {
+        return $this->belongsTo(ProductCategory::class);
+    }
 }

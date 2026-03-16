@@ -15,16 +15,16 @@ use App\Models\Vente;
  * product proportionally to each product's revenue share within the invoice:
  *
  *   product_share = (item_price × item_quantity) / invoice_total_amount
- *   allocated     = round(payment.amount × product_share)
- *   commission    = round(allocated × rate)
+ *   allocated = round(payment.amount × product_share)
+ *   commission = round(allocated × rate)
  *
  * The rate used is resolved via CommissionRateResolverService (product-level
  * override first, then category-level default, then 0).
  */
-class CommissionCalculatorService
+readonly class CommissionCalculatorService
 {
     public function __construct(
-        private readonly CommissionRateResolverService $commissionRateResolverService,
+        private CommissionRateResolverService $commissionRateResolverService,
     ) {}
 
     /**

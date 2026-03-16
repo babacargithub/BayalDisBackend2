@@ -6,20 +6,21 @@ use App\Models\Commercial;
 use App\Models\CommercialCategoryCommissionRate;
 use App\Models\CommercialProductCommissionRate;
 use App\Models\Product;
+use App\Models\ProductCategory;
 
 /**
  * Resolves the commission rate for a given commercial × product pair.
  *
- * Lookup priority:
- *   1. Product-level override (CommercialProductCommissionRate) — most specific.
- *   2. Category-level default (CommercialCategoryCommissionRate) — based on the
- *      product's category if no product-level override is set.
- *   3. 0.0 — no commission configured; the commercial earns nothing for this product.
+ * Lookup priority (first match wins):
+ *   1. Commercial × product override (CommercialProductCommissionRate) — most specific.
+ *   2. Commercial × category override (CommercialCategoryCommissionRate).
+ *   3. Category default rate (ProductCategory.commission_rate) — applies to all commercials.
+ *   4. 0.0 — no commission configured; the commercial earns nothing for this product.
  */
 class CommissionRateResolverService
 {
     /**
-     * Returns the commission rate as a float, e.g. 0.0100 for 1%.
+     * Returns the commission rate as a float, e.g., 0.0100 for 1%.
      * Returns 0.0 if no rate is configured for this commercial × product pair.
      */
     public function resolveRateForCommercialAndProduct(Commercial $commercial, Product $product): float
@@ -33,12 +34,22 @@ class CommissionRateResolverService
         }
 
         if ($product->product_category_id !== null) {
-            $categoryLevelDefault = CommercialCategoryCommissionRate::where('commercial_id', $commercial->id)
+            // Priority 2: commercial × category override
+            $commercialCategoryOverride = CommercialCategoryCommissionRate::where('commercial_id', $commercial->id)
                 ->where('product_category_id', $product->product_category_id)
                 ->first();
 
-            if ($categoryLevelDefault !== null) {
-                return (float) $categoryLevelDefault->rate;
+            if ($commercialCategoryOverride !== null) {
+                return (float) $commercialCategoryOverride->rate;
+            }
+
+            // Priority 3: category default rate (applies to all commercials)
+            $productCategory = $product->relationLoaded('productCategory')
+                ? $product->productCategory
+                : ProductCategory::find($product->product_category_id);
+
+            if ($productCategory !== null && $productCategory->commission_rate !== null) {
+                return (float) $productCategory->commission_rate;
             }
         }
 

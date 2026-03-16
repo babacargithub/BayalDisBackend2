@@ -1,4 +1,5 @@
 <?php
+/** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
 
 namespace App\Services\Commission;
 
@@ -12,6 +13,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Throwable;
 
 /**
  * Computes or refreshes the full commission for a commercial over a given period.
@@ -20,22 +22,22 @@ use RuntimeException;
  * supports both weekly (Mon → Sat) and monthly (1st → last day) frequencies.
  *
  * Calculation steps:
- *   1. Find or create the CommercialWorkPeriod for (commercial, start, end).
+ *   1. Find or create the CommercialWorkPeriod for (the commercial, start, end).
  *   2. Collect all payments attributed to the commercial within the period dates.
  *   3. For each payment, allocate the amount across invoice products and apply
  *      the per-product commission rate → base_commission.
  *   4. Check for basket achievement (sold all required categories) → basket_bonus.
  *   5. Sum total encaissement and find the highest achieved objective tier → objective_bonus.
  *   6. Sum all penalties for the period → total_penalties.
- *   7. net_commission = base + basket + objective − penalties (minimum 0).
+ *   7. Net_commission = base + basket + objective − penalties (minimum 0).
  *   8. Persist (or update) the Commission record and its payment lines.
  *
  * A finalized commission cannot be recomputed. Call finalizeCommission() to lock it.
  */
-class CommissionPeriodService
+readonly class CommercialWorkPeriodService
 {
     public function __construct(
-        private readonly CommissionCalculatorService $commissionCalculatorService,
+        private CommissionCalculatorService $commissionCalculatorService,
     ) {}
 
     /**
@@ -43,7 +45,7 @@ class CommissionPeriodService
      * Throws RuntimeException if the commission for this period is already finalized,
      * or if the requested period overlaps with a different existing work period.
      *
-     * @throws RuntimeException
+     * @throws RuntimeException|Throwable
      */
     public function computeOrRefreshCommissionForPeriod(
         Commercial $commercial,
@@ -82,9 +84,7 @@ class CommissionPeriodService
             ]);
 
             // Delete existing payment lines so we can recompute from scratch.
-            if ($existingCommission !== null) {
-                $existingCommission->paymentLines()->delete();
-            }
+            $existingCommission?->paymentLines()->delete();
 
             $paymentsInPeriod = $commercial->payments()
                 ->whereBetween('created_at', [

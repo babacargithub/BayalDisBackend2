@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Enums\MonthlyFixedCostPool;
 use App\Enums\MonthlyFixedCostSubCategory;
+use App\Models\Commercial;
 use App\Models\MonthlyFixedCost;
+use App\Models\Vehicle;
+use App\Services\Abc\AbcCostSummaryService;
 use App\Services\Abc\AbcFixedCostDistributionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,10 +19,14 @@ class MonthlyFixedCostController extends Controller
 {
     public function __construct(
         private readonly AbcFixedCostDistributionService $abcFixedCostDistributionService,
+        private readonly AbcCostSummaryService $abcCostSummaryService,
     ) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $year = (int) $request->integer('year', now()->year);
+        $month = (int) $request->integer('month', now()->month);
+
         $costs = MonthlyFixedCost::query()
             ->orderBy('period_year', 'desc')
             ->orderBy('period_month', 'desc')
@@ -55,10 +62,41 @@ class MonthlyFixedCostController extends Controller
             'pool' => $subCategory->pool()->value,
         ]);
 
+        $commerciaux = Commercial::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'salary'])
+            ->map(fn (Commercial $commercial): array => [
+                'id' => $commercial->id,
+                'name' => $commercial->name,
+                'salary' => $commercial->salary,
+            ]);
+
+        $vehicles = Vehicle::query()
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Vehicle $vehicle): array => [
+                'id' => $vehicle->id,
+                'name' => $vehicle->name,
+                'plate_number' => $vehicle->plate_number,
+                'insurance_monthly' => $vehicle->insurance_monthly,
+                'maintenance_monthly' => $vehicle->maintenance_monthly,
+                'repair_reserve_monthly' => $vehicle->repair_reserve_monthly,
+                'depreciation_monthly' => $vehicle->depreciation_monthly,
+                'driver_salary_monthly' => $vehicle->driver_salary_monthly,
+                'working_days_per_month' => $vehicle->working_days_per_month,
+                'total_monthly_fixed_cost' => $vehicle->total_monthly_fixed_cost,
+                'daily_fixed_cost' => $vehicle->daily_fixed_cost,
+            ]);
+
+        $costSummary = $this->abcCostSummaryService->computeForPeriod($year, $month);
+
         return Inertia::render('Abc/MonthlyFixedCosts/Index', [
             'costs' => $costs,
             'pools' => $pools,
             'subCategories' => $subCategories,
+            'commerciaux' => $commerciaux,
+            'vehicles' => $vehicles,
+            'costSummary' => $costSummary->toArray(),
         ]);
     }
 

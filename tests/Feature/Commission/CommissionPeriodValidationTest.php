@@ -10,7 +10,7 @@ use App\Models\Commission;
 use App\Models\CommissionPeriodSetting;
 use App\Models\User;
 use App\Services\Commission\CommissionCalculatorService;
-use App\Services\Commission\CommissionPeriodService;
+use App\Services\Commission\CommercialWorkPeriodService;
 use App\Services\Commission\CommissionRateResolverService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -328,7 +328,7 @@ class CommissionPeriodValidationTest extends TestCase
 
     public function test_compute_commission_throws_when_period_overlaps_with_existing_commission(): void
     {
-        $service = new CommissionPeriodService(
+        $service = new CommercialWorkPeriodService(
             new CommissionCalculatorService(new CommissionRateResolverService)
         );
 
@@ -366,7 +366,7 @@ class CommissionPeriodValidationTest extends TestCase
 
     public function test_compute_commission_allows_refresh_of_the_exact_same_period(): void
     {
-        $service = new CommissionPeriodService(
+        $service = new CommercialWorkPeriodService(
             new CommissionCalculatorService(new CommissionRateResolverService)
         );
 
@@ -388,7 +388,7 @@ class CommissionPeriodValidationTest extends TestCase
 
     public function test_compute_commission_allows_non_overlapping_periods_for_the_same_commercial(): void
     {
-        $service = new CommissionPeriodService(
+        $service = new CommercialWorkPeriodService(
             new CommissionCalculatorService(new CommissionRateResolverService)
         );
 

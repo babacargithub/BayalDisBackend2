@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Data\Commission\CommissionPeriodData;
 use App\Models\Commercial;
-use App\Services\Commission\CommissionPeriodService;
+use App\Services\Commission\CommercialWorkPeriodService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use RuntimeException;
@@ -31,7 +31,7 @@ class CalculateCommissions extends Command
 
     protected $description = 'Compute or refresh commissions for all commercials for a given period (skips finalized ones).';
 
-    public function handle(CommissionPeriodService $commissionPeriodService): int
+    public function handle(CommercialWorkPeriodService $commissionPeriodService): int
     {
         $period = $this->resolvePeriod();
 

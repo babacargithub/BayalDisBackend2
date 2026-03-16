@@ -19,7 +19,7 @@ use App\Models\SalesInvoice;
 use App\Models\User;
 use App\Models\Vente;
 use App\Services\Commission\CommissionCalculatorService;
-use App\Services\Commission\CommissionPeriodService;
+use App\Services\Commission\CommercialWorkPeriodService;
 use App\Services\Commission\CommissionRateResolverService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -31,7 +31,7 @@ class MonthlyCommissionServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private CommissionPeriodService $service;
+    private CommercialWorkPeriodService $service;
 
     private User $user;
 
@@ -43,7 +43,7 @@ class MonthlyCommissionServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new CommissionPeriodService(
+        $this->service = new CommercialWorkPeriodService(
             new CommissionCalculatorService(new CommissionRateResolverService)
         );
 

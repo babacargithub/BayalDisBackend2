@@ -27,6 +27,7 @@ const form = useForm({
     phone_number: '',
     gender: '',
     secret_code: '',
+    salary: 0,
 });
 
 const dialog = ref(false);
@@ -40,7 +41,7 @@ const editForm = useForm({
     name: '',
     phone_number: '',
     gender: '',
-    secret_code: '',
+    salary: 0,
 });
 
 const openEditDialog = (commercial) => {
@@ -48,7 +49,7 @@ const openEditDialog = (commercial) => {
     editForm.name = commercial.name;
     editForm.phone_number = commercial.phone_number;
     editForm.gender = commercial.gender;
-    editForm.secret_code = commercial.secret_code;
+    editForm.salary = commercial.salary ?? 0;
     editDialog.value = true;
 };
 
@@ -120,6 +121,7 @@ const submit = () => {
                                 <th>Nom</th>
                                 <th>Téléphone</th>
                                 <th>Genre</th>
+                                <th class="text-right">Salaire</th>
                                 <th>Clients</th>
                                 <th>Ventes</th>
                                 <th>Montant Total</th>
@@ -132,6 +134,7 @@ const submit = () => {
                                 <td>{{ commercial.name }}</td>
                                 <td>{{ commercial.phone_number }}</td>
                                 <td>{{ commercial.gender === 'male' ? 'Homme' : 'Femme' }}</td>
+                                <td class="text-right">{{ formatCurrency(commercial.salary) }}</td>
                                 <td>{{ commercial.clients?.length || 0 }}</td>
                                 <td>{{ commercial.ventes_count || 0 }}</td>
                                 <td>{{ formatCurrency(commercial.ventes_sum_price_multiply_by_quantity) }}</td>
@@ -200,6 +203,14 @@ const submit = () => {
                             hint="Minimum 4 caractères"
                             persistent-hint
                         />
+                        <v-text-field
+                            v-model.number="form.salary"
+                            label="Salaire mensuel"
+                            type="number"
+                            min="0"
+                            suffix="XOF"
+                            :error-messages="form.errors.salary"
+                        />
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="dialog = false">Annuler</v-btn>
@@ -240,12 +251,12 @@ const submit = () => {
                             :error-messages="editForm.errors.gender"
                         />
                         <v-text-field
-                            v-model="editForm.secret_code"
-                            label="Code secret"
-                            :error-messages="editForm.errors.secret_code"
-                            type="password"
-                            hint="Minimum 4 caractères"
-                            persistent-hint
+                            v-model.number="editForm.salary"
+                            label="Salaire mensuel"
+                            type="number"
+                            min="0"
+                            suffix="XOF"
+                            :error-messages="editForm.errors.salary"
                         />
                         <v-card-actions>
                             <v-spacer />

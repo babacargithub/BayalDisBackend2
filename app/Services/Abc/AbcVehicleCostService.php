@@ -81,6 +81,17 @@ class AbcVehicleCostService
     }
 
     /**
+     * Daily total vehicle cost for a CarLoad: (fixed prorated + fuel actual) ÷ trip duration.
+     * Minimum of 1 day to avoid division by zero.
+     */
+    public function computeDailyTotalCostForCarLoad(CarLoad $carLoad): int
+    {
+        $tripDurationDays = $this->computeTripDurationDays($carLoad);
+
+        return (int) round($this->computeTotalVehicleCostForCarLoad($carLoad) / $tripDurationDays);
+    }
+
+    /**
      * Number of days the CarLoad was active.
      * Uses return_date if available, otherwise today.
      * Minimum of 1 day to avoid zero-cost trips.

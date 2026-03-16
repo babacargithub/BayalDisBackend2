@@ -63,6 +63,7 @@ const menuItems = [
         items: [
             { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
             { name: 'Équipes', route: 'teams.index', icon: 'mdi-account-group' },
+            { name: 'Commissions', route: 'commissions.index', icon: 'mdi-cash-check' },
         ]
     },
     { name: 'Caisses', route: 'caisses.index', icon: 'mdi-cash-register' },
@@ -82,9 +83,11 @@ const menuItems = [
         ref: ordersDropdownOpen,
         items: [
           { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
+            { name: 'Catégories', route: 'product-categories.index', icon: 'mdi-tag-multiple' },
           { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
             { name: 'Chargements Véhicule', route: 'car-loads.index', icon: 'mdi-car' },
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
+            { name: 'Véhicules', route: 'vehicles.index', icon: 'mdi-truck' },
         ]
     },
     {
@@ -96,6 +99,7 @@ const menuItems = [
             { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
             { name: 'Utilisateurs', route: 'users.index', icon: 'mdi-account-multiple' },
             { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
+            { name: 'Coûts d\'exploitation', route: 'monthly-fixed-costs.index', icon: 'mdi-office-building-cog' },
 
         ]
     },

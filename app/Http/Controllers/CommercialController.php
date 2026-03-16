@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Enums\SalesInvoiceStatus;
 use App\Models\Commercial;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
-use Carbon\Carbon;
 
 class CommercialController extends Controller
 {
@@ -18,7 +18,7 @@ class CommercialController extends Controller
             ->withCount('invoices')
             ->withSum('invoices', DB::raw('total_amount'))
             ->withCount(['invoices as ventes_impayees_count' => function ($query) {
-                $query->where('status', '!=', SalesInvoiceStatus::FullyPaid);;
+                $query->where('status', '!=', SalesInvoiceStatus::FullyPaid);
             }])
             ->get();
 
@@ -26,7 +26,7 @@ class CommercialController extends Controller
             'commerciaux' => $commerciaux,
             'statistics' => [
                 'total_commerciaux' => $commerciaux->count(),
-                'total_clients' => $commerciaux->sum(fn($c) => $c->customers->count()),
+                'total_clients' => $commerciaux->sum(fn ($c) => $c->customers->count()),
                 'moyenne_ventes' => $commerciaux->avg('ventes_count'),
             ],
         ]);
@@ -39,6 +39,7 @@ class CommercialController extends Controller
             'phone_number' => 'required|string|unique:commercials',
             'gender' => 'required|in:male,female',
             'secret_code' => 'required|string|min:4|max:20',
+            'salary' => 'required|integer|min:0',
         ]);
 
         // Hash the secret code
@@ -56,19 +57,17 @@ class CommercialController extends Controller
         // Debug incoming request data
         \Log::info('Update Commercial Request:', [
             'request_data' => $request->except('secret_code'), // Don't log the secret code
-            'commercial_id' => $id
+            'commercial_id' => $id,
         ]);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'phone_number' => 'required|string|unique:commercials,phone_number,' . $commercial->id,
+            'phone_number' => 'required|string|unique:commercials,phone_number,'.$commercial->id,
             'gender' => 'required|in:male,female',
-            'secret_code' => 'required|string|min:4|max:20',
+            'salary' => 'required|integer|min:0',
         ]);
 
         try {
-            // Hash the secret code
-            $validated['secret_code'] = Hash::make($validated['secret_code']);
 
             // Debug validated data (excluding secret code)
             \Log::info('Validated data:', array_diff_key($validated, ['secret_code' => '']));
@@ -83,9 +82,10 @@ class CommercialController extends Controller
         } catch (\Exception $e) {
             \Log::error('Update failed:', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            return redirect()->back()->with('error', 'Erreur lors de la mise à jour du commercial: ' . $e->getMessage());
+
+            return redirect()->back()->with('error', 'Erreur lors de la mise à jour du commercial: '.$e->getMessage());
         }
     }
 
@@ -97,31 +97,33 @@ class CommercialController extends Controller
             // Log the delete attempt
             \Log::info('Attempting to delete commercial:', [
                 'commercial_id' => $id,
-                'commercial_name' => $commercial->name
+                'commercial_name' => $commercial->name,
             ]);
 
             // Check if commercial has related clients
             if ($commercial->customers()->exists()) {
                 \Log::warning('Cannot delete commercial - has related clients:', [
                     'commercial_id' => $id,
-                    'clients_count' => $commercial->customers()->count()
+                    'clients_count' => $commercial->customers()->count(),
                 ]);
+
                 return redirect()->back()->with('error', 'Impossible de supprimer ce commercial car il a des clients associés');
             }
 
             $commercial->delete();
             \Log::info('Commercial deleted successfully:', [
-                'commercial_id' => $id
+                'commercial_id' => $id,
             ]);
-            
+
             return redirect()->back()->with('success', 'Commercial supprimé avec succès');
         } catch (\Exception $e) {
             \Log::error('Error deleting commercial:', [
                 'commercial_id' => $id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            return redirect()->back()->with('error', 'Erreur lors de la suppression du commercial: ' . $e->getMessage());
+
+            return redirect()->back()->with('error', 'Erreur lors de la suppression du commercial: '.$e->getMessage());
         }
     }
 
@@ -137,7 +139,7 @@ class CommercialController extends Controller
             // Base queries
             $customersQuery = $commercial->customers();
             $ventesQuery = $commercial->invoices();
-            
+
             if ($startDate) {
                 $customersQuery = $customersQuery->where('created_at', '>=', $startDate);
                 $ventesQuery = $ventesQuery->where('created_at', '>=', $startDate);
@@ -150,16 +152,16 @@ class CommercialController extends Controller
 
             // Get ventes stats
             $ventesAll = (clone $ventesQuery)->count();
-            $ventesPaid = (clone $ventesQuery)->where('status', "=", SalesInvoiceStatus::FullyPaid)->count();
-            $ventesUnpaid = (clone $ventesQuery)->where('status', "!=", SalesInvoiceStatus::FullyPaid)->count();
+            $ventesPaid = (clone $ventesQuery)->where('status', '=', SalesInvoiceStatus::FullyPaid)->count();
+            $ventesUnpaid = (clone $ventesQuery)->where('status', '!=', SalesInvoiceStatus::FullyPaid)->count();
 
             // Get amounts
             $totalAll = (clone $ventesQuery)->sum(DB::raw('total_amount'));
-            $totalPaid = (clone $ventesQuery)->where('status', "=", SalesInvoiceStatus::FullyPaid)->sum(DB::raw('total_amount'));
-            $totalUnpaid = (clone $ventesQuery)->where('status', "!=", SalesInvoiceStatus::FullyPaid)
+            $totalPaid = (clone $ventesQuery)->where('status', '=', SalesInvoiceStatus::FullyPaid)->sum(DB::raw('total_amount'));
+            $totalUnpaid = (clone $ventesQuery)->where('status', '!=', SalesInvoiceStatus::FullyPaid)
                 ->sum(DB::raw('CAST(total_amount AS SIGNED) - CAST(total_payments AS SIGNED)'));
             $commission = $totalPaid * 0.1; // 10% commission
-            
+
             return [
                 'customers_count_all' => $customersAll,
                 'customers_count_confirmed' => $customersConfirmed,
@@ -192,12 +194,12 @@ class CommercialController extends Controller
     {
         $request->validate([
             'date' => 'required|date',
-            'type' => 'required|in:daily,weekly'
+            'type' => 'required|in:daily,weekly',
         ]);
 
         $commercial = auth()->user();
-        $startDate = $request->type === 'weekly' 
-            ? Carbon::parse($request->date)->startOfWeek() 
+        $startDate = $request->type === 'weekly'
+            ? Carbon::parse($request->date)->startOfWeek()
             : Carbon::parse($request->date)->startOfDay();
         $endDate = $request->type === 'weekly'
             ? Carbon::parse($request->date)->endOfWeek()
@@ -250,13 +252,13 @@ class CommercialController extends Controller
             'period' => [
                 'start' => $startDate->format('Y-m-d'),
                 'end' => $endDate->format('Y-m-d'),
-                'type' => $request->type
+                'type' => $request->type,
             ],
             'customers_created' => $customersCreated,
             'customers_count' => $customersCount,
             'prospects_count' => $prospectsCount,
             'product_sales' => $productSales,
-            'payment_method_sales' => $paymentMethodSales
+            'payment_method_sales' => $paymentMethodSales,
         ]);
     }
 
@@ -265,7 +267,7 @@ class CommercialController extends Controller
         $commercials = Commercial::select('id', 'name', 'phone_number')
             ->orderBy('name')
             ->get();
-            
+
         return response()->json($commercials);
     }
-} 
+}

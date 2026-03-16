@@ -10,16 +10,16 @@ use App\Models\SalesInvoice;
  * Assembles the full ABC profitability picture for a single CarLoad.
  *
  * Profitability layers:
- *   1. Gross profit   = SUM(sales_invoices.total_estimated_profit) — product margin only
- *   2. Vehicle costs  = fixed daily rate × trip days + actual fuel receipts
- *   3. Fixed burdens  = storage + overhead allocations (equal per vehicle per month)
- *   4. Net profit     = gross profit − vehicle costs − fixed burdens
+ *   1. Gross profit = SUM(sales_invoices.total_estimated_profit) — product margin only
+ *   2. Vehicle costs = fixed daily rate × trip days + actual fuel receipts
+ *   3. Fixed burdens = storage + overhead allocations (equal per vehicle per month)
+ *   4. Net profit = gross profit − vehicle costs − fixed burdens
  */
-class AbcCarLoadProfitabilityService
+readonly class AbcCarLoadProfitabilityService
 {
     public function __construct(
-        private readonly AbcVehicleCostService $abcVehicleCostService,
-        private readonly AbcFixedCostDistributionService $abcFixedCostDistributionService,
+        private AbcVehicleCostService           $abcVehicleCostService,
+        private AbcFixedCostDistributionService $abcFixedCostDistributionService,
     ) {}
 
     /**

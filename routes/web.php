@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CaisseController;
 use App\Http\Controllers\CarLoadController;
 use App\Http\Controllers\CommercialController;
+use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\CustomerCategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerVisitController;
@@ -12,8 +13,10 @@ use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\DepenseController;
 use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\LigneController;
+use App\Http\Controllers\MonthlyFixedCostController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseInvoiceController;
@@ -21,6 +24,7 @@ use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SectorController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\VenteController;
 use App\Http\Controllers\VisitBatchController;
 use App\Http\Controllers\ZoneController;
@@ -50,6 +54,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/commercials', [CommercialController::class, 'getCommercials'])->name('commercials.list');
     Route::resource('customers', CustomerController::class);
     Route::resource('produits', ProductController::class);
+    Route::resource('product-categories', ProductCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('ventes/sales_history', [VenteController::class, 'salesHistory']);
     Route::resource('ventes', VenteController::class);
     Route::resource('zones', ZoneController::class);
@@ -111,6 +116,30 @@ Route::middleware('auth')->group(function () {
         Route::delete('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'destroy'])->name('customer-visits.destroy');
     });
 
+    // Commission Management Routes
+    Route::prefix('commissions')->name('commissions.')->group(function () {
+        Route::get('/', [CommissionController::class, 'index'])->name('index');
+        Route::post('/category-rates', [CommissionController::class, 'upsertCategoryRate'])->name('category-rates.upsert');
+        Route::delete('/category-rates/{categoryRate}', [CommissionController::class, 'destroyCategoryRate'])->name('category-rates.destroy');
+        Route::post('/work-periods', [CommissionController::class, 'storeWorkPeriod'])->name('work-periods.store');
+        Route::delete('/work-periods/{workPeriod}', [CommissionController::class, 'destroyWorkPeriod'])->name('work-periods.destroy');
+        Route::post('/work-periods/{workPeriod}/tiers', [CommissionController::class, 'storeTier'])->name('tiers.store');
+        Route::delete('/tiers/{tier}', [CommissionController::class, 'destroyTier'])->name('tiers.destroy');
+        Route::post('/work-periods/{workPeriod}/penalties', [CommissionController::class, 'storePenalty'])->name('penalties.store');
+        Route::delete('/penalties/{penalty}', [CommissionController::class, 'destroyPenalty'])->name('penalties.destroy');
+        Route::post('/work-periods/{workPeriod}/compute', [CommissionController::class, 'computeForWorkPeriod'])->name('work-periods.compute');
+        Route::post('/commissions/{commission}/finalize', [CommissionController::class, 'finalizeCommission'])->name('finalize');
+    });
+
+    // Monthly Fixed Cost Management Routes
+    Route::prefix('monthly-fixed-costs')->name('monthly-fixed-costs.')->group(function () {
+        Route::get('/', [MonthlyFixedCostController::class, 'index'])->name('index');
+        Route::post('/', [MonthlyFixedCostController::class, 'store'])->name('store');
+        Route::put('/{monthlyFixedCost}', [MonthlyFixedCostController::class, 'update'])->name('update');
+        Route::delete('/{monthlyFixedCost}', [MonthlyFixedCostController::class, 'destroy'])->name('destroy');
+        Route::post('/finalize-month', [MonthlyFixedCostController::class, 'finalizeMonth'])->name('finalize-month');
+    });
+
     // Investment Management Routes
     Route::prefix('investments')->name('investments.')->group(function () {
         Route::get('/', [InvestmentController::class, 'index'])->name('index');
@@ -148,6 +177,9 @@ Route::middleware('auth')->group(function () {
 
     // Supplier Management Routes
     Route::resource('suppliers', SupplierController::class);
+
+    // Vehicle Management Routes
+    Route::resource('vehicles', VehicleController::class)->only(['index', 'store', 'update', 'destroy']);
 
     // Purchase Invoice Management Routes
     Route::resource('purchase-invoices', PurchaseInvoiceController::class);
