@@ -24,6 +24,7 @@
                                 <th class="text-right">Amortissement/mois</th>
                                 <th class="text-right">Salaire chauffeur/mois</th>
                                 <th class="text-center">Jours travaillés/mois</th>
+                                <th class="text-right">Carburant estimé/jour</th>
                                 <th class="text-right">Coût fixe/mois</th>
                                 <th class="text-right">Coût fixe/jour</th>
                                 <th>Actions</th>
@@ -39,6 +40,7 @@
                                 <td class="text-right">{{ formatCurrency(vehicle.depreciation_monthly) }}</td>
                                 <td class="text-right">{{ formatCurrency(vehicle.driver_salary_monthly) }}</td>
                                 <td class="text-center">{{ vehicle.working_days_per_month }}</td>
+                                <td class="text-right">{{ formatCurrency(vehicle.estimated_daily_fuel_consumption) }}</td>
                                 <td class="text-right font-weight-bold">{{ formatCurrency(vehicle.total_monthly_fixed_cost) }}</td>
                                 <td class="text-right">{{ formatCurrency(vehicle.daily_fixed_cost) }}</td>
                                 <td>
@@ -58,7 +60,7 @@
                                 </td>
                             </tr>
                             <tr v-if="vehicles.length === 0">
-                                <td colspan="11" class="text-center text-grey py-4">Aucun véhicule enregistré</td>
+                                <td colspan="12" class="text-center text-grey py-4">Aucun véhicule enregistré</td>
                             </tr>
                         </tbody>
                     </v-table>
@@ -156,6 +158,16 @@
                                     :error-messages="form.errors.working_days_per_month"
                                 />
                             </v-col>
+                            <v-col cols="12" sm="6">
+                                <v-text-field
+                                    v-model.number="form.estimated_daily_fuel_consumption"
+                                    label="Carburant estimé/jour"
+                                    type="number"
+                                    min="0"
+                                    suffix="XOF"
+                                    :error-messages="form.errors.estimated_daily_fuel_consumption"
+                                />
+                            </v-col>
                         </v-row>
 
                         <v-divider class="my-2" />
@@ -246,6 +258,7 @@ const form = useForm({
     depreciation_monthly: 0,
     driver_salary_monthly: 0,
     working_days_per_month: 26,
+    estimated_daily_fuel_consumption: 0,
     notes: '',
 });
 
@@ -287,6 +300,7 @@ function openEditDialog(vehicle) {
     form.depreciation_monthly = vehicle.depreciation_monthly;
     form.driver_salary_monthly = vehicle.driver_salary_monthly;
     form.working_days_per_month = vehicle.working_days_per_month;
+    form.estimated_daily_fuel_consumption = vehicle.estimated_daily_fuel_consumption;
     form.notes = vehicle.notes ?? '';
     formDialog.value = true;
 }

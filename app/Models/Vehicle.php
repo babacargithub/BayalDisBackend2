@@ -20,6 +20,7 @@ class Vehicle extends Model
         'depreciation_monthly',
         'driver_salary_monthly',
         'working_days_per_month',
+        'estimated_daily_fuel_consumption',
         'notes',
     ];
 
@@ -32,6 +33,7 @@ class Vehicle extends Model
             'depreciation_monthly' => 'integer',
             'driver_salary_monthly' => 'integer',
             'working_days_per_month' => 'integer',
+            'estimated_daily_fuel_consumption' => 'integer',
         ];
     }
 
@@ -47,21 +49,26 @@ class Vehicle extends Model
     }
 
     /**
-     * Total monthly fixed cost for this vehicle, excluding fuel
-     * (fuel is entered per trip as actual receipts).
+     * Total monthly fixed cost for this vehicle.
+     * Fuel cost is prorated: estimated_daily_fuel_consumption × working_days_per_month.
+     * Actual fuel receipts per trip are tracked separately via CarLoadFuelEntry.
      */
     public function getTotalMonthlyFixedCostAttribute(): int
     {
+        $estimatedMonthlyFuelCost = $this->estimated_daily_fuel_consumption * $this->working_days_per_month;
+
         return $this->insurance_monthly
             + $this->maintenance_monthly
             + $this->repair_reserve_monthly
             + $this->depreciation_monthly
-            + $this->driver_salary_monthly;
+            + $this->driver_salary_monthly
+            + $estimatedMonthlyFuelCost;
     }
 
     /**
      * Daily fixed cost based on working days per month.
-     * Fuel is excluded — it is tracked per CarLoad via CarLoadFuelEntry.
+     * Includes estimated daily fuel cost in XOF.
+     * Actual fuel receipts per trip are tracked separately via CarLoadFuelEntry.
      */
     public function getDailyFixedCostAttribute(): int
     {
@@ -69,6 +76,15 @@ class Vehicle extends Model
             return 0;
         }
 
-        return (int) round($this->total_monthly_fixed_cost / $this->working_days_per_month);
+        $nonFuelDailyCost = (int) round(
+            ($this->insurance_monthly
+                + $this->maintenance_monthly
+                + $this->repair_reserve_monthly
+                + $this->depreciation_monthly
+                + $this->driver_salary_monthly
+            ) / $this->working_days_per_month
+        );
+
+        return $nonFuelDailyCost + $this->estimated_daily_fuel_consumption;
     }
 }

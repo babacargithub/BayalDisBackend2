@@ -84,6 +84,7 @@ class MonthlyFixedCostController extends Controller
                 'depreciation_monthly' => $vehicle->depreciation_monthly,
                 'driver_salary_monthly' => $vehicle->driver_salary_monthly,
                 'working_days_per_month' => $vehicle->working_days_per_month,
+                'estimated_daily_fuel_consumption' => $vehicle->estimated_daily_fuel_consumption,
                 'total_monthly_fixed_cost' => $vehicle->total_monthly_fixed_cost,
                 'daily_fixed_cost' => $vehicle->daily_fixed_cost,
             ]);

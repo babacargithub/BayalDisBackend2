@@ -8,10 +8,10 @@ use App\Models\Vehicle;
 use App\Services\Abc\AbcCostSummaryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Metadata\Group;
 use Tests\TestCase;
 
 /**
- * @group "financial"
  * Tests for A abcCostSummaryService::computeForPeriod().
  *
  * Every number shown on the "Coûts d'exploitation" page comes from this service.
@@ -30,6 +30,7 @@ use Tests\TestCase;
  *  - Edge cases: no vehicles, no invoices, zero revenue, zero margin
  *  - Rounding correctness
  */
+
 class AbcCostSummaryServiceTest extends TestCase
 {
     use RefreshDatabase;

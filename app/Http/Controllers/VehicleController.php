@@ -26,6 +26,7 @@ class VehicleController extends Controller
                     'depreciation_monthly' => $vehicle->depreciation_monthly,
                     'driver_salary_monthly' => $vehicle->driver_salary_monthly,
                     'working_days_per_month' => $vehicle->working_days_per_month,
+                    'estimated_daily_fuel_consumption' => $vehicle->estimated_daily_fuel_consumption,
                     'notes' => $vehicle->notes,
                     'total_monthly_fixed_cost' => $vehicle->total_monthly_fixed_cost,
                     'daily_fixed_cost' => $vehicle->daily_fixed_cost,
@@ -48,6 +49,7 @@ class VehicleController extends Controller
             'depreciation_monthly' => 'required|integer|min:0',
             'driver_salary_monthly' => 'required|integer|min:0',
             'working_days_per_month' => 'required|integer|min:1|max:31',
+            'estimated_daily_fuel_consumption' => 'required|integer|min:0',
             'notes' => 'nullable|string',
         ]);
 
@@ -68,6 +70,7 @@ class VehicleController extends Controller
             'depreciation_monthly' => 'required|integer|min:0',
             'driver_salary_monthly' => 'required|integer|min:0',
             'working_days_per_month' => 'required|integer|min:1|max:31',
+            'estimated_daily_fuel_consumption' => 'required|integer|min:0',
             'notes' => 'nullable|string',
         ]);
 
