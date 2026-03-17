@@ -6,7 +6,6 @@ use App\Data\Commission\CommissionPeriodData;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Represents a defined time window (week, bi-weekly, or month) during which a
@@ -22,6 +21,12 @@ class CommercialWorkPeriod extends Model
         'commercial_id',
         'period_start_date',
         'period_end_date',
+        'is_finalized',
+        'finalized_at',
+    ];
+
+    protected $attributes = [
+        'is_finalized' => false,
     ];
 
     protected function casts(): array
@@ -29,6 +34,8 @@ class CommercialWorkPeriod extends Model
         return [
             'period_start_date' => 'date',
             'period_end_date' => 'date',
+            'is_finalized' => 'boolean',
+            'finalized_at' => 'datetime',
         ];
     }
 
@@ -37,9 +44,9 @@ class CommercialWorkPeriod extends Model
         return $this->belongsTo(Commercial::class);
     }
 
-    public function commission(): HasOne
+    public function dailyCommissions(): HasMany
     {
-        return $this->hasOne(Commission::class);
+        return $this->hasMany(DailyCommission::class);
     }
 
     public function objectiveTiers(): HasMany

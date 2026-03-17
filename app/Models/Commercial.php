@@ -77,7 +77,7 @@ class Commercial extends Model
 
     public function commissions(): HasManyThrough
     {
-        return $this->hasManyThrough(Commission::class, CommercialWorkPeriod::class);
+        return $this->hasManyThrough(DailyCommission::class, CommercialWorkPeriod::class);
     }
 
     public function objectiveTiers(): HasManyThrough

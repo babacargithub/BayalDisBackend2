@@ -9,6 +9,7 @@ use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
 use App\Models\CarLoadItem;
 use App\Models\Product;
+use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\Vehicle;
 use App\Services\Abc\AbcCarLoadProfitabilityService;
@@ -68,6 +69,85 @@ class CarLoadController extends Controller
             })
             ->groupBy('p.id', 'p.name')
             ->get();
+    }
+
+    public function financials(CarLoad $carLoad): \Inertia\Response
+    {
+        $carLoad->load(['team', 'vehicle', 'inventory']);
+
+        $profitability = $this->abcCarLoadProfitabilityService->computeProfitability($carLoad);
+
+        $salesInvoices = SalesInvoice::query()
+            ->where('car_load_id', $carLoad->id)
+            ->with('customer:id,name')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(fn (SalesInvoice $invoice): array => [
+                'id' => $invoice->id,
+                'customer_name' => $invoice->customer?->name ?? '—',
+                'total_amount' => $invoice->total_amount,
+                'total_payments' => $invoice->total_payments,
+                'total_remaining' => $invoice->total_amount - $invoice->total_payments,
+                'total_estimated_profit' => $invoice->total_estimated_profit,
+                'total_realized_profit' => $invoice->total_realized_profit,
+                'status' => $invoice->status,
+                'created_at' => $invoice->created_at?->format('Y-m-d'),
+            ]);
+
+        $fuelEntries = $carLoad->fuelEntries()
+            ->orderBy('filled_at', 'desc')
+            ->get()
+            ->map(fn ($entry): array => [
+                'id' => $entry->id,
+                'amount' => $entry->amount,
+                'liters' => $entry->liters,
+                'filled_at' => $entry->filled_at?->format('Y-m-d'),
+                'notes' => $entry->notes,
+            ]);
+
+        // Compute trip duration for display purposes (mirrors AbcVehicleCostService logic).
+        $tripStartDate = $carLoad->load_date ?? now();
+        $tripPlannedReturnDate = $carLoad->return_date;
+        $tripEndDate = ($tripPlannedReturnDate !== null && $tripPlannedReturnDate->isPast())
+            ? $tripPlannedReturnDate
+            : now();
+        $tripDurationDays = max(1, (int) $tripStartDate->diffInDays($tripEndDate));
+
+        return Inertia::render('CarLoads/Financials', [
+            'carLoad' => [
+                'id' => $carLoad->id,
+                'name' => $carLoad->name,
+                'status' => $carLoad->status,
+                'load_date' => $carLoad->load_date?->format('Y-m-d'),
+                'return_date' => $carLoad->return_date?->format('Y-m-d'),
+                'fixed_daily_cost' => $carLoad->fixed_daily_cost,
+                'team' => ['name' => $carLoad->team?->name],
+                'vehicle' => $carLoad->vehicle ? [
+                    'name' => $carLoad->vehicle->name,
+                    'plate_number' => $carLoad->vehicle->plate_number,
+                ] : null,
+            ],
+            'profitability' => [
+                'tripDurationDays' => $tripDurationDays,
+                'totalRevenue' => $profitability->totalRevenue,
+                'totalGrossProfit' => $profitability->totalGrossProfit,
+                'vehicleFixedCost' => $profitability->vehicleFixedCost,
+                'vehicleFuelCost' => $profitability->vehicleFuelCost,
+                'storageAllocation' => $profitability->storageAllocation,
+                'overheadAllocation' => $profitability->overheadAllocation,
+                'isMonthFinalized' => $profitability->isMonthFinalized,
+                'totalVehicleCost' => $profitability->totalVehicleCost(),
+                'totalFixedCostBurden' => $profitability->totalFixedCostBurden(),
+                'netProfit' => $profitability->netProfit(),
+                'grossMarginPercent' => $profitability->grossMarginPercent(),
+                'netMarginPercent' => $profitability->netMarginPercent(),
+                'breakEvenRevenue' => $profitability->breakEvenRevenue(),
+                'remainingRevenueToBreakEven' => $profitability->remainingRevenueToBreakEven(),
+                'isDeficit' => $profitability->isDeficit(),
+            ],
+            'salesInvoices' => $salesInvoices,
+            'fuelEntries' => $fuelEntries,
+        ]);
     }
 
     public function show(CarLoad $carLoad)

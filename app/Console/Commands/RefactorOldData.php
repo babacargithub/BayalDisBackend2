@@ -6,6 +6,7 @@ use App\Enums\CarLoadStatus;
 use App\Enums\MonthlyFixedCostPool;
 use App\Enums\MonthlyFixedCostSubCategory;
 use App\Models\MonthlyFixedCost;
+use App\Models\ProductCategory;
 use App\Models\Vehicle;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -53,6 +54,10 @@ class RefactorOldData extends Command
     private const DEPOT_OUEST_FOIRE_NAME = 'Dépôt Ouest Foire';
 
     private const DEPOT_OUEST_FOIRE_ADDRESS = 'Ouest Foire, Dakar';
+
+    private const DEFAULT_PRODUCT_CATEGORY_NAME = 'JETABLES';
+
+    private const DEFAULT_PRODUCT_CATEGORY_COMMISSION_RATE = '0.0200';
 
     /**
      * Ordered list of sub-commands to execute.
@@ -181,9 +186,16 @@ class RefactorOldData extends Command
         // Step 5 runs inline (no sub-command)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 5/5 — Create "'.self::DEPOT_OUEST_FOIRE_NAME.'" and link stock entries');
+        $this->info('  Step 5/6 — Create "'.self::DEPOT_OUEST_FOIRE_NAME.'" and link stock entries');
         $this->info('───────────────────────────────────────────────────────────');
         $this->backfillStockEntryWarehouse($isDryRun);
+
+        // Step 6 runs inline (no sub-command)
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 6/6 — Seed "'.self::DEFAULT_PRODUCT_CATEGORY_NAME.'" product category and assign all products');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->seedDefaultProductCategory($isDryRun);
 
         $this->newLine();
         $this->info('═══════════════════════════════════════════════════════════');
@@ -382,6 +394,57 @@ class RefactorOldData extends Command
         }
 
         $this->info("  Done — {$terminatedCount} car loads updated, {$skippedCount} already correct.");
+    }
+
+    /**
+     * Creates the default "JETABLES" product category (2% commission rate) if it does not
+     * yet exist, then assigns every product that has no category to that category.
+     *
+     * Idempotent: safe to re-run — skips products already assigned to a category.
+     */
+    private function seedDefaultProductCategory(bool $isDryRun): void
+    {
+        $categoryName = self::DEFAULT_PRODUCT_CATEGORY_NAME;
+        $commissionRate = self::DEFAULT_PRODUCT_CATEGORY_COMMISSION_RATE;
+
+        $existingCategory = ProductCategory::where('name', $categoryName)->first();
+
+        if ($existingCategory !== null) {
+            $this->line("  Category «{$categoryName}» already exists (id #{$existingCategory->id}). Skipping creation.");
+            $category = $existingCategory;
+        } else {
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would create product category «{$categoryName}» with commission rate {$commissionRate}.");
+            } else {
+                $category = ProductCategory::create([
+                    'name' => $categoryName,
+                    'commission_rate' => $commissionRate,
+                ]);
+                $this->info("  Created product category «{$categoryName}» (id #{$category->id}) — commission rate: {$commissionRate}.");
+            }
+        }
+
+        $productsWithoutCategory = DB::table('products')->whereNull('product_category_id')->count();
+
+        if ($productsWithoutCategory === 0) {
+            $this->info('  All products already have a category. Nothing to assign.');
+
+            return;
+        }
+
+        $this->line("  {$productsWithoutCategory} product(s) have no category — will assign to «{$categoryName}».");
+
+        if ($isDryRun) {
+            $this->warn("  [DRY RUN] Would assign {$productsWithoutCategory} product(s) to «{$categoryName}».");
+
+            return;
+        }
+
+        $assignedCount = DB::table('products')
+            ->whereNull('product_category_id')
+            ->update(['product_category_id' => $category->id]);
+
+        $this->info("  Done — {$assignedCount} product(s) assigned to «{$categoryName}» (id #{$category->id}).");
     }
 
     private function allMigrationsHaveBeenRun(): bool

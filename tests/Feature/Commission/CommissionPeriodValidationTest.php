@@ -6,15 +6,10 @@ use App\Data\Commission\CommissionPeriodData;
 use App\Models\Commercial;
 use App\Models\CommercialObjectiveTier;
 use App\Models\CommercialWorkPeriod;
-use App\Models\Commission;
 use App\Models\CommissionPeriodSetting;
 use App\Models\User;
-use App\Services\Commission\CommissionCalculatorService;
-use App\Services\Commission\CommercialWorkPeriodService;
-use App\Services\Commission\CommissionRateResolverService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -323,94 +318,35 @@ class CommissionPeriodValidationTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // CommissionPeriodService — overlap enforcement
+    // CommercialWorkPeriod — storeWorkPeriod overlap enforcement
+    // (Overlap is checked in CommissionController::storeWorkPeriod via
+    //  CommercialWorkPeriod::hasOverlappingPeriodForCommercial — tested below.)
     // ──────────────────────────────────────────────────────────────────────────
 
-    public function test_compute_commission_throws_when_period_overlaps_with_existing_commission(): void
+    public function test_work_period_creation_is_rejected_when_period_overlaps_with_existing_one(): void
     {
-        $service = new CommercialWorkPeriodService(
-            new CommissionCalculatorService(new CommissionRateResolverService)
-        );
-
         $commercial = $this->makeCommercial();
 
-        // Seed an existing work period + commission for week 1.
-        $existingWorkPeriod = CommercialWorkPeriod::create([
-            'commercial_id' => $commercial->id,
-            'period_start_date' => '2026-03-02',
-            'period_end_date' => '2026-03-07',
-        ]);
+        $this->makeWorkPeriodForCommercial($commercial, '2026-03-02', '2026-03-07');
 
-        Commission::create([
-            'commercial_work_period_id' => $existingWorkPeriod->id,
-            'base_commission' => 0,
-            'basket_bonus' => 0,
-            'objective_bonus' => 0,
-            'total_penalties' => 0,
-            'net_commission' => 0,
-            'basket_achieved' => false,
-            'is_finalized' => false,
-        ]);
-
-        // Try to compute a period that overlaps (starts inside week 1).
+        // An overlapping period (starts inside week 1) must be rejected.
         $overlappingPeriod = new CommissionPeriodData(
             CarbonImmutable::parse('2026-03-05'),
             CarbonImmutable::parse('2026-03-12'),
         );
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/overlaps with an existing commission period/');
-
-        $service->computeOrRefreshCommissionForPeriod($commercial, $overlappingPeriod);
+        $this->assertTrue(
+            CommercialWorkPeriod::hasOverlappingPeriodForCommercial($commercial->id, $overlappingPeriod),
+        );
     }
 
-    public function test_compute_commission_allows_refresh_of_the_exact_same_period(): void
+    public function test_two_non_overlapping_work_periods_can_coexist_for_the_same_commercial(): void
     {
-        $service = new CommercialWorkPeriodService(
-            new CommissionCalculatorService(new CommissionRateResolverService)
-        );
-
         $commercial = $this->makeCommercial();
 
-        $weeklyPeriod = new CommissionPeriodData(
-            CarbonImmutable::parse('2026-03-02'),
-            CarbonImmutable::parse('2026-03-07'),
-        );
+        $this->makeWorkPeriodForCommercial($commercial, '2026-03-02', '2026-03-07');
+        $this->makeWorkPeriodForCommercial($commercial, '2026-03-09', '2026-03-14');
 
-        // First compute — no payments, so net_commission = 0.
-        $firstCommission = $service->computeOrRefreshCommissionForPeriod($commercial, $weeklyPeriod);
-
-        // Second compute (refresh) for the exact same period should NOT throw.
-        $refreshedCommission = $service->computeOrRefreshCommissionForPeriod($commercial, $weeklyPeriod);
-
-        $this->assertEquals($firstCommission->id, $refreshedCommission->id);
-    }
-
-    public function test_compute_commission_allows_non_overlapping_periods_for_the_same_commercial(): void
-    {
-        $service = new CommercialWorkPeriodService(
-            new CommissionCalculatorService(new CommissionRateResolverService)
-        );
-
-        $commercial = $this->makeCommercial();
-
-        $week1 = new CommissionPeriodData(
-            CarbonImmutable::parse('2026-03-02'),
-            CarbonImmutable::parse('2026-03-07'),
-        );
-
-        $week2 = new CommissionPeriodData(
-            CarbonImmutable::parse('2026-03-09'),
-            CarbonImmutable::parse('2026-03-14'),
-        );
-
-        $service->computeOrRefreshCommissionForPeriod($commercial, $week1);
-
-        // Week 2 does not overlap with week 1 — must succeed.
-        $week2Commission = $service->computeOrRefreshCommissionForPeriod($commercial, $week2);
-
-        $this->assertNotNull($week2Commission->id);
         $this->assertEquals(2, CommercialWorkPeriod::where('commercial_id', $commercial->id)->count());
-        $this->assertEquals(2, Commission::whereHas('workPeriod', fn ($q) => $q->where('commercial_id', $commercial->id))->count());
     }
 }

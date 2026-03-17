@@ -128,7 +128,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/work-periods/{workPeriod}/penalties', [CommissionController::class, 'storePenalty'])->name('penalties.store');
         Route::delete('/penalties/{penalty}', [CommissionController::class, 'destroyPenalty'])->name('penalties.destroy');
         Route::post('/work-periods/{workPeriod}/compute', [CommissionController::class, 'computeForWorkPeriod'])->name('work-periods.compute');
-        Route::post('/commissions/{commission}/finalize', [CommissionController::class, 'finalizeCommission'])->name('finalize');
+        Route::post('/work-periods/{workPeriod}/finalize', [CommissionController::class, 'finalizeWorkPeriod'])->name('work-periods.finalize');
     });
 
     // Monthly Fixed Cost Management Routes
@@ -208,6 +208,7 @@ Route::middleware('auth')->group(function () {
 
     // Car Loads
     Route::get('/car-loads', [CarLoadController::class, 'index'])->name('car-loads.index');
+    Route::get('/car-loads/{carLoad}/financials', [CarLoadController::class, 'financials'])->name('car-loads.financials');
     Route::get('/car-loads/{carLoad}', [CarLoadController::class, 'show'])->name('car-loads.show');
     Route::post('/car-loads', [CarLoadController::class, 'store'])->name('car-loads.store');
     Route::put('/car-loads/{carLoad}', [CarLoadController::class, 'update'])->name('car-loads.update');

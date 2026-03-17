@@ -175,6 +175,23 @@ const deleteCarLoad = async (id) => {
                                         </template>
                                     </v-tooltip>
 
+                                    <!-- Chart: navigate to financials page -->
+                                    <v-tooltip text="Rapport financier">
+                                        <template #activator="{ props: tooltipProps }">
+                                            <v-btn
+                                                v-bind="tooltipProps"
+                                                :href="route('car-loads.financials', item.id)"
+                                                icon
+                                                density="compact"
+                                                variant="text"
+                                                color="deep-purple"
+                                                tag="a"
+                                            >
+                                                <v-icon>mdi-chart-bar</v-icon>
+                                            </v-btn>
+                                        </template>
+                                    </v-tooltip>
+
                                     <template v-if="!item.inventory?.closed">
                                         <v-tooltip text="Modifier">
                                             <template #activator="{ props: tooltipProps }">

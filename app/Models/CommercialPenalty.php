@@ -12,6 +12,7 @@ class CommercialPenalty extends Model
 
     protected $fillable = [
         'commercial_work_period_id',
+        'work_day',
         'amount',
         'reason',
         'created_by_user_id',
@@ -20,6 +21,7 @@ class CommercialPenalty extends Model
     protected function casts(): array
     {
         return [
+            'work_day' => 'date',
             'amount' => 'integer',
         ];
     }

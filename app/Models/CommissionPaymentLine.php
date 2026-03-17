@@ -11,7 +11,7 @@ class CommissionPaymentLine extends Model
     use HasFactory;
 
     protected $fillable = [
-        'commission_id',
+        'daily_commission_id',
         'payment_id',
         'product_id',
         'rate_applied',
@@ -28,9 +28,9 @@ class CommissionPaymentLine extends Model
         ];
     }
 
-    public function commission(): BelongsTo
+    public function dailyCommission(): BelongsTo
     {
-        return $this->belongsTo(Commission::class);
+        return $this->belongsTo(DailyCommission::class);
     }
 
     public function payment(): BelongsTo

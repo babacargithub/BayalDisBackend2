@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\RecalculateDailyCommissionJob;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -51,21 +52,35 @@ class Payment extends Model
         /**
          * After any payment is persisted, recalculate the invoice's stored totals
          * so total_payments, total_realized_profit, status, and paid stay in sync.
+         * Also dispatch a background job to recalculate the commercial's daily commission.
          */
         static::saved(function (Payment $payment) {
             if ($payment->sales_invoice_id !== null) {
                 SalesInvoice::find($payment->sales_invoice_id)?->recalculateStoredTotals();
             }
+
+            RecalculateDailyCommissionJob::dispatch(
+                userId: $payment->user_id,
+                workDay: $payment->created_at->toDateString(),
+                salesInvoiceId: $payment->sales_invoice_id,
+            );
         });
 
         /**
          * After a payment is deleted, recalculate the invoice's stored totals
          * so the balance and status are updated immediately.
+         * Also dispatch a background job to recalculate the commercial's daily commission.
          */
         static::deleted(function (Payment $payment) {
             if ($payment->sales_invoice_id !== null) {
                 SalesInvoice::find($payment->sales_invoice_id)?->recalculateStoredTotals();
             }
+
+            RecalculateDailyCommissionJob::dispatch(
+                userId: $payment->user_id,
+                workDay: $payment->created_at->toDateString(),
+                salesInvoiceId: $payment->sales_invoice_id,
+            );
         });
     }
 

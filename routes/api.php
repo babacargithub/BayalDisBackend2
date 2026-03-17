@@ -1,14 +1,15 @@
 <?php
 
 use App\Http\Controllers\Api\ApiCarLoadController;
+use App\Http\Controllers\Api\ApiCommissionController;
 use App\Http\Controllers\Api\ApiCustomerController;
 use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiSalesInvoiceController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomerVisitController as ApiCustomerVisitController;
-use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ProductController;
 use Illuminate\Support\Facades\Route;
 
 // Public routes
@@ -59,7 +60,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('customers/{customer}/invoices', [ApiCustomerController::class, 'getCustomerInvoices']);
 
         // Vente payment
-        Route::post('ventes/{vente}/pay', [ApiSalesInvoiceController::class, 'payVente']);
+        Route::post('ventes/{vente}/pay', [ApiSalesInvoiceController::class, 'paySalesInvoice']);
         Route::get('activity_report', [ApiSalesInvoiceController::class, 'getActivityReport']);
 
         // Customer Visits
@@ -81,5 +82,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('car-loads/{product}/transform', [ApiCarLoadController::class, 'transformToVariants'])->name('car-loads.transform_product_to_variants');
 
         Route::get('weekly-debts', [ApiCustomerController::class, 'getWeeklyDebts']);
+
+        // Commission
+        Route::get('daily-commission', [ApiCommissionController::class, 'getDailyCommission'])->name('salesperson.daily-commission');
+        Route::get('weekly-commissions', [ApiCommissionController::class, 'getWeeklyCommissions'])->name('salesperson.weekly-commissions');
+        Route::get('monthly-commissions', [ApiCommissionController::class, 'getMonthlyCommissions'])->name('salesperson.monthly-commissions');
     });
 });

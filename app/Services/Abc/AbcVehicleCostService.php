@@ -92,14 +92,22 @@ class AbcVehicleCostService
     }
 
     /**
-     * Number of days the CarLoad was active.
-     * Uses return_date if available, otherwise today.
+     * Number of days the CarLoad has been active so far.
+     *
+     * For completed trips (return_date already passed), uses return_date as the end.
+     * For active trips whose planned return_date is still in the future, caps at today
+     * to avoid inflating costs based on unelapsed future days.
+     *
      * Minimum of 1 day to avoid zero-cost trips.
      */
     private function computeTripDurationDays(CarLoad $carLoad): int
     {
         $startDate = $carLoad->load_date ?? now();
-        $endDate = $carLoad->return_date ?? now();
+
+        $plannedReturnDate = $carLoad->return_date;
+        $endDate = ($plannedReturnDate !== null && $plannedReturnDate->isPast())
+            ? $plannedReturnDate
+            : now();
 
         $durationDays = (int) $startDate->diffInDays($endDate);
 

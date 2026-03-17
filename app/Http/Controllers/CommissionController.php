@@ -8,9 +8,9 @@ use App\Models\CommercialCategoryCommissionRate;
 use App\Models\CommercialObjectiveTier;
 use App\Models\CommercialPenalty;
 use App\Models\CommercialWorkPeriod;
-use App\Models\Commission;
+use App\Models\DailyCommission;
 use App\Models\ProductCategory;
-use App\Services\Commission\CommercialWorkPeriodService;
+use App\Services\Commission\DailyCommissionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,7 +21,7 @@ use RuntimeException;
 class CommissionController extends Controller
 {
     public function __construct(
-        private readonly CommercialWorkPeriodService $commissionPeriodService,
+        private readonly DailyCommissionService $dailyCommissionService,
     ) {}
 
     public function index(): Response
@@ -32,6 +32,7 @@ class CommissionController extends Controller
                 'name' => $productCategory->name,
                 'commission_rate' => $productCategory->commission_rate !== null ? (float) $productCategory->commission_rate : null,
             ]);
+
         $commerciaux = Commercial::query()->orderBy('name')->get(['id', 'name']);
 
         $categoryRates = CommercialCategoryCommissionRate::query()->get()
@@ -43,7 +44,7 @@ class CommissionController extends Controller
             ]);
 
         $workPeriods = CommercialWorkPeriod::query()
-            ->with(['commercial', 'commission', 'objectiveTiers', 'penalties'])
+            ->with(['commercial', 'dailyCommissions', 'objectiveTiers', 'penalties'])
             ->orderByDesc('period_start_date')
             ->get()
             ->map(fn (CommercialWorkPeriod $workPeriod): array => [
@@ -52,18 +53,21 @@ class CommissionController extends Controller
                 'commercial_name' => $workPeriod->commercial->name,
                 'period_start_date' => $workPeriod->period_start_date->toDateString(),
                 'period_end_date' => $workPeriod->period_end_date->toDateString(),
-                'commission' => $workPeriod->commission ? [
-                    'id' => $workPeriod->commission->id,
-                    'base_commission' => $workPeriod->commission->base_commission,
-                    'basket_bonus' => $workPeriod->commission->basket_bonus,
-                    'objective_bonus' => $workPeriod->commission->objective_bonus,
-                    'total_penalties' => $workPeriod->commission->total_penalties,
-                    'net_commission' => $workPeriod->commission->net_commission,
-                    'basket_achieved' => $workPeriod->commission->basket_achieved,
-                    'achieved_tier_level' => $workPeriod->commission->achieved_tier_level,
-                    'is_finalized' => $workPeriod->commission->is_finalized,
-                    'finalized_at' => $workPeriod->commission->finalized_at?->toISOString(),
-                ] : null,
+                'is_finalized' => $workPeriod->is_finalized,
+                'finalized_at' => $workPeriod->finalized_at?->toISOString(),
+                'daily_commissions' => $workPeriod->dailyCommissions
+                    ->sortBy('work_day')
+                    ->map(fn (DailyCommission $dailyCommission): array => [
+                        'id' => $dailyCommission->id,
+                        'work_day' => $dailyCommission->work_day->toDateString(),
+                        'base_commission' => $dailyCommission->base_commission,
+                        'basket_bonus' => $dailyCommission->basket_bonus,
+                        'objective_bonus' => $dailyCommission->objective_bonus,
+                        'total_penalties' => $dailyCommission->total_penalties,
+                        'net_commission' => $dailyCommission->net_commission,
+                        'basket_achieved' => $dailyCommission->basket_achieved,
+                        'achieved_tier_level' => $dailyCommission->achieved_tier_level,
+                    ])->values(),
                 'objective_tiers' => $workPeriod->objectiveTiers
                     ->sortBy('tier_level')
                     ->map(fn (CommercialObjectiveTier $tier): array => [
@@ -77,6 +81,7 @@ class CommissionController extends Controller
                         'id' => $penalty->id,
                         'amount' => $penalty->amount,
                         'reason' => $penalty->reason,
+                        'work_day' => $penalty->work_day?->toDateString(),
                         'created_at' => $penalty->created_at->toDateString(),
                     ])->values(),
             ]);
@@ -144,9 +149,9 @@ class CommissionController extends Controller
 
     public function destroyWorkPeriod(CommercialWorkPeriod $workPeriod): RedirectResponse
     {
-        if ($workPeriod->commission?->is_finalized) {
+        if ($workPeriod->is_finalized) {
             return redirect()->back()
-                ->withErrors(['error' => 'Impossible de supprimer une période dont la commission est finalisée.']);
+                ->withErrors(['error' => 'Impossible de supprimer une période finalisée.']);
         }
 
         $workPeriod->delete();
@@ -158,7 +163,7 @@ class CommissionController extends Controller
 
     public function storeTier(Request $request, CommercialWorkPeriod $workPeriod): RedirectResponse
     {
-        if ($workPeriod->commission?->is_finalized) {
+        if ($workPeriod->is_finalized) {
             return redirect()->back()
                 ->withErrors(['error' => 'Impossible de modifier une période finalisée.']);
         }
@@ -176,7 +181,7 @@ class CommissionController extends Controller
 
     public function destroyTier(CommercialObjectiveTier $tier): RedirectResponse
     {
-        if ($tier->workPeriod->commission?->is_finalized) {
+        if ($tier->workPeriod->is_finalized) {
             return redirect()->back()
                 ->withErrors(['error' => 'Impossible de modifier une période finalisée.']);
         }
@@ -190,7 +195,7 @@ class CommissionController extends Controller
 
     public function storePenalty(Request $request, CommercialWorkPeriod $workPeriod): RedirectResponse
     {
-        if ($workPeriod->commission?->is_finalized) {
+        if ($workPeriod->is_finalized) {
             return redirect()->back()
                 ->withErrors(['error' => 'Impossible de modifier une période finalisée.']);
         }
@@ -198,21 +203,40 @@ class CommissionController extends Controller
         $validated = $request->validate([
             'amount' => 'required|integer|min:1',
             'reason' => 'required|string|max:500',
+            'work_day' => 'required|date',
         ]);
 
         $workPeriod->penalties()->create($validated);
+
+        // Trigger a recalculation of the daily commission for the affected day.
+        $this->dailyCommissionService->recalculateDailyCommissionForWorkDay(
+            $workPeriod->commercial,
+            $workPeriod,
+            $validated['work_day'],
+        );
 
         return redirect()->back()->with('success', 'Pénalité ajoutée.');
     }
 
     public function destroyPenalty(CommercialPenalty $penalty): RedirectResponse
     {
-        if ($penalty->workPeriod->commission?->is_finalized) {
+        if ($penalty->workPeriod->is_finalized) {
             return redirect()->back()
                 ->withErrors(['error' => 'Impossible de modifier une période finalisée.']);
         }
 
+        $affectedWorkDay = $penalty->work_day?->toDateString();
+        $workPeriod = $penalty->workPeriod;
         $penalty->delete();
+
+        // Trigger a recalculation of the daily commission for the affected day.
+        if ($affectedWorkDay !== null) {
+            $this->dailyCommissionService->recalculateDailyCommissionForWorkDay(
+                $workPeriod->commercial,
+                $workPeriod,
+                $affectedWorkDay,
+            );
+        }
 
         return redirect()->back()->with('success', 'Pénalité supprimée.');
     }
@@ -222,30 +246,22 @@ class CommissionController extends Controller
     public function computeForWorkPeriod(CommercialWorkPeriod $workPeriod): RedirectResponse
     {
         try {
-            $period = new CommissionPeriodData(
-                CarbonImmutable::parse($workPeriod->period_start_date),
-                CarbonImmutable::parse($workPeriod->period_end_date),
-            );
-
-            $this->commissionPeriodService->computeOrRefreshCommissionForPeriod(
-                $workPeriod->commercial,
-                $period,
-            );
+            $this->dailyCommissionService->recomputeAllDaysForWorkPeriod($workPeriod);
         } catch (RuntimeException $runtimeException) {
             return redirect()->back()->withErrors(['error' => $runtimeException->getMessage()]);
         }
 
-        return redirect()->back()->with('success', 'Commission calculée avec succès.');
+        return redirect()->back()->with('success', 'Commissions journalières recalculées.');
     }
 
-    public function finalizeCommission(Commission $commission): RedirectResponse
+    public function finalizeWorkPeriod(CommercialWorkPeriod $workPeriod): RedirectResponse
     {
         try {
-            $this->commissionPeriodService->finalizeCommission($commission);
+            $this->dailyCommissionService->finalizeWorkPeriod($workPeriod);
         } catch (RuntimeException $runtimeException) {
             return redirect()->back()->withErrors(['error' => $runtimeException->getMessage()]);
         }
 
-        return redirect()->back()->with('success', 'Commission finalisée avec succès.');
+        return redirect()->back()->with('success', 'Période finalisée avec succès.');
     }
 }

@@ -147,7 +147,7 @@
                                         </div>
                                         <div class="d-flex align-center gap-2">
                                             <v-chip
-                                                v-if="workPeriod.commission?.is_finalized"
+                                                v-if="workPeriod.is_finalized"
                                                 color="success"
                                                 size="small"
                                                 prepend-icon="mdi-lock"
@@ -155,21 +155,21 @@
                                                 Finalisée
                                             </v-chip>
                                             <v-chip
-                                                v-else-if="workPeriod.commission"
+                                                v-else-if="workPeriod.daily_commissions.length > 0"
                                                 color="blue"
                                                 size="small"
                                                 prepend-icon="mdi-calculator"
                                             >
-                                                Calculée
+                                                En cours
                                             </v-chip>
                                             <v-chip v-else color="grey" size="small" variant="tonal">
                                                 En attente
                                             </v-chip>
                                             <span
-                                                v-if="workPeriod.commission"
+                                                v-if="workPeriod.daily_commissions.length > 0"
                                                 class="font-weight-bold text-primary"
                                             >
-                                                {{ formatCurrency(workPeriod.commission.net_commission) }}
+                                                {{ formatCurrency(periodNetTotal(workPeriod)) }}
                                             </span>
                                         </div>
                                     </div>
@@ -177,58 +177,79 @@
 
                                 <v-expansion-panel-text>
                                     <v-row>
-                                        <!-- Commission result -->
-                                        <v-col cols="12" md="5">
-                                            <div class="text-subtitle-2 mb-2">Résultat de la commission</div>
-                                            <template v-if="workPeriod.commission">
+                                        <!-- Daily commission breakdown -->
+                                        <v-col cols="12" md="6">
+                                            <div class="text-subtitle-2 mb-2">Commissions journalières</div>
+                                            <template v-if="workPeriod.daily_commissions.length > 0">
                                                 <v-table density="compact">
-                                                    <tbody>
+                                                    <thead>
                                                         <tr>
-                                                            <td>Commission de base</td>
-                                                            <td class="text-right">{{ formatCurrency(workPeriod.commission.base_commission) }}</td>
+                                                            <th>Jour</th>
+                                                            <th class="text-right">Base</th>
+                                                            <th class="text-right">Basket</th>
+                                                            <th class="text-right">Objectif</th>
+                                                            <th class="text-right text-error">Pénalités</th>
+                                                            <th class="text-right font-weight-bold">Net</th>
                                                         </tr>
-                                                        <tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr
+                                                            v-for="dailyCommission in workPeriod.daily_commissions"
+                                                            :key="dailyCommission.id"
+                                                        >
                                                             <td>
-                                                                Bonus panier
+                                                                {{ formatDate(dailyCommission.work_day) }}
                                                                 <v-chip
-                                                                    v-if="workPeriod.commission.basket_achieved"
+                                                                    v-if="dailyCommission.basket_achieved"
                                                                     color="success"
                                                                     size="x-small"
                                                                     class="ml-1"
+                                                                    title="Bonus panier atteint"
                                                                 >
-                                                                    Atteint
+                                                                    🧺
                                                                 </v-chip>
                                                             </td>
-                                                            <td class="text-right">{{ formatCurrency(workPeriod.commission.basket_bonus) }}</td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td>
-                                                                Bonus objectif
-                                                                <span v-if="workPeriod.commission.achieved_tier_level" class="text-caption text-grey ml-1">
-                                                                    (palier {{ workPeriod.commission.achieved_tier_level }})
+                                                            <td class="text-right">{{ formatCurrency(dailyCommission.base_commission) }}</td>
+                                                            <td class="text-right">{{ formatCurrency(dailyCommission.basket_bonus) }}</td>
+                                                            <td class="text-right">
+                                                                {{ formatCurrency(dailyCommission.objective_bonus) }}
+                                                                <span
+                                                                    v-if="dailyCommission.achieved_tier_level"
+                                                                    class="text-caption text-grey"
+                                                                >
+                                                                    (P{{ dailyCommission.achieved_tier_level }})
                                                                 </span>
                                                             </td>
-                                                            <td class="text-right">{{ formatCurrency(workPeriod.commission.objective_bonus) }}</td>
-                                                        </tr>
-                                                        <tr class="text-error">
-                                                            <td>Pénalités</td>
-                                                            <td class="text-right">− {{ formatCurrency(workPeriod.commission.total_penalties) }}</td>
-                                                        </tr>
-                                                        <tr class="font-weight-bold">
-                                                            <td>Net à payer</td>
-                                                            <td class="text-right text-primary">{{ formatCurrency(workPeriod.commission.net_commission) }}</td>
+                                                            <td class="text-right text-error">
+                                                                {{ dailyCommission.total_penalties > 0 ? '− ' + formatCurrency(dailyCommission.total_penalties) : '—' }}
+                                                            </td>
+                                                            <td class="text-right font-weight-bold text-primary">
+                                                                {{ formatCurrency(dailyCommission.net_commission) }}
+                                                            </td>
                                                         </tr>
                                                     </tbody>
+                                                    <tfoot>
+                                                        <tr class="bg-grey-lighten-4 font-weight-bold">
+                                                            <td>Total période</td>
+                                                            <td class="text-right">{{ formatCurrency(periodBaseTotal(workPeriod)) }}</td>
+                                                            <td class="text-right">{{ formatCurrency(periodBasketTotal(workPeriod)) }}</td>
+                                                            <td class="text-right">{{ formatCurrency(periodObjectiveTotal(workPeriod)) }}</td>
+                                                            <td class="text-right text-error">
+                                                                {{ periodPenaltiesTotal(workPeriod) > 0 ? '− ' + formatCurrency(periodPenaltiesTotal(workPeriod)) : '—' }}
+                                                            </td>
+                                                            <td class="text-right text-primary">{{ formatCurrency(periodNetTotal(workPeriod)) }}</td>
+                                                        </tr>
+                                                    </tfoot>
                                                 </v-table>
                                             </template>
                                             <div v-else class="text-grey text-caption">
-                                                Commission pas encore calculée.
+                                                Aucune commission calculée. Les commissions se calculent automatiquement après chaque paiement.
                                             </div>
 
                                             <!-- Action buttons -->
                                             <div class="d-flex gap-2 mt-3 flex-wrap">
                                                 <v-btn
-                                                    v-if="!workPeriod.commission?.is_finalized"
+                                                    v-if="!workPeriod.is_finalized"
                                                     color="primary"
                                                     size="small"
                                                     variant="tonal"
@@ -236,10 +257,10 @@
                                                     @click="computeCommission(workPeriod)"
                                                 >
                                                     <v-icon size="small" class="mr-1">mdi-calculator</v-icon>
-                                                    {{ workPeriod.commission ? 'Recalculer' : 'Calculer' }}
+                                                    Recalculer tous les jours
                                                 </v-btn>
                                                 <v-btn
-                                                    v-if="workPeriod.commission && !workPeriod.commission.is_finalized"
+                                                    v-if="workPeriod.daily_commissions.length > 0 && !workPeriod.is_finalized"
                                                     color="warning"
                                                     size="small"
                                                     variant="tonal"
@@ -249,7 +270,7 @@
                                                     Finaliser
                                                 </v-btn>
                                                 <v-btn
-                                                    v-if="!workPeriod.commission?.is_finalized"
+                                                    v-if="!workPeriod.is_finalized"
                                                     color="error"
                                                     size="small"
                                                     variant="text"
@@ -261,11 +282,11 @@
                                         </v-col>
 
                                         <!-- Objective tiers -->
-                                        <v-col cols="12" md="4">
+                                        <v-col cols="12" md="3">
                                             <div class="d-flex align-center justify-space-between mb-2">
                                                 <span class="text-subtitle-2">Paliers objectif CA</span>
                                                 <v-btn
-                                                    v-if="!workPeriod.commission?.is_finalized"
+                                                    v-if="!workPeriod.is_finalized"
                                                     icon="mdi-plus"
                                                     size="x-small"
                                                     color="primary"
@@ -289,7 +310,7 @@
                                                         <td class="text-right">{{ formatCurrency(tier.bonus_amount) }}</td>
                                                         <td>
                                                             <v-btn
-                                                                v-if="!workPeriod.commission?.is_finalized"
+                                                                v-if="!workPeriod.is_finalized"
                                                                 icon="mdi-delete"
                                                                 size="x-small"
                                                                 variant="text"
@@ -308,7 +329,7 @@
                                             <div class="d-flex align-center justify-space-between mb-2">
                                                 <span class="text-subtitle-2">Pénalités</span>
                                                 <v-btn
-                                                    v-if="!workPeriod.commission?.is_finalized"
+                                                    v-if="!workPeriod.is_finalized"
                                                     icon="mdi-plus"
                                                     size="x-small"
                                                     color="error"
@@ -324,10 +345,12 @@
                                                 >
                                                     <div>
                                                         <div class="text-error font-weight-medium">− {{ formatCurrency(penalty.amount) }}</div>
-                                                        <div class="text-caption text-grey">{{ penalty.reason }}</div>
+                                                        <div class="text-caption text-grey">
+                                                            {{ penalty.work_day ? formatDate(penalty.work_day) + ' — ' : '' }}{{ penalty.reason }}
+                                                        </div>
                                                     </div>
                                                     <v-btn
-                                                        v-if="!workPeriod.commission?.is_finalized"
+                                                        v-if="!workPeriod.is_finalized"
                                                         icon="mdi-delete"
                                                         size="x-small"
                                                         variant="text"
@@ -492,6 +515,15 @@
                 <v-card-title>Ajouter une pénalité</v-card-title>
                 <v-card-text>
                     <v-text-field
+                        v-model="penaltyForm.work_day"
+                        label="Jour concerné"
+                        type="date"
+                        required
+                        :error-messages="penaltyForm.errors.work_day"
+                        :min="penaltyTargetWorkPeriod?.period_start_date"
+                        :max="penaltyTargetWorkPeriod?.period_end_date"
+                    />
+                    <v-text-field
                         v-model.number="penaltyForm.amount"
                         label="Montant"
                         type="number"
@@ -518,20 +550,24 @@
             </v-card>
         </v-dialog>
 
-        <!-- Dialog: Finalize commission -->
+        <!-- Dialog: Finalize work period -->
         <v-dialog v-model="finalizeDialog" max-width="460px">
             <v-card>
-                <v-card-title>Finaliser la commission</v-card-title>
+                <v-card-title>Finaliser la période</v-card-title>
                 <v-card-text>
                     <p>
-                        Finaliser la commission de
+                        Finaliser la période de
                         <strong>{{ workPeriodToFinalize?.commercial_name }}</strong>
-                        pour la période
+                        :
                         <strong>{{ formatDate(workPeriodToFinalize?.period_start_date) }} → {{ formatDate(workPeriodToFinalize?.period_end_date) }}</strong>
                         ?
                     </p>
+                    <p class="mt-2">
+                        Commission nette totale :
+                        <strong class="text-primary">{{ workPeriodToFinalize ? formatCurrency(periodNetTotal(workPeriodToFinalize)) : '—' }}</strong>
+                    </p>
                     <v-alert type="warning" variant="tonal" class="mt-3">
-                        Cette action est <strong>irréversible</strong>. La commission ne pourra plus être recalculée.
+                        Cette action est <strong>irréversible</strong>. Les commissions ne pourront plus être recalculées automatiquement.
                     </v-alert>
                 </v-card-text>
                 <v-card-actions>
@@ -552,7 +588,7 @@
                     Supprimer la période
                     <strong>{{ formatDate(workPeriodToDelete?.period_start_date) }} → {{ formatDate(workPeriodToDelete?.period_end_date) }}</strong>
                     de <strong>{{ workPeriodToDelete?.commercial_name }}</strong> ?
-                    Cette action supprimera aussi les paliers, pénalités et la commission associée.
+                    Cette action supprimera aussi les paliers, pénalités et les commissions journalières associées.
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer />
@@ -603,6 +639,30 @@ function getCategoryRate(commercialId, categoryId) {
     ) ?? null;
 }
 
+// ─── Period totals (computed from daily_commissions array) ────────────────────
+
+function periodBaseTotal(workPeriod) {
+    return workPeriod.daily_commissions.reduce((sum, dc) => sum + dc.base_commission, 0);
+}
+
+function periodBasketTotal(workPeriod) {
+    return workPeriod.daily_commissions.reduce((sum, dc) => sum + dc.basket_bonus, 0);
+}
+
+function periodObjectiveTotal(workPeriod) {
+    return workPeriod.daily_commissions.reduce((sum, dc) => sum + dc.objective_bonus, 0);
+}
+
+function periodPenaltiesTotal(workPeriod) {
+    return workPeriod.daily_commissions.reduce((sum, dc) => sum + dc.total_penalties, 0);
+}
+
+function periodNetTotal(workPeriod) {
+    return workPeriod.daily_commissions.reduce((sum, dc) => sum + dc.net_commission, 0);
+}
+
+// ─── Filter ───────────────────────────────────────────────────────────────────
+
 const filteredWorkPeriods = computed(() => {
     if (!filterCommercialId.value) return props.workPeriods;
     return props.workPeriods.filter((wp) => wp.commercial_id === filterCommercialId.value);
@@ -616,8 +676,8 @@ const rateForm = useForm({ commercial_id: null, product_category_id: null, rate:
 function openRateDialog(commercial, category) {
     rateForm.commercial_id = commercial?.id ?? null;
     rateForm.product_category_id = category?.id ?? null;
-    const existing = commercial && category ? getCategoryRate(commercial.id, category.id) : null;
-    rateForm.rate = existing?.rate ?? 0;
+    const existingRate = commercial && category ? getCategoryRate(commercial.id, category.id) : null;
+    rateForm.rate = existingRate?.rate ?? 0;
     rateDialog.value = true;
 }
 
@@ -681,11 +741,12 @@ function deleteTier(tier) {
 
 const penaltyDialog = ref(false);
 const penaltyTargetWorkPeriod = ref(null);
-const penaltyForm = useForm({ amount: 0, reason: '' });
+const penaltyForm = useForm({ work_day: '', amount: 0, reason: '' });
 
 function openPenaltyDialog(workPeriod) {
     penaltyTargetWorkPeriod.value = workPeriod;
     penaltyForm.reset();
+    penaltyForm.work_day = workPeriod.period_start_date;
     penaltyDialog.value = true;
 }
 
@@ -722,7 +783,7 @@ function openFinalizeDialog(workPeriod) {
 }
 
 function confirmFinalize() {
-    finalizeForm.post(route('commissions.finalize', workPeriodToFinalize.value.commission.id), {
+    finalizeForm.post(route('commissions.work-periods.finalize', workPeriodToFinalize.value.id), {
         onSuccess: () => { finalizeDialog.value = false; },
     });
 }

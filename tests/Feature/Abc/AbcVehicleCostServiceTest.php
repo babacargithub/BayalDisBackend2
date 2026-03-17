@@ -105,12 +105,29 @@ class AbcVehicleCostServiceTest extends TestCase
     public function test_fixed_cost_for_carload_is_prorated_over_trip_duration(): void
     {
         $vehicle = $this->makeVehicle();
+        // Use a completed trip with return_date in the past so the full duration is counted.
         $carLoad = $this->makeCarLoad($vehicle, [
-            'load_date' => Carbon::today(),
-            'return_date' => Carbon::today()->addDays(3),
+            'load_date' => Carbon::today()->subDays(3),
+            'return_date' => Carbon::today(),
         ]);
 
         $expectedCost = $this->service->computeDailyFixedCost($vehicle) * 3;
+
+        $this->assertEquals($expectedCost, $this->service->computeFixedCostForCarLoad($carLoad));
+    }
+
+    public function test_fixed_cost_for_active_carload_with_future_return_date_uses_elapsed_days_not_planned_days(): void
+    {
+        $vehicle = $this->makeVehicle();
+        // Active trip: load_date 2 days ago, return_date far in the future.
+        // Cost must reflect only elapsed days, not the full planned duration.
+        $carLoad = $this->makeCarLoad($vehicle, [
+            'load_date' => Carbon::today()->subDays(2),
+            'return_date' => Carbon::today()->addDays(30),
+        ]);
+
+        // End date is capped at today → 2 elapsed days
+        $expectedCost = $this->service->computeDailyFixedCost($vehicle) * 2;
 
         $this->assertEquals($expectedCost, $this->service->computeFixedCostForCarLoad($carLoad));
     }
@@ -137,9 +154,10 @@ class AbcVehicleCostServiceTest extends TestCase
     public function test_total_vehicle_cost_is_fixed_plus_fuel(): void
     {
         $vehicle = $this->makeVehicle();
+        // Completed 2-day trip with return_date in the past.
         $carLoad = $this->makeCarLoad($vehicle, [
-            'load_date' => Carbon::today(),
-            'return_date' => Carbon::today()->addDays(2),
+            'load_date' => Carbon::today()->subDays(2),
+            'return_date' => Carbon::today(),
         ]);
 
         CarLoadFuelEntry::create(['car_load_id' => $carLoad->id, 'amount' => 30_000, 'filled_at' => today()]);
@@ -180,8 +198,8 @@ class AbcVehicleCostServiceTest extends TestCase
         ]);
 
         $carLoad = $this->makeCarLoad($vehicle, [
-            'load_date' => Carbon::today(),
-            'return_date' => Carbon::today()->addDays(3),
+            'load_date' => Carbon::today()->subDays(3),
+            'return_date' => Carbon::today(),
         ]);
 
         $originalDailyRate = $carLoad->fixed_daily_cost;
