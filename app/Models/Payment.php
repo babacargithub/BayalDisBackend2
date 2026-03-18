@@ -6,6 +6,11 @@ use App\Jobs\RecalculateDailyCommissionJob;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $amount Payment amount in XOF.
+ * @property int $profit Realized profit allocated to this payment (proportional share of invoice profit).
+ * @property int $commercial_commission Commission owed to the commercial for this payment (proportional share of invoice commission).
+ */
 class Payment extends Model
 {
     protected $fillable = [
@@ -13,6 +18,7 @@ class Payment extends Model
         'sales_invoice_id',
         'amount',
         'profit',
+        'commercial_commission',
         'payment_method',
         'comment',
         'user_id',
@@ -23,6 +29,7 @@ class Payment extends Model
         return [
             'amount' => 'integer',
             'profit' => 'integer',
+            'commercial_commission' => 'integer',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
@@ -45,6 +52,7 @@ class Payment extends Model
 
                 if ($invoice !== null) {
                     $payment->profit = $invoice->computeRealizedProfitForPaymentAmount($payment->amount);
+                    $payment->commercial_commission = $invoice->computeCommercialCommissionForPaymentAmount($payment->amount);
                 }
             }
         });

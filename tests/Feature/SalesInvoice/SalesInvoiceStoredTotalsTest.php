@@ -4,9 +4,11 @@ namespace Tests\Feature\SalesInvoice;
 
 use App\Enums\SalesInvoiceStatus;
 use App\Models\Commercial;
+use App\Models\CommercialProductCommissionRate;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
@@ -132,6 +134,7 @@ class SalesInvoiceStoredTotalsTest extends TestCase
         $this->assertSame(0, $invoice->total_payments);
         $this->assertSame(0, $invoice->total_estimated_profit);
         $this->assertSame(0, $invoice->total_realized_profit);
+        $this->assertSame(0, $invoice->estimated_commercial_commission);
         $this->assertSame(SalesInvoiceStatus::Draft, $invoice->status);
         $this->assertFalse($invoice->paid);
     }
@@ -409,5 +412,229 @@ class SalesInvoiceStoredTotalsTest extends TestCase
         $freshInvoice = $invoice->fresh();
         $this->assertSame(1400, $freshInvoice->total_remaining);
         $this->assertSame($freshInvoice->total_amount - $freshInvoice->total_payments, $freshInvoice->total_remaining);
+    }
+
+    // =========================================================================
+    // estimated_commercial_commission — driven by Vente events via recalculate
+    // =========================================================================
+
+    private function makeProductWithCategoryRate(float $categoryRate): Product
+    {
+        $category = ProductCategory::create([
+            'name' => 'Category '.uniqid(),
+            'commission_rate' => $categoryRate,
+        ]);
+
+        return Product::create([
+            'name' => 'Product '.uniqid(),
+            'price' => 1000,
+            'cost_price' => 600,
+            'base_quantity' => 1,
+            'product_category_id' => $category->id,
+        ]);
+    }
+
+    private function addItemToInvoiceForProduct(SalesInvoice $invoice, Product $product, int $price, int $quantity): Vente
+    {
+        return Vente::create([
+            'sales_invoice_id' => $invoice->id,
+            'product_id' => $product->id,
+            'price' => $price,
+            'quantity' => $quantity,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+        ]);
+    }
+
+    public function test_commission_is_zero_on_new_invoice_with_no_items(): void
+    {
+        $invoice = $this->makeEmptyInvoice()->fresh();
+
+        $this->assertSame(0, $invoice->estimated_commercial_commission);
+    }
+
+    public function test_commission_is_zero_when_product_has_no_category(): void
+    {
+        // defaultProduct has no product_category_id — rate resolves to 0.
+        $invoice = $this->makeEmptyInvoice();
+        $this->addItemToInvoice($invoice, price: 1000, quantity: 2, profit: 200);
+
+        $this->assertSame(0, $invoice->fresh()->estimated_commercial_commission);
+    }
+
+    public function test_commission_is_calculated_from_category_default_rate_when_item_is_added(): void
+    {
+        // rate = 2%, item subtotal = 1000 × 2 = 2000, commission = round(2000 × 0.02) = 40
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        $invoice = $this->makeEmptyInvoice();
+        $this->addItemToInvoiceForProduct($invoice, $productWithCategory, price: 1000, quantity: 2);
+
+        $this->assertSame(40, $invoice->fresh()->estimated_commercial_commission);
+    }
+
+    public function test_commission_accumulates_across_multiple_items_with_different_rates(): void
+    {
+        // Item 1: subtotal 2000 × 2% = 40
+        // Item 2: subtotal 3000 × 5% = 150
+        // Total expected: 190
+        $productAtTwoPercent = $this->makeProductWithCategoryRate(0.02);
+        $productAtFivePercent = $this->makeProductWithCategoryRate(0.05);
+        $invoice = $this->makeEmptyInvoice();
+
+        $this->addItemToInvoiceForProduct($invoice, $productAtTwoPercent, price: 1000, quantity: 2);
+        $this->addItemToInvoiceForProduct($invoice, $productAtFivePercent, price: 1000, quantity: 3);
+
+        $this->assertSame(190, $invoice->fresh()->estimated_commercial_commission);
+    }
+
+    public function test_commission_decreases_to_zero_when_the_only_item_is_deleted(): void
+    {
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        $invoice = $this->makeEmptyInvoice();
+        $item = $this->addItemToInvoiceForProduct($invoice, $productWithCategory, price: 1000, quantity: 2);
+
+        $this->assertSame(40, $invoice->fresh()->estimated_commercial_commission);
+
+        $item->delete();
+
+        $this->assertSame(0, $invoice->fresh()->estimated_commercial_commission);
+    }
+
+    public function test_commission_is_recalculated_when_an_item_quantity_is_updated(): void
+    {
+        // Initial: 1000 × 2 × 2% = 40; after update to qty 5: 1000 × 5 × 2% = 100
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        $invoice = $this->makeEmptyInvoice();
+        $item = $this->addItemToInvoiceForProduct($invoice, $productWithCategory, price: 1000, quantity: 2);
+
+        $this->assertSame(40, $invoice->fresh()->estimated_commercial_commission);
+
+        $item->quantity = 5;
+        $item->save();
+
+        $this->assertSame(100, $invoice->fresh()->estimated_commercial_commission);
+    }
+
+    public function test_commission_uses_product_level_override_rate_instead_of_category_default(): void
+    {
+        // Category default: 2%, product-level override: 10%
+        // Subtotal = 1000 × 2 = 2000, commission = round(2000 × 0.10) = 200
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->defaultCommercial->id,
+            'product_id' => $productWithCategory->id,
+            'rate' => '0.1000',
+        ]);
+
+        $invoice = $this->makeEmptyInvoice();
+        $this->addItemToInvoiceForProduct($invoice, $productWithCategory, price: 1000, quantity: 2);
+
+        $this->assertSame(200, $invoice->fresh()->estimated_commercial_commission);
+    }
+
+    public function test_commission_is_zero_when_invoice_has_no_commercial(): void
+    {
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+
+        $invoiceWithNoCommercial = SalesInvoice::create([
+            'customer_id' => $this->defaultCustomer->id,
+            'commercial_id' => null,
+        ]);
+
+        Vente::create([
+            'sales_invoice_id' => $invoiceWithNoCommercial->id,
+            'product_id' => $productWithCategory->id,
+            'price' => 1000,
+            'quantity' => 2,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+        ]);
+
+        $this->assertSame(0, $invoiceWithNoCommercial->fresh()->estimated_commercial_commission);
+    }
+
+    // =========================================================================
+    // Payment.commercial_commission — auto-populated on payment creation
+    // =========================================================================
+
+    public function test_payment_commercial_commission_is_zero_when_invoice_has_no_commercial(): void
+    {
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+
+        $invoiceWithNoCommercial = SalesInvoice::create([
+            'customer_id' => $this->defaultCustomer->id,
+            'commercial_id' => null,
+        ]);
+
+        Vente::create([
+            'sales_invoice_id' => $invoiceWithNoCommercial->id,
+            'product_id' => $productWithCategory->id,
+            'price' => 1000,
+            'quantity' => 2,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+        ]);
+
+        $payment = Payment::create([
+            'sales_invoice_id' => $invoiceWithNoCommercial->id,
+            'amount' => 1000,
+            'payment_method' => 'Cash',
+            'user_id' => User::factory()->create()->id,
+        ]);
+
+        $this->assertSame(0, $payment->commercial_commission);
+    }
+
+    public function test_payment_commercial_commission_is_proportional_to_payment_amount(): void
+    {
+        // estimated_commercial_commission = 2000 × 2% = 40
+        // Payment covers half the invoice (1000/2000) → commission = round(40 / 2000 * 1000) = 20
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        $invoice = $this->makeEmptyInvoice();
+        $this->addItemToInvoiceForProduct($invoice, $productWithCategory, price: 1000, quantity: 2);
+
+        $payment = $this->makePaymentForInvoice($invoice, 1000);
+
+        $this->assertSame(20, $payment->commercial_commission);
+    }
+
+    public function test_payment_commercial_commission_equals_full_invoice_commission_when_fully_paid(): void
+    {
+        // estimated_commercial_commission = 2000 × 2% = 40
+        // Full payment (2000/2000) → commission = round(40 / 2000 * 2000) = 40
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        $invoice = $this->makeEmptyInvoice();
+        $this->addItemToInvoiceForProduct($invoice, $productWithCategory, price: 1000, quantity: 2);
+
+        $payment = $this->makePaymentForInvoice($invoice, 2000);
+
+        $this->assertSame(40, $payment->commercial_commission);
+    }
+
+    public function test_payment_commercial_commission_is_zero_when_invoice_has_no_items_with_category(): void
+    {
+        // defaultProduct has no product_category_id → estimated_commercial_commission = 0
+        $invoice = $this->makeEmptyInvoice();
+        $this->addItemToInvoice($invoice, price: 1000, quantity: 2, profit: 200);
+
+        $payment = $this->makePaymentForInvoice($invoice, 1000);
+
+        $this->assertSame(0, $payment->commercial_commission);
+    }
+
+    public function test_multiple_payments_each_carry_their_own_proportional_commercial_commission(): void
+    {
+        // estimated_commercial_commission = 4000 × 5% = 200
+        // Payment 1: 1000/4000 → commission = round(200 / 4000 * 1000) = 50
+        // Payment 2: 3000/4000 → commission = round(200 / 4000 * 3000) = 150
+        $productAtFivePercent = $this->makeProductWithCategoryRate(0.05);
+        $invoice = $this->makeEmptyInvoice();
+        $this->addItemToInvoiceForProduct($invoice, $productAtFivePercent, price: 1000, quantity: 4);
+
+        $firstPayment = $this->makePaymentForInvoice($invoice, 1000);
+        $secondPayment = $this->makePaymentForInvoice($invoice, 3000);
+
+        $this->assertSame(50, $firstPayment->commercial_commission);
+        $this->assertSame(150, $secondPayment->commercial_commission);
     }
 }

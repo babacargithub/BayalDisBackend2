@@ -108,6 +108,7 @@
             <tr>
               <th>Date</th>
               <th>Montant</th>
+              <th>Commission</th>
               <th>Payé par</th>
               <th>Commentaire</th>
               <th>Actions</th>
@@ -132,6 +133,7 @@
                   {{ formatPrice(payment.amount) }}
                 </template>
               </td>
+              <td class="text-deep-purple">{{ formatPrice(payment.commercial_commission ?? 0) }}</td>
               <td>
                 <template v-if="editingPayment?.id === payment.id">
                   <v-select

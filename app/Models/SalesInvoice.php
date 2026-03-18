@@ -1,9 +1,12 @@
 <?php
 
+/** @noinspection PhpCastIsUnnecessaryInspection */
+
 namespace App\Models;
 
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InvoicePaymentMismatchException;
+use App\Jobs\RecalculateInvoicesDeliveryCostJob;
 use App\Services\SalesInvoiceStatsService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $total_payments Stored: sum of all payment amounts received.
  * @property int $total_estimated_profit Stored: sum of profit on all invoice items (full potential profit).
  * @property int $total_realized_profit Stored: sum of profit on payments (proportional earned profit).
+ * @property int $estimated_commercial_commission Stored: estimated commission owed to the commercial (rate × subtotal per item).
  * @property SalesInvoiceStatus $status Stored: DRAFT | ISSUED | PARTIALLY_PAID | FULLY_PAID.
  *
  * Backward-compat aliases (delegate to stored columns — no DB query):
@@ -33,6 +37,9 @@ class SalesInvoice extends Model
         'car_load_id',
         'invoice_number',
         'status',
+        // For back-office invoices (no car_load_id), delivery_cost may be set manually.
+        // For car-load invoices, it is managed automatically by RecalculateInvoicesDeliveryCostJob.
+        'delivery_cost',
     ];
 
     protected function casts(): array
@@ -44,6 +51,8 @@ class SalesInvoice extends Model
             'total_payments' => 'integer',
             'total_estimated_profit' => 'integer',
             'total_realized_profit' => 'integer',
+            'estimated_commercial_commission' => 'integer',
+            'delivery_cost' => 'integer',
             'status' => SalesInvoiceStatus::class,
         ];
     }
@@ -88,7 +97,7 @@ class SalesInvoice extends Model
         parent::boot();
 
         // Propagate paid/paid_at/should_be_paid_at changes down to vente items.
-        static::updated(function (SalesInvoice $invoice) {
+        static::updated(function (SalesInvoice $invoice): void {
             if ($invoice->isDirty('paid')) {
                 $invoice->items()->update([
                     'paid' => $invoice->paid,
@@ -100,6 +109,35 @@ class SalesInvoice extends Model
                 $invoice->items()->update(['should_be_paid_at' => $invoice->should_be_paid_at]);
             }
         });
+
+        // Redistribute daily delivery costs when a car-load invoice is created or updated.
+        // Back-office invoices (car_load_id is null) are excluded — their delivery_cost is
+        // either set manually or left null.
+        // DB::table() updates inside InvoiceDeliveryCostService bypass model events,
+        // preventing recursive dispatch.
+        static::saved(function (SalesInvoice $invoice): void {
+            if ($invoice->car_load_id === null) {
+                return;
+            }
+
+            RecalculateInvoicesDeliveryCostJob::dispatch(
+                carLoadId: $invoice->car_load_id,
+                workDay: $invoice->created_at->toDateString(),
+            );
+        });
+
+        // Also redistribute when a car-load invoice is deleted so the remaining invoices
+        // of that day each absorb the freed delivery cost share.
+        static::deleted(function (SalesInvoice $invoice): void {
+            if ($invoice->car_load_id === null) {
+                return;
+            }
+
+            RecalculateInvoicesDeliveryCostJob::dispatch(
+                carLoadId: $invoice->car_load_id,
+                workDay: $invoice->created_at->toDateString(),
+            );
+        });
     }
 
     // =========================================================================
@@ -108,12 +146,12 @@ class SalesInvoice extends Model
 
     public function getTotalAttribute(): int
     {
-        return $this->total_amount;
+        return (int) $this->total_amount;
     }
 
     public function getTotalPaidAttribute(): int
     {
-        return $this->total_payments;
+        return (int) $this->total_payments;
     }
 
     public function getTotalRemainingAttribute(): int
@@ -143,6 +181,13 @@ class SalesInvoice extends Model
         $freshTotalPayments = $salesInvoiceStatsService->calculateTotalPaymentsForInvoice($this);
         $freshTotalRealizedProfit = $salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($this);
 
+        // TODO: Before computing commission, check CommissionPeriodSettings for the invoice's
+        // period to determine whether immediate calculation is enabled. If the active period
+        // uses deferred calculation (e.g. commissions are only finalised at month-end via
+        // bayal:calculate-commissions), skip this step and leave estimated_commercial_commission
+        // unchanged so the scheduled command remains the single source of truth.
+        $freshEstimatedCommission = $salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($this);
+
         // FULLY_PAID is never set automatically — only markAsFullyPaid() may do that.
         // However, if the invoice is already FULLY_PAID and payments still cover the
         // total, we preserve that status (guard against silent demotion on minor updates).
@@ -163,6 +208,7 @@ class SalesInvoice extends Model
         $this->total_estimated_profit = $freshTotalEstimatedProfit;
         $this->total_payments = $freshTotalPayments;
         $this->total_realized_profit = $freshTotalRealizedProfit;
+        $this->estimated_commercial_commission = $freshEstimatedCommission;
         $this->status = $newStatus;
         $this->paid = $newStatus === SalesInvoiceStatus::FullyPaid;
         $this->save();
@@ -221,5 +267,27 @@ class SalesInvoice extends Model
         }
 
         return (int) round($this->total_estimated_profit / $this->total_amount * $paymentAmount);
+    }
+
+    /**
+     * Compute the commercial commission earned on a given payment amount.
+     *
+     * Allocates the invoice's estimated_commercial_commission proportionally to
+     * the fraction of the total invoice amount covered by this payment.
+     *
+     * Formula: (estimated_commercial_commission / total_amount) × payment_amount
+     *
+     * Uses stored columns — no extra DB query required.
+     * Returns 0 if total_amount is 0 to prevent division by zero.
+     *
+     * This is the single source of truth for per-payment commission computation.
+     */
+    public function computeCommercialCommissionForPaymentAmount(int $paymentAmount): int
+    {
+        if (! $this->total_amount) {
+            return 0;
+        }
+
+        return (int) round($this->estimated_commercial_commission / $this->total_amount * $paymentAmount);
     }
 }

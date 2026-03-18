@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\CarLoadStatus;
 use App\Enums\MonthlyFixedCostPool;
 use App\Enums\MonthlyFixedCostSubCategory;
+use App\Models\CarLoad;
 use App\Models\MonthlyFixedCost;
 use App\Models\ProductCategory;
 use App\Models\Vehicle;
@@ -55,9 +56,19 @@ class RefactorOldData extends Command
 
     private const DEPOT_OUEST_FOIRE_ADDRESS = 'Ouest Foire, Dakar';
 
-    private const DEFAULT_PRODUCT_CATEGORY_NAME = 'JETABLES';
-
-    private const DEFAULT_PRODUCT_CATEGORY_COMMISSION_RATE = '0.0200';
+    /**
+     * The first entry is the fallback category assigned to products with no category.
+     * All entries are matched by name — safe to re-run.
+     *
+     * @var array<int, array{name: string, commission_rate: string}>
+     */
+    private const PRODUCT_CATEGORIES = [
+        ['name' => 'JETABLES',     'commission_rate' => '0.0250'],
+        ['name' => 'ALIMENTAIRES', 'commission_rate' => '0.0100'],
+        ['name' => 'HYGIENE',      'commission_rate' => '0.0200'],
+        ['name' => 'VAISSELLE',    'commission_rate' => '0.0300'],
+        ['name' => 'DIVERS',       'commission_rate' => '0.0300'],
+    ];
 
     /**
      * Ordered list of sub-commands to execute.
@@ -74,13 +85,14 @@ class RefactorOldData extends Command
     private const FLEET_VEHICLES = [
         [
             'plate_number' => 'AA-531-WL',
-            'name' => 'AA-531-WL',
+            'name' => 'BERLINGO 531',
             'insurance_monthly' => 7_000,
             'maintenance_monthly' => 13_500,
-            'repair_reserve_monthly' => 25_000,
+            'repair_reserve_monthly' => 35_000,
             'depreciation_monthly' => 60_000,
-            'driver_salary_monthly' => 100_000,
+            'driver_salary_monthly' => 220_000,
             'working_days_per_month' => 26,
+            'estimated_daily_fuel_consumption' => 2_500,
         ],
     ];
 
@@ -93,9 +105,17 @@ class RefactorOldData extends Command
      */
     private const MONTHLY_FIXED_COSTS = [
         [
+            'cost_pool' => MonthlyFixedCostPool::Storage,
+            'sub_category' => MonthlyFixedCostSubCategory::WarehouseRent,
+            'amount' => 1_000,
+            'label' => 'Loyer mensuel',
+            'period_year' => 2026,
+            'period_month' => 2,
+        ],
+        [
             'cost_pool' => MonthlyFixedCostPool::Overhead,
             'sub_category' => MonthlyFixedCostSubCategory::ManagerSalary,
-            'amount' => 100_000,
+            'amount' => 1_000,
             'label' => 'Salaire manager',
             'period_year' => 2026,
             'period_month' => 3,
@@ -152,10 +172,17 @@ class RefactorOldData extends Command
         $this->info('───────────────────────────────────────────────────────────');
         $this->seedFleetVehicles($isDryRun);
 
+        // Step 0.2: link all unassigned car loads to the fleet vehicle (idempotent)
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0.2/6 — Link all car loads to the fleet vehicle');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->backfillCarLoadVehicle($isDryRun);
+
         // Step 0.5: seed monthly fixed costs (idempotent — skips existing pool+sub_category+period)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 0.5/5 — Seed monthly fixed costs');
+        $this->info('  Step 0.5/6 — Seed monthly fixed costs');
         $this->info('───────────────────────────────────────────────────────────');
         $this->seedMonthlyFixedCosts($isDryRun);
 
@@ -179,7 +206,7 @@ class RefactorOldData extends Command
         // Step 4 runs inline (no sub-command)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 4/5 — Backfill car load statuses');
+        $this->info('  Step 4/6 — Backfill car load statuses');
         $this->info('───────────────────────────────────────────────────────────');
         $this->backfillCarLoadStatuses($isDryRun);
 
@@ -193,7 +220,7 @@ class RefactorOldData extends Command
         // Step 6 runs inline (no sub-command)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 6/6 — Seed "'.self::DEFAULT_PRODUCT_CATEGORY_NAME.'" product category and assign all products');
+        $this->info('  Step 6/6 — Seed product categories and assign unassigned products to JETABLES');
         $this->info('───────────────────────────────────────────────────────────');
         $this->seedDefaultProductCategory($isDryRun);
 
@@ -209,6 +236,53 @@ class RefactorOldData extends Command
         $this->info('═══════════════════════════════════════════════════════════');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Assigns the single fleet vehicle to every car load that has no vehicle_id.
+     *
+     * Uses the model (not raw DB) so the CarLoad::saving boot hook fires on each
+     * record and snapshots fixed_daily_cost at the vehicle's current daily rate.
+     *
+     * Idempotent: car loads that already have a vehicle_id are skipped.
+     */
+    private function backfillCarLoadVehicle(bool $isDryRun): void
+    {
+        $fleetPlateNumber = self::FLEET_VEHICLES[0]['plate_number'];
+
+        $vehicle = Vehicle::where('plate_number', $fleetPlateNumber)->first();
+
+        if ($vehicle === null) {
+            $this->warn("  Vehicle «{$fleetPlateNumber}» not found — cannot link car loads. Run Step 0 first.");
+
+            return;
+        }
+
+        $unlinkedCarLoads = CarLoad::whereNull('vehicle_id')->orderBy('id')->get();
+
+        if ($unlinkedCarLoads->isEmpty()) {
+            $this->info('  All car loads already have a vehicle. Nothing to do.');
+
+            return;
+        }
+
+        $this->line("  {$unlinkedCarLoads->count()} car load(s) have no vehicle — will assign «{$vehicle->name}» (id #{$vehicle->id}).");
+
+        if ($isDryRun) {
+            foreach ($unlinkedCarLoads as $carLoad) {
+                $this->warn("  [DRY RUN] Would link car load #{$carLoad->id} «{$carLoad->name}» → vehicle «{$vehicle->name}».");
+            }
+
+            return;
+        }
+
+        foreach ($unlinkedCarLoads as $carLoad) {
+            // Assigning via the model triggers the saving hook which snapshots fixed_daily_cost.
+            $carLoad->update(['vehicle_id' => $vehicle->id]);
+            $this->info("  Linked car load #{$carLoad->id} «{$carLoad->name}» → vehicle «{$vehicle->name}» (fixed_daily_cost: {$carLoad->fixed_daily_cost} F/j).");
+        }
+
+        $this->info("  Done — {$unlinkedCarLoads->count()} car load(s) linked to «{$vehicle->name}».");
     }
 
     /**
@@ -397,33 +471,50 @@ class RefactorOldData extends Command
     }
 
     /**
-     * Creates the default "JETABLES" product category (2% commission rate) if it does not
-     * yet exist, then assigns every product that has no category to that category.
+     * Creates all product categories defined in PRODUCT_CATEGORIES if they do not yet exist,
+     * then assigns every product with no category to the first entry (JETABLES — the default).
      *
-     * Idempotent: safe to re-run — skips products already assigned to a category.
+     * Matched by name — idempotent, safe to re-run.
      */
     private function seedDefaultProductCategory(bool $isDryRun): void
     {
-        $categoryName = self::DEFAULT_PRODUCT_CATEGORY_NAME;
-        $commissionRate = self::DEFAULT_PRODUCT_CATEGORY_COMMISSION_RATE;
+        $fallbackCategoryName = self::PRODUCT_CATEGORIES[0]['name'];
+        $fallbackCategory = null;
 
-        $existingCategory = ProductCategory::where('name', $categoryName)->first();
+        foreach (self::PRODUCT_CATEGORIES as $categoryData) {
+            $categoryName = $categoryData['name'];
+            $commissionRate = $categoryData['commission_rate'];
 
-        if ($existingCategory !== null) {
-            $this->line("  Category «{$categoryName}» already exists (id #{$existingCategory->id}). Skipping creation.");
-            $category = $existingCategory;
-        } else {
+            $existingCategory = ProductCategory::where('name', $categoryName)->first();
+
+            if ($existingCategory !== null) {
+                $this->line("  Category «{$categoryName}» already exists (id #{$existingCategory->id}). Skipping creation.");
+                if ($categoryName === $fallbackCategoryName) {
+                    $fallbackCategory = $existingCategory;
+                }
+
+                continue;
+            }
+
             if ($isDryRun) {
-                $this->warn("  [DRY RUN] Would create product category «{$categoryName}» with commission rate {$commissionRate}.");
-            } else {
-                $category = ProductCategory::create([
-                    'name' => $categoryName,
-                    'commission_rate' => $commissionRate,
-                ]);
-                $this->info("  Created product category «{$categoryName}» (id #{$category->id}) — commission rate: {$commissionRate}.");
+                $this->warn("  [DRY RUN] Would create category «{$categoryName}» — commission rate: {$commissionRate}.");
+
+                continue;
+            }
+
+            $created = ProductCategory::create([
+                'name' => $categoryName,
+                'commission_rate' => $commissionRate,
+            ]);
+
+            $this->info("  Created category «{$categoryName}» (id #{$created->id}) — commission rate: {$commissionRate}.");
+
+            if ($categoryName === $fallbackCategoryName) {
+                $fallbackCategory = $created;
             }
         }
 
+        // Assign products with no category to the fallback (JETABLES).
         $productsWithoutCategory = DB::table('products')->whereNull('product_category_id')->count();
 
         if ($productsWithoutCategory === 0) {
@@ -432,19 +523,25 @@ class RefactorOldData extends Command
             return;
         }
 
-        $this->line("  {$productsWithoutCategory} product(s) have no category — will assign to «{$categoryName}».");
+        $this->line("  {$productsWithoutCategory} product(s) have no category — will assign to «{$fallbackCategoryName}».");
 
         if ($isDryRun) {
-            $this->warn("  [DRY RUN] Would assign {$productsWithoutCategory} product(s) to «{$categoryName}».");
+            $this->warn("  [DRY RUN] Would assign {$productsWithoutCategory} product(s) to «{$fallbackCategoryName}».");
+
+            return;
+        }
+
+        if ($fallbackCategory === null) {
+            $this->error("  Fallback category «{$fallbackCategoryName}» could not be resolved. Skipping product assignment.");
 
             return;
         }
 
         $assignedCount = DB::table('products')
             ->whereNull('product_category_id')
-            ->update(['product_category_id' => $category->id]);
+            ->update(['product_category_id' => $fallbackCategory->id]);
 
-        $this->info("  Done — {$assignedCount} product(s) assigned to «{$categoryName}» (id #{$category->id}).");
+        $this->info("  Done — {$assignedCount} product(s) assigned to «{$fallbackCategoryName}» (id #{$fallbackCategory->id}).");
     }
 
     private function allMigrationsHaveBeenRun(): bool

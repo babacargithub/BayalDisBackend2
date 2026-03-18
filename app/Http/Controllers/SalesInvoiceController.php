@@ -29,6 +29,7 @@ class SalesInvoiceController extends Controller
         $invoices = SalesInvoice::query()
             ->with([
                 'customer:id,name,phone_number,address',
+                'commercial:id,name',
             ])
             ->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
             ->latest()
@@ -63,7 +64,7 @@ class SalesInvoiceController extends Controller
             'customer:id,name,phone_number,address',
             'items:id,sales_invoice_id,product_id,quantity,price,profit',
             'items.product:id,name,price',
-            'payments:id,sales_invoice_id,amount,payment_method,comment,created_at',
+            'payments:id,sales_invoice_id,amount,commercial_commission,payment_method,comment,created_at',
         ]);
 
         if (request()->wantsJson() || request()->header('X-Requested-With') === 'XMLHttpRequest') {
@@ -96,6 +97,7 @@ class SalesInvoiceController extends Controller
             'payments' => $salesInvoice->payments->map(fn ($payment) => [
                 'id' => $payment->id,
                 'amount' => $payment->amount,
+                'commercial_commission' => $payment->commercial_commission,
                 'payment_method' => $payment->payment_method,
                 'comment' => $payment->comment,
                 'created_at' => $payment->created_at,

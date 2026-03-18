@@ -15,6 +15,7 @@ use App\Models\Payment;
 use App\Models\SalesInvoice;
 use App\Models\StockEntry;
 use App\Models\Vente;
+use App\Services\Commission\CommissionRateResolverService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -31,6 +32,10 @@ use Illuminate\Support\Facades\DB;
  */
 class SalesInvoiceStatsService
 {
+    public function __construct(
+        private readonly CommissionRateResolverService $commissionRateResolverService,
+    ) {}
+
     // =========================================================================
     // Per-invoice calculation helpers (used by SalesInvoice::recalculateStoredTotals)
     // =========================================================================
@@ -82,6 +87,48 @@ class SalesInvoiceStatsService
     {
         return (int) $this->buildBaseInvoicePaymentsQuery($invoice)
             ->sum('profit');
+    }
+
+    /**
+     * Compute the estimated commercial commission for all INVOICE_ITEM ventes on this invoice.
+     *
+     * For each item the commission is: round(price × quantity × resolved_rate).
+     * The rate is resolved via CommissionRateResolverService (product override →
+     * category override → category default → 0).
+     *
+     * Returns 0 when the invoice has no commercial assigned.
+     */
+    public function calculateEstimatedCommissionForInvoice(SalesInvoice $invoice): int
+    {
+        if ($invoice->commercial_id === null) {
+            return 0;
+        }
+
+        $commercial = Commercial::find($invoice->commercial_id);
+
+        if ($commercial === null) {
+            return 0;
+        }
+
+        $invoiceItems = $this->buildBaseInvoiceItemsQuery($invoice)
+            ->with('product.productCategory')
+            ->get();
+
+        $totalCommission = 0;
+
+        foreach ($invoiceItems as $invoiceItem) {
+            if ($invoiceItem->product === null) {
+                continue;
+            }
+
+            $itemSubtotal = $invoiceItem->price * $invoiceItem->quantity;
+            $rateApplied = $this->commissionRateResolverService
+                ->resolveRateForCommercialAndProduct($commercial, $invoiceItem->product);
+
+            $totalCommission += (int) round($itemSubtotal * $rateApplied);
+        }
+
+        return $totalCommission;
     }
 
     // =========================================================================

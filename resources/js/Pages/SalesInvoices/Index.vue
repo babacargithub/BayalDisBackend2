@@ -9,16 +9,16 @@
           <v-btn color="primary" @click="showCreateDialog = true">
             Nouvelle Facture
           </v-btn>
-          <v-btn 
-            color="success" 
+          <v-btn
+            color="success"
             @click="exportFilteredInvoices"
             :disabled="filteredInvoices.length === 0"
           >
             <v-icon>mdi-download</v-icon>
             Exporter PDF ({{ filteredInvoices.length }})
           </v-btn>
-          <v-btn 
-            color="error" 
+          <v-btn
+            color="error"
             :href="route('sales-invoices.unpaid-pdf')"
             target="_blank"
           >
@@ -82,10 +82,10 @@
             :append-icon="selectedWeeks.length > 0 ? 'mdi-filter' : 'mdi-calendar-week'"
           >
             Filtrer par semaines
-            <v-chip 
-              v-if="selectedWeeks.length > 0" 
-              size="small" 
-              color="primary" 
+            <v-chip
+              v-if="selectedWeeks.length > 0"
+              size="small"
+              color="primary"
               class="ml-2"
             >
               {{ selectedWeeks.length }}
@@ -234,30 +234,30 @@
         </v-card-title>
         <v-card-text>
           <div class="mb-4">
-            <v-btn 
-              color="primary" 
-              variant="outlined" 
+            <v-btn
+              color="primary"
+              variant="outlined"
               size="small"
               @click="selectAllWeeks"
               class="mr-2"
             >
               Tout sélectionner
             </v-btn>
-            <v-btn 
-              color="secondary" 
-              variant="outlined" 
+            <v-btn
+              color="secondary"
+              variant="outlined"
               size="small"
               @click="deselectAllWeeks"
             >
               Tout désélectionner
             </v-btn>
           </div>
-          
+
           <div v-if="availableWeeks.length === 0" class="text-center py-4">
             <v-icon size="48" color="grey">mdi-calendar-remove</v-icon>
             <div class="text-grey mt-2">Aucune facture trouvée</div>
           </div>
-          
+
           <div v-else class="max-h-400 overflow-y-auto">
             <v-checkbox
               v-for="week in availableWeeks"
@@ -290,9 +290,9 @@
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn color="primary" variant="text" @click="showDeleteDialog = false">Annuler</v-btn>
-          <v-btn 
-            color="error" 
-            variant="text" 
+          <v-btn
+            color="error"
+            variant="text"
             @click="confirmDelete"
           >
             Supprimer
@@ -323,7 +323,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { Head, router } from '@inertiajs/vue3'
+import { router } from '@inertiajs/vue3'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import CreateInvoiceDialog from './Partials/CreateInvoiceDialog.vue'
 import ItemsDialog from './Partials/ItemsDialog.vue'
@@ -373,15 +373,15 @@ const formatWeekLabel = (startDate, endDate) => {
     'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
     'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
   ]
-  
+
   const startDay = startDate.getDate()
   const startMonth = months[startDate.getMonth()]
   const startYear = startDate.getFullYear()
-  
+
   const endDay = endDate.getDate()
   const endMonth = months[endDate.getMonth()]
   const endYear = endDate.getFullYear()
-  
+
   if (startMonth === endMonth && startYear === endYear) {
     return `Factures du lundi ${startDay} au dimanche ${endDay} ${startMonth} ${startYear}`
   } else if (startYear === endYear) {
@@ -411,12 +411,12 @@ const availableWeeks = computed(() => {
   if (dates.length === 0) return []
 
   const weeks = new Map()
-  
+
   dates.forEach(date => {
     const weekStart = getWeekStart(date)
     const weekEnd = getWeekEnd(date)
     const weekKey = getWeekKey(date)
-    
+
     if (!weeks.has(weekKey)) {
       weeks.set(weekKey, {
         key: weekKey,
@@ -435,7 +435,7 @@ const filteredInvoices = computed(() => {
 
   // Apply payment status filter
   if (filter.value !== 'all') {
-    filtered = filtered.filter(invoice => 
+    filtered = filtered.filter(invoice =>
       filter.value === 'paid' ? invoice.paid : !invoice.paid
     )
   }
@@ -443,7 +443,7 @@ const filteredInvoices = computed(() => {
   // Apply search filter
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    filtered = filtered.filter(invoice => 
+    filtered = filtered.filter(invoice =>
       invoice.customer.name.toLowerCase().includes(query)
     )
   }
@@ -571,27 +571,27 @@ const confirmDelete = () => {
 const exportFilteredInvoices = () => {
   // Prepare filter parameters
   const params = new URLSearchParams()
-  
+
   // Add payment status filter
   if (filter.value !== 'all') {
     params.append('filter', filter.value)
   }
-  
+
   // Add search query
   if (searchQuery.value) {
     params.append('search', searchQuery.value)
   }
-  
+
   // Add selected weeks
   if (selectedWeeks.value.length > 0) {
     selectedWeeks.value.forEach(week => {
       params.append('weeks[]', week)
     })
   }
-  
+
   // Create export URL
   const exportUrl = route('sales-invoices.export-pdf') + '?' + params.toString()
-  
+
   // Open PDF in new window
   window.open(exportUrl, '_blank')
 }
@@ -609,4 +609,4 @@ const refreshData = () => {
     },
   })
 }
-</script> 
+</script>

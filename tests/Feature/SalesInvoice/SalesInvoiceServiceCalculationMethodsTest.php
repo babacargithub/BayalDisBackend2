@@ -3,15 +3,18 @@
 namespace Tests\Feature\SalesInvoice;
 
 use App\Models\Commercial;
+use App\Models\CommercialCategoryCommissionRate;
+use App\Models\CommercialProductCommissionRate;
 use App\Models\Customer;
-use App\Models\Payment;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
 use App\Services\SalesInvoiceStatsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -99,7 +102,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         int $quantity,
         int $profit,
     ): void {
-        \Illuminate\Support\Facades\DB::table('ventes')->insert([
+        DB::table('ventes')->insert([
             'sales_invoice_id' => $invoice->id,
             'product_id' => $this->defaultProduct->id,
             'price' => $price,
@@ -117,7 +120,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
      */
     private function insertPaymentDirectly(SalesInvoice $invoice, int $amount, int $profit): void
     {
-        \Illuminate\Support\Facades\DB::table('payments')->insert([
+        DB::table('payments')->insert([
             'sales_invoice_id' => $invoice->id,
             'amount' => $amount,
             'profit' => $profit,
@@ -404,5 +407,174 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
         $realizedProfit = $this->salesInvoiceStatsService->calculateTotalRealizedProfitForInvoice($invoice);
 
         $this->assertGreaterThan($realizedProfit, $totalAmount);
+    }
+
+    // =========================================================================
+    // calculateEstimatedCommissionForInvoice
+    // =========================================================================
+
+    private function makeProductWithCategoryRate(float $categoryRate): Product
+    {
+        $category = ProductCategory::create([
+            'name' => 'Category '.uniqid(),
+            'commission_rate' => $categoryRate,
+        ]);
+
+        return Product::create([
+            'name' => 'Product '.uniqid(),
+            'price' => 1000,
+            'cost_price' => 600,
+            'base_quantity' => 1,
+            'product_category_id' => $category->id,
+        ]);
+    }
+
+    public function test_calculate_estimated_commission_returns_zero_when_invoice_has_no_commercial(): void
+    {
+        $invoiceWithNoCommercial = SalesInvoice::create([
+            'customer_id' => $this->defaultCustomer->id,
+            'commercial_id' => null,
+        ]);
+        $this->insertInvoiceItemDirectly($invoiceWithNoCommercial, price: 1000, quantity: 2, profit: 200);
+
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoiceWithNoCommercial));
+    }
+
+    public function test_calculate_estimated_commission_returns_zero_when_product_has_no_category(): void
+    {
+        // defaultProduct has no product_category_id — rate resolves to 0.
+        $invoice = $this->makeEmptyInvoice();
+        $this->insertInvoiceItemDirectly($invoice, price: 1000, quantity: 2, profit: 200);
+
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoice));
+    }
+
+    public function test_calculate_estimated_commission_returns_zero_when_invoice_has_no_items(): void
+    {
+        $invoice = $this->makeEmptyInvoice();
+
+        $this->assertSame(0, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoice));
+    }
+
+    public function test_calculate_estimated_commission_applies_category_default_rate_to_single_item(): void
+    {
+        // rate = 2%, subtotal = 1000 × 2 = 2000, commission = round(2000 × 0.02) = 40
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        $invoice = $this->makeEmptyInvoice();
+
+        DB::table('ventes')->insert([
+            'sales_invoice_id' => $invoice->id,
+            'product_id' => $productWithCategory->id,
+            'price' => 1000,
+            'quantity' => 2,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame(40, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoice));
+    }
+
+    public function test_calculate_estimated_commission_accumulates_across_multiple_items(): void
+    {
+        // Item 1: subtotal 1000 × 3 = 3000 × 2% = 60
+        // Item 2: subtotal 500 × 4 = 2000 × 5% = 100
+        // Total expected: 160
+        $productAtTwoPercent = $this->makeProductWithCategoryRate(0.02);
+        $productAtFivePercent = $this->makeProductWithCategoryRate(0.05);
+        $invoice = $this->makeEmptyInvoice();
+
+        DB::table('ventes')->insert([
+            ['sales_invoice_id' => $invoice->id, 'product_id' => $productAtTwoPercent->id, 'price' => 1000, 'quantity' => 3, 'profit' => 0, 'type' => Vente::TYPE_INVOICE, 'created_at' => now(), 'updated_at' => now()],
+            ['sales_invoice_id' => $invoice->id, 'product_id' => $productAtFivePercent->id, 'price' => 500, 'quantity' => 4, 'profit' => 0, 'type' => Vente::TYPE_INVOICE, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $this->assertSame(160, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoice));
+    }
+
+    public function test_calculate_estimated_commission_uses_product_level_override_rate_over_category_default(): void
+    {
+        // Category default: 2%, product-level override for this commercial: 10%
+        // Subtotal = 1000 × 2 = 2000, commission = round(2000 × 0.10) = 200
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->defaultCommercial->id,
+            'product_id' => $productWithCategory->id,
+            'rate' => '0.1000',
+        ]);
+
+        $invoice = $this->makeEmptyInvoice();
+        DB::table('ventes')->insert([
+            'sales_invoice_id' => $invoice->id,
+            'product_id' => $productWithCategory->id,
+            'price' => 1000,
+            'quantity' => 2,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame(200, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoice));
+    }
+
+    public function test_calculate_estimated_commission_uses_commercial_category_override_over_category_default(): void
+    {
+        // Category default: 2%, commercial × category override: 8%
+        // Subtotal = 1000 × 2 = 2000, commission = round(2000 × 0.08) = 160
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        CommercialCategoryCommissionRate::create([
+            'commercial_id' => $this->defaultCommercial->id,
+            'product_category_id' => $productWithCategory->product_category_id,
+            'rate' => '0.0800',
+        ]);
+
+        $invoice = $this->makeEmptyInvoice();
+        DB::table('ventes')->insert([
+            'sales_invoice_id' => $invoice->id,
+            'product_id' => $productWithCategory->id,
+            'price' => 1000,
+            'quantity' => 2,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame(160, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoice));
+    }
+
+    public function test_calculate_estimated_commission_is_isolated_from_other_invoices(): void
+    {
+        // rate = 2%, subtotal = 1000 × 1 = 1000, commission = 20
+        $productWithCategory = $this->makeProductWithCategoryRate(0.02);
+        $invoiceUnderTest = $this->makeEmptyInvoice();
+
+        DB::table('ventes')->insert([
+            'sales_invoice_id' => $invoiceUnderTest->id,
+            'product_id' => $productWithCategory->id,
+            'price' => 1000,
+            'quantity' => 1,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // A second invoice with a huge item that must not bleed into the first
+        $otherInvoice = $this->makeEmptyInvoice();
+        DB::table('ventes')->insert([
+            'sales_invoice_id' => $otherInvoice->id,
+            'product_id' => $productWithCategory->id,
+            'price' => 99999,
+            'quantity' => 99,
+            'profit' => 0,
+            'type' => Vente::TYPE_INVOICE,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame(20, $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoiceUnderTest));
     }
 }
