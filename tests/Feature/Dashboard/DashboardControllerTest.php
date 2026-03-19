@@ -213,6 +213,9 @@ class DashboardControllerTest extends TestCase
             'total_realized_profit',
             'total_payments_received',
             'total_expenses',
+            'total_commissions',
+            'total_delivery_cost',
+            'net_profit',
         ];
 
         $response = $this->actingAs($this->authenticatedUser)->get(route('dashboard'));
@@ -562,6 +565,9 @@ class DashboardControllerTest extends TestCase
             'total_customers',
             'total_prospects',
             'total_confirmed_customers',
+            'total_commissions',
+            'total_delivery_cost',
+            'net_profit',
         ];
 
         foreach (['dailyStats', 'weeklyStats', 'monthlyStats', 'overallStats'] as $statBlock) {

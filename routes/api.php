@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ApiCarLoadController;
+use App\Http\Controllers\Api\ApiCarLoadExpenseController;
 use App\Http\Controllers\Api\ApiCommissionController;
 use App\Http\Controllers\Api\ApiCustomerController;
 use App\Http\Controllers\Api\ApiOrderController;
@@ -80,6 +81,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('car-loads/current-items', [ApiCarLoadController::class, 'getCurrentItems']);
         Route::get('products/{product}/variants', [ApiCarLoadController::class, 'getProductVariants']);
         Route::post('car-loads/{product}/transform', [ApiCarLoadController::class, 'transformToVariants'])->name('car-loads.transform_product_to_variants');
+
+        // Car load expenses
+        Route::get('car-load-expenses', [ApiCarLoadExpenseController::class, 'index'])->name('salesperson.car-load-expenses.index');
+        Route::post('car-load-expenses', [ApiCarLoadExpenseController::class, 'store'])->name('salesperson.car-load-expenses.store');
+        Route::delete('car-load-expenses/{expenseId}', [ApiCarLoadExpenseController::class, 'destroy'])->name('salesperson.car-load-expenses.destroy');
 
         Route::get('weekly-debts', [ApiCustomerController::class, 'getWeeklyDebts']);
 

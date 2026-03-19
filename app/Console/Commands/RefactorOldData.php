@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\CarLoadExpenseType;
 use App\Enums\CarLoadStatus;
 use App\Enums\MonthlyFixedCostPool;
 use App\Enums\MonthlyFixedCostSubCategory;
@@ -9,6 +10,7 @@ use App\Models\CarLoad;
 use App\Models\MonthlyFixedCost;
 use App\Models\ProductCategory;
 use App\Models\Vehicle;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -53,6 +55,13 @@ class RefactorOldData extends Command
     protected $description = 'Run all historical-data-refactoring commands in the correct order: migrate ventes → correct profits → link car loads → backfill statuses → link stock entries to warehouse.';
 
     private const DEPOT_OUEST_FOIRE_NAME = 'Dépôt Ouest Foire';
+
+    /**
+     * Historical fuel cost per working week (Monday – Saturday), in XOF.
+     * Applied to every car load that has no expense entries recorded.
+     * A car load spanning one month will accumulate roughly 4 × WEEKLY_FUEL_COST_XOF.
+     */
+    private const WEEKLY_FUEL_COST_XOF = 15_000;
 
     private const DEPOT_OUEST_FOIRE_ADDRESS = 'Ouest Foire, Dakar';
 
@@ -179,6 +188,13 @@ class RefactorOldData extends Command
         $this->info('───────────────────────────────────────────────────────────');
         $this->backfillCarLoadVehicle($isDryRun);
 
+        // Step 0.3: backfill daily fuel entries for car loads with no fuel data (idempotent)
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0.3/6 — Backfill daily fuel entries for historical car loads');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->backfillFuelEntries($isDryRun);
+
         // Step 0.5: seed monthly fixed costs (idempotent — skips existing pool+sub_category+period)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
@@ -220,9 +236,17 @@ class RefactorOldData extends Command
         // Step 6 runs inline (no sub-command)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 6/6 — Seed product categories and assign unassigned products to JETABLES');
+        $this->info('  Step 6/7 — Seed product categories and assign unassigned products to JETABLES');
         $this->info('───────────────────────────────────────────────────────────');
         $this->seedDefaultProductCategory($isDryRun);
+
+        // Step 7 runs inline (no sub-command)
+        // Must run last: depends on car_load_id being set (Step 3) and expenses existing (Step 0.3).
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 7/7 — Backfill delivery costs on historical invoices');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->backfillInvoiceDeliveryCosts($isDryRun);
 
         $this->newLine();
         $this->info('═══════════════════════════════════════════════════════════');
@@ -353,6 +377,92 @@ class RefactorOldData extends Command
             $vehicle = Vehicle::create($vehicleData);
             $this->info("  Created vehicle «{$plateNumber}» (id #{$vehicle->id}) — daily rate: {$dailyRate} F/jour.");
         }
+    }
+
+    /**
+     * Creates one CarLoadExpense (type=FUEL) of WEEKLY_FUEL_COST_XOF per working week
+     * (Mon–Sat) within each car load's active period.
+     *
+     * A car load spanning one month gets roughly 4 entries (4 × WEEKLY_FUEL_COST_XOF).
+     * A car load is skipped entirely if it already has any expense entries, making this
+     * step safe to re-run without creating duplicates.
+     *
+     * Date range per car load:
+     *  - Start : load_date (car loads without a load_date are skipped)
+     *  - End   : return_date if it has already passed, otherwise today
+     *
+     * Inserts are done via DB::table() to bypass model events and avoid
+     * dispatching RecalculateInvoicesDeliveryCostJob for every historical entry.
+     */
+    private function backfillFuelEntries(bool $isDryRun): void
+    {
+        $carLoadsWithoutExpenses = CarLoad::whereDoesntHave('expenses')
+            ->whereNotNull('load_date')
+            ->orderBy('id')
+            ->get();
+
+        if ($carLoadsWithoutExpenses->isEmpty()) {
+            $this->info('  All car loads already have expense entries. Nothing to backfill.');
+
+            return;
+        }
+
+        $this->line("  {$carLoadsWithoutExpenses->count()} car load(s) have no expenses — backfilling at ".self::WEEKLY_FUEL_COST_XOF.' F/week.');
+
+        $totalEntriesCreated = 0;
+
+        foreach ($carLoadsWithoutExpenses as $carLoad) {
+            $startDate = Carbon::parse($carLoad->load_date)->startOfDay();
+
+            $endDate = ($carLoad->return_date !== null && Carbon::parse($carLoad->return_date)->isPast())
+                ? Carbon::parse($carLoad->return_date)->startOfDay()
+                : today();
+
+            // Count working weeks: start from Monday of the week containing load_date
+            // so partial first weeks are included.
+            $weekStart = $startDate->copy()->startOfWeek(Carbon::MONDAY);
+            $numberOfWeeks = 0;
+
+            while ($weekStart->lte($endDate)) {
+                $numberOfWeeks++;
+                $weekStart->addWeek();
+            }
+
+            if ($numberOfWeeks === 0) {
+                $this->line("  Car load #{$carLoad->id} «{$carLoad->name}»: no weeks found in range — skipping.");
+
+                continue;
+            }
+
+            $totalFuel = $numberOfWeeks * self::WEEKLY_FUEL_COST_XOF;
+            $this->line("  Car load #{$carLoad->id} «{$carLoad->name}»: {$numberOfWeeks} week(s) × ".self::WEEKLY_FUEL_COST_XOF." F = {$totalFuel} F ({$startDate->toDateString()} → {$endDate->toDateString()}).");
+
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would create {$numberOfWeeks} weekly fuel expense(s) of ".self::WEEKLY_FUEL_COST_XOF.' F each.');
+
+                continue;
+            }
+
+            $now = now();
+
+            $expensesToInsert = array_fill(0, $numberOfWeeks, [
+                'car_load_id' => $carLoad->id,
+                'label' => 'Carburant hebdomadaire',
+                'type' => CarLoadExpenseType::Fuel->value,
+                'amount' => self::WEEKLY_FUEL_COST_XOF,
+                'notes' => 'Reconstitution historique',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('car_load_expenses')->insert($expensesToInsert);
+
+            $totalEntriesCreated += $numberOfWeeks;
+
+            $this->info("  Created {$numberOfWeeks} weekly fuel expense(s) for car load #{$carLoad->id}.");
+        }
+
+        $this->info("  Done — {$totalEntriesCreated} weekly fuel expenses created across {$carLoadsWithoutExpenses->count()} car load(s).");
     }
 
     /**
@@ -542,6 +652,125 @@ class RefactorOldData extends Command
             ->update(['product_category_id' => $fallbackCategory->id]);
 
         $this->info("  Done — {$assignedCount} product(s) assigned to «{$fallbackCategoryName}» (id #{$fallbackCategory->id}).");
+    }
+
+    /**
+     * Backfills delivery_cost on every historical sales invoice that is linked to a car load.
+     *
+     * For future car loads (exactly 7 working days), the standard daily-rate formula in
+     * AbcVehicleCostService is correct and handles delivery cost redistribution automatically.
+     * For historical car loads, the calendar span (load_date → return_date) is unreliable
+     * because selling may have stopped weeks before the car load was formally closed.
+     *
+     * This method uses a different denominator: the number of distinct Mon–Sat calendar
+     * dates on which the car load actually generated at least one invoice ("selling days").
+     * This produces a realistic daily cost that reflects actual commercial activity.
+     *
+     * Daily cost formula (per car load):
+     *   fixed_daily_cost            — rate already snapshotted on the car load
+     *   + round(total_expenses / selling_days)  — actual fuel/other costs spread over selling days
+     *
+     * That daily cost is then split equally across all invoices created on the same calendar
+     * day for that car load. The integer remainder is distributed 1 XOF at a time to the
+     * first invoices (ordered by id) so the sum is exact.
+     *
+     * All writes go directly through DB::table() to bypass model events and avoid
+     * dispatching RecalculateInvoicesDeliveryCostJob for every historical row.
+     *
+     * Idempotent: re-running overwrites delivery_cost with the same computed values.
+     */
+    private function backfillInvoiceDeliveryCosts(bool $isDryRun): void
+    {
+        $carLoadIdsWithInvoices = DB::table('sales_invoices')
+            ->whereNotNull('car_load_id')
+            ->distinct()
+            ->orderBy('car_load_id')
+            ->pluck('car_load_id');
+
+        if ($carLoadIdsWithInvoices->isEmpty()) {
+            $this->info('  No invoices with a car_load_id found. Nothing to backfill.');
+
+            return;
+        }
+
+        $this->line("  {$carLoadIdsWithInvoices->count()} car load(s) have linked invoices — computing selling-day delivery costs.");
+
+        $totalInvoicesUpdated = 0;
+
+        foreach ($carLoadIdsWithInvoices as $carLoadId) {
+            $carLoad = CarLoad::find($carLoadId);
+
+            if ($carLoad === null) {
+                $this->warn("  Car load #{$carLoadId} not found in car_loads table — skipping.");
+
+                continue;
+            }
+
+            // Collect all distinct dates that had at least one invoice for this car load,
+            // then exclude Sundays in PHP so this works on both MySQL and SQLite.
+            $allInvoiceDates = DB::table('sales_invoices')
+                ->where('car_load_id', $carLoadId)
+                ->selectRaw('DATE(created_at) as work_day')
+                ->distinct()
+                ->orderBy('work_day')
+                ->pluck('work_day');
+
+            $sellingDates = $allInvoiceDates->filter(
+                fn (string $date) => Carbon::parse($date)->dayOfWeek !== Carbon::SUNDAY
+            )->values();
+
+            $sellingDays = $sellingDates->count();
+
+            if ($sellingDays === 0) {
+                $this->line("  Car load #{$carLoadId} «{$carLoad->name}»: no Mon–Sat selling days found — skipping.");
+
+                continue;
+            }
+
+            // Daily cost: fixed snapshot rate + variable expenses prorated over selling days.
+            $fixedDailyRate = (int) ($carLoad->fixed_daily_cost ?? 0);
+            $totalVariableExpenses = (int) $carLoad->expenses()->sum('amount');
+            $dailyCost = $fixedDailyRate + (int) round($totalVariableExpenses / $sellingDays);
+
+            $this->line(
+                "  Car load #{$carLoadId} «{$carLoad->name}»: {$sellingDays} selling day(s), "
+                ."daily cost: {$dailyCost} F "
+                ."(fixed: {$fixedDailyRate} F/day + variable: {$totalVariableExpenses} F / {$sellingDays} days)."
+            );
+
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would update delivery_cost for all invoices of car load #{$carLoadId}.");
+
+                continue;
+            }
+
+            foreach ($sellingDates as $workDay) {
+                $invoiceIds = DB::table('sales_invoices')
+                    ->where('car_load_id', $carLoadId)
+                    ->whereDate('created_at', $workDay)
+                    ->orderBy('id')
+                    ->pluck('id');
+
+                $numberOfInvoices = $invoiceIds->count();
+                $baseDeliveryCostPerInvoice = intdiv($dailyCost, $numberOfInvoices);
+                $remainder = $dailyCost % $numberOfInvoices;
+
+                foreach ($invoiceIds->values() as $index => $invoiceId) {
+                    // Distribute remainder 1 XOF at a time to first invoices so SUM == dailyCost.
+                    $deliveryCost = $baseDeliveryCostPerInvoice + ($index < $remainder ? 1 : 0);
+
+                    DB::table('sales_invoices')
+                        ->where('id', $invoiceId)
+                        ->update(['delivery_cost' => $deliveryCost]);
+                }
+
+                $totalInvoicesUpdated += $numberOfInvoices;
+            }
+
+            $this->info("  Car load #{$carLoadId}: {$sellingDates->count()} day(s) updated.");
+        }
+
+        $this->info("  Done — {$totalInvoicesUpdated} invoice(s) updated across {$carLoadIdsWithInvoices->count()} car load(s).");
     }
 
     private function allMigrationsHaveBeenRun(): bool

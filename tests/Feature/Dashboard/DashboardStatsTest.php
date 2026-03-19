@@ -205,6 +205,21 @@ class DashboardStatsTest extends TestCase
         return $depense->fresh();
     }
 
+    /**
+     * Directly overwrite the stored commission and delivery cost columns on a SalesInvoice,
+     * bypassing model events so we can set precise values without triggering recalculation.
+     */
+    private function setInvoiceStoredCommissionAndDeliveryCost(
+        SalesInvoice $invoice,
+        int $estimatedCommission,
+        int $deliveryCost,
+    ): void {
+        SalesInvoice::where('id', $invoice->id)->update([
+            'estimated_commercial_commission' => $estimatedCommission,
+            'delivery_cost' => $deliveryCost,
+        ]);
+    }
+
     private function buildStats(?Carbon $startDate, ?Carbon $endDate): DashboardStats
     {
         return $this->salesInvoiceStatsService->buildStatsForPeriod($startDate, $endDate);
@@ -240,6 +255,9 @@ class DashboardStatsTest extends TestCase
         $this->assertSame(0, $stats->totalRealizedProfit);
         $this->assertSame(0, $stats->totalPaymentsReceived);
         $this->assertSame(0, $stats->totalExpenses);
+        $this->assertSame(0, $stats->totalCommissions);
+        $this->assertSame(0, $stats->totalDeliveryCost);
+        $this->assertSame(0, $stats->netProfit);
     }
 
     // =========================================================================
@@ -732,6 +750,128 @@ class DashboardStatsTest extends TestCase
     }
 
     // =========================================================================
+    // totalCommissions
+    // =========================================================================
+
+    public function test_total_commissions_equals_sum_of_stored_commission_columns_on_invoices(): void
+    {
+        $invoiceA = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+        $invoiceB = $this->makeInvoiceWithOneItem(price: 2000, quantity: 1, profit: 400);
+
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceA, estimatedCommission: 5000, deliveryCost: 0);
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceB, estimatedCommission: 3000, deliveryCost: 0);
+
+        $stats = $this->buildStats(null, null);
+
+        $this->assertSame(8000, $stats->totalCommissions);
+    }
+
+    public function test_total_commissions_is_zero_when_no_invoices_exist(): void
+    {
+        $stats = $this->buildStats(null, null);
+
+        $this->assertSame(0, $stats->totalCommissions);
+    }
+
+    public function test_total_commissions_excludes_invoices_outside_date_range(): void
+    {
+        $invoiceInside = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+        $invoiceOutside = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+
+        // Backdate first so that recalculateStoredTotals (triggered by save) runs before we set our values.
+        $this->backdateInvoice($invoiceInside, Carbon::now()->subDays(2));
+        $this->backdateInvoice($invoiceOutside, Carbon::now()->subDays(20));
+
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceInside, estimatedCommission: 4000, deliveryCost: 0);
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceOutside, estimatedCommission: 9000, deliveryCost: 0);
+
+        $stats = $this->buildStats(Carbon::now()->subDays(5), Carbon::now());
+
+        $this->assertSame(4000, $stats->totalCommissions);
+    }
+
+    // =========================================================================
+    // totalDeliveryCost
+    // =========================================================================
+
+    public function test_total_delivery_cost_equals_sum_of_stored_delivery_cost_columns_on_invoices(): void
+    {
+        $invoiceA = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+        $invoiceB = $this->makeInvoiceWithOneItem(price: 2000, quantity: 1, profit: 400);
+
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceA, estimatedCommission: 0, deliveryCost: 2000);
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceB, estimatedCommission: 0, deliveryCost: 3000);
+
+        $stats = $this->buildStats(null, null);
+
+        $this->assertSame(5000, $stats->totalDeliveryCost);
+    }
+
+    public function test_total_delivery_cost_is_zero_when_no_invoices_exist(): void
+    {
+        $stats = $this->buildStats(null, null);
+
+        $this->assertSame(0, $stats->totalDeliveryCost);
+    }
+
+    public function test_total_delivery_cost_excludes_invoices_outside_date_range(): void
+    {
+        $invoiceInside = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+        $invoiceOutside = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+
+        // Backdate first so that recalculateStoredTotals (triggered by save) runs before we set our values.
+        $this->backdateInvoice($invoiceInside, Carbon::now()->subDays(2));
+        $this->backdateInvoice($invoiceOutside, Carbon::now()->subDays(20));
+
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceInside, estimatedCommission: 0, deliveryCost: 1500);
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoiceOutside, estimatedCommission: 0, deliveryCost: 9000);
+
+        $stats = $this->buildStats(Carbon::now()->subDays(5), Carbon::now());
+
+        $this->assertSame(1500, $stats->totalDeliveryCost);
+    }
+
+    // =========================================================================
+    // netProfit
+    // =========================================================================
+
+    public function test_net_profit_equals_realized_profit_minus_commissions_and_delivery_cost(): void
+    {
+        // Invoice: 2000 total, 800 profit (40% margin). Full payment → 800 realized.
+        $invoice = $this->makeInvoiceWithOneItem(price: 1000, quantity: 2, profit: 800);
+        $this->makePayment($invoice, 2000);
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoice, estimatedCommission: 200, deliveryCost: 100);
+
+        $stats = $this->buildStats(null, null);
+
+        // netProfit = totalRealizedProfit(800) - totalCommissions(200) - totalDeliveryCost(100) = 500
+        $this->assertSame(800, $stats->totalRealizedProfit);
+        $this->assertSame(200, $stats->totalCommissions);
+        $this->assertSame(100, $stats->totalDeliveryCost);
+        $this->assertSame(500, $stats->netProfit);
+    }
+
+    public function test_net_profit_is_zero_when_no_invoices_or_payments_exist(): void
+    {
+        $stats = $this->buildStats(null, null);
+
+        $this->assertSame(0, $stats->netProfit);
+    }
+
+    public function test_net_profit_can_be_negative_when_commissions_and_delivery_cost_exceed_realized_profit(): void
+    {
+        $invoice = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 100);
+        $this->makePayment($invoice, 500); // partial payment, 50 realized profit
+        $this->setInvoiceStoredCommissionAndDeliveryCost($invoice, estimatedCommission: 200, deliveryCost: 300);
+
+        $stats = $this->buildStats(null, null);
+
+        // netProfit = 50 - 200 - 300 = -450
+        $this->assertSame(50, $stats->totalRealizedProfit);
+        $this->assertSame(-450, $stats->netProfit);
+    }
+
+    // =========================================================================
     // toSnakeCaseArray — keys and values must match what the Vue Dashboard expects
     // =========================================================================
 
@@ -753,6 +893,9 @@ class DashboardStatsTest extends TestCase
             'total_realized_profit',
             'total_payments_received',
             'total_expenses',
+            'total_commissions',
+            'total_delivery_cost',
+            'net_profit',
         ];
 
         foreach ($expectedKeys as $expectedKey) {
@@ -785,5 +928,8 @@ class DashboardStatsTest extends TestCase
         $this->assertSame($stats->totalCustomers, $array['total_customers']);
         $this->assertSame($stats->totalProspects, $array['total_prospects']);
         $this->assertSame($stats->totalConfirmedCustomers, $array['total_confirmed_customers']);
+        $this->assertSame($stats->totalCommissions, $array['total_commissions']);
+        $this->assertSame($stats->totalDeliveryCost, $array['total_delivery_cost']);
+        $this->assertSame($stats->netProfit, $array['net_profit']);
     }
 }

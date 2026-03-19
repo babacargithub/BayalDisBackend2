@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CarLoadStatus;
+use App\Jobs\RecalculateInvoicesDeliveryCostJob;
 use App\Services\Abc\AbcVehicleCostService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,21 +36,28 @@ class CarLoad extends Model
 
     protected static function booted(): void
     {
-        // Snapshot the vehicle's daily fixed cost rate whenever vehicle_id changes.
-        // This freezes the rate at assignment time so historical trip costs stay accurate
-        // even if the vehicle's monthly cost structure is updated later.
+        // Always refresh the vehicle's daily fixed cost rate on every save so that
+        // updates to the car load (e.g. changing dates or any other field) always
+        // reflect the vehicle's current monthly cost structure.
         static::saving(function (CarLoad $carLoad): void {
-            if ($carLoad->isDirty('vehicle_id')) {
-                if ($carLoad->vehicle_id === null) {
-                    $carLoad->fixed_daily_cost = null;
-                } else {
-                    $vehicle = Vehicle::find($carLoad->vehicle_id);
-                    if ($vehicle !== null) {
-                        $carLoad->fixed_daily_cost = app(AbcVehicleCostService::class)
-                            ->computeDailyFixedCost($vehicle);
-                    }
+            if ($carLoad->vehicle_id === null) {
+                $carLoad->fixed_daily_cost = 0;
+            } else {
+                $vehicle = Vehicle::find($carLoad->vehicle_id);
+                if ($vehicle !== null) {
+                    $carLoad->fixed_daily_cost = app(AbcVehicleCostService::class)
+                        ->computeDailyFixedCost($vehicle);
                 }
             }
+        });
+
+        // After the fixed_daily_cost is persisted, redistribute the daily delivery cost
+        // across all today's invoices linked to this car load so financial totals stay current.
+        static::saved(function (CarLoad $carLoad): void {
+            RecalculateInvoicesDeliveryCostJob::dispatch(
+                carLoadId: $carLoad->id,
+                workDay: today()->toDateString(),
+            );
         });
     }
 
@@ -63,9 +71,9 @@ class CarLoad extends Model
         return $this->belongsTo(Vehicle::class);
     }
 
-    public function fuelEntries(): HasMany
+    public function expenses(): HasMany
     {
-        return $this->hasMany(CarLoadFuelEntry::class);
+        return $this->hasMany(CarLoadExpense::class);
     }
 
     public function items(): HasMany

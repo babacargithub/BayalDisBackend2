@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CaisseController;
 use App\Http\Controllers\CarLoadController;
+use App\Http\Controllers\CarLoadExpenseController;
 use App\Http\Controllers\CommercialController;
 use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\CustomerCategoryController;
@@ -242,6 +243,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/car-loads/{carLoad}/items/export-pdf', [CarLoadController::class, 'exportItemsPdf'])
         ->name('car-loads.items.export-pdf');
     Route::get('/car-loads/{carLoad}/{product}/history', [CarLoadController::class, 'productHistoryInCarLoad'])->name('car-loads.product.history');
+
+    // Car Load Expenses
+    Route::post('/car-loads/{carLoad}/expenses', [CarLoadExpenseController::class, 'store'])->name('car-loads.expenses.store');
+    Route::delete('/car-loads/{carLoad}/expenses/{expense}', [CarLoadExpenseController::class, 'destroy'])->name('car-loads.expenses.destroy');
 
 });
 Route::middleware(['auth', 'verified'])->group(function () {

@@ -11,13 +11,14 @@ use App\Models\Vehicle;
  * Fixed costs (insurance, maintenance, repair reserve, depreciation, driver salary)
  * are derived from the Vehicle's monthly configuration and prorated over trip duration.
  *
- * Fuel costs are entered as actual receipts via CarLoadFuelEntry and summed directly.
+ * Variable expenses (fuel, parking, fines, washing, etc.) are entered as actual
+ * receipts via CarLoadExpense and summed directly.
  */
 class AbcVehicleCostService
 {
     /**
      * Daily fixed cost for a vehicle, excluding fuel.
-     * Fuel is tracked per trip via CarLoadFuelEntry.
+     * Variable expenses are tracked per trip via CarLoadExpense.
      */
     public function computeDailyFixedCost(Vehicle $vehicle): int
     {
@@ -64,20 +65,20 @@ class AbcVehicleCostService
     }
 
     /**
-     * Total actual fuel cost entered for a CarLoad via fuel receipts.
+     * Total actual variable expenses entered for a CarLoad (fuel, parking, fines, etc.).
      */
-    public function computeFuelCostForCarLoad(CarLoad $carLoad): int
+    public function computeVariableExpensesForCarLoad(CarLoad $carLoad): int
     {
-        return (int) $carLoad->fuelEntries()->sum('amount');
+        return (int) $carLoad->expenses()->sum('amount');
     }
 
     /**
-     * Total vehicle running cost for a CarLoad: fixed (prorated) + fuel (actual).
+     * Total vehicle running cost for a CarLoad: fixed (prorated) + variable expenses (actual).
      */
     public function computeTotalVehicleCostForCarLoad(CarLoad $carLoad): int
     {
         return $this->computeFixedCostForCarLoad($carLoad)
-            + $this->computeFuelCostForCarLoad($carLoad);
+            + $this->computeVariableExpensesForCarLoad($carLoad);
     }
 
     /**

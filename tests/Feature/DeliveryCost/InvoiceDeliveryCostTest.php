@@ -3,11 +3,12 @@
 namespace Tests\Feature\DeliveryCost;
 
 use App\Data\SalesInvoice\SalesInvoiceDailySummaryDTO;
+use App\Enums\CarLoadExpenseType;
 use App\Enums\CarLoadStatus;
 use App\Enums\SalesInvoiceStatus;
 use App\Jobs\RecalculateInvoicesDeliveryCostJob;
 use App\Models\CarLoad;
-use App\Models\CarLoadFuelEntry;
+use App\Models\CarLoadExpense;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\SalesInvoice;
@@ -29,10 +30,10 @@ use Tests\TestCase;
  * "Daily running cost" = (fixed costs + fuel receipts) ÷ trip duration days,
  * computed by AbcVehicleCostService::computeDailyTotalCostForCarLoad().
  *
- * We control the daily cost in tests by adding CarLoadFuelEntry records with a
+ * We control the daily cost in tests by adding CarLoadExpense records with a
  * known amount. The CarLoad has no vehicle, so the fixed portion is 0.
  * The trip starts on the same frozen date as the invoices, giving trip_duration = 1,
- * so daily_cost = fuel_total / 1 = fuel_total.
+ * so daily_cost = expense_total / 1 = expense_total.
  *
  * Split into four sections:
  *  1. Service unit tests (InvoiceDeliveryCostService)
@@ -109,15 +110,15 @@ class InvoiceDeliveryCostTest extends TestCase
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     /**
-     * Set the daily cost of the car load by adding a single fuel entry.
-     * With a 1-day trip and no vehicle fixed cost: daily_cost = fuel_amount.
+     * Set the daily cost of the car load by adding a single fuel expense.
+     * With a 1-day trip and no vehicle fixed cost: daily_cost = expense_amount.
      */
-    private function setDailyCost(int $fuelAmount): void
+    private function setDailyCost(int $expenseAmount): void
     {
-        CarLoadFuelEntry::create([
+        CarLoadExpense::create([
             'car_load_id' => $this->carLoad->id,
-            'amount' => $fuelAmount,
-            'filled_at' => $this->workDate,
+            'amount' => $expenseAmount,
+            'type' => CarLoadExpenseType::Fuel,
         ]);
     }
 
@@ -426,11 +427,11 @@ class InvoiceDeliveryCostTest extends TestCase
             'team_id' => $otherTeam->id,
             'status' => CarLoadStatus::Selling,
         ]);
-        // Add fuel so the other car load also has a known daily cost.
-        CarLoadFuelEntry::create([
+        // Add an expense so the other car load also has a known daily cost.
+        CarLoadExpense::create([
             'car_load_id' => $otherCarLoad->id,
             'amount' => 30_000,
-            'filled_at' => $this->workDate,
+            'type' => CarLoadExpenseType::Fuel,
         ]);
 
         Carbon::setTestNow($this->workDate);

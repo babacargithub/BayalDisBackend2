@@ -1,14 +1,62 @@
 <script setup>
-import { computed } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     carLoad: { type: Object, required: true },
     profitability: { type: Object, required: true },
     salesInvoices: { type: Array, required: true },
-    fuelEntries: { type: Array, required: true },
+    expenses: { type: Array, required: true },
 });
+
+const expenseTypeOptions = [
+    { title: 'Carburant', value: 'FUEL' },
+    { title: 'Parking', value: 'PARKING' },
+    { title: 'Lavage', value: 'WASH' },
+    { title: 'Amende', value: 'POLICE_FINE' },
+    { title: 'Crédit', value: 'CREDIT' },
+    { title: 'Autre', value: 'OTHER' },
+];
+
+const expenseTypeColor = (type) => {
+    const colorMap = {
+        FUEL: 'orange',
+        PARKING: 'blue',
+        WASH: 'cyan',
+        POLICE_FINE: 'red',
+        CREDIT: 'purple',
+        OTHER: 'grey',
+    };
+    return colorMap[type] ?? 'grey';
+};
+
+// ─── Add expense form ─────────────────────────────────────────────────────────
+const showExpenseForm = ref(false);
+const expenseForm = useForm({
+    label: '',
+    amount: null,
+    type: 'FUEL',
+});
+
+const submitExpense = () => {
+    expenseForm.post(route('car-loads.expenses.store', props.carLoad.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showExpenseForm.value = false;
+            expenseForm.reset();
+        },
+    });
+};
+
+// ─── Delete expense ───────────────────────────────────────────────────────────
+const deleteExpenseForm = useForm({});
+const deleteExpense = (expenseId) => {
+    deleteExpenseForm.delete(route('car-loads.expenses.destroy', {
+        carLoad: props.carLoad.id,
+        expense: expenseId,
+    }), { preserveScroll: true });
+};
 
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -78,8 +126,8 @@ const totalInvoicesRemaining = computed(() =>
     props.salesInvoices.reduce((sum, invoice) => sum + invoice.total_remaining, 0),
 );
 
-const totalFuelCost = computed(() =>
-    props.fuelEntries.reduce((sum, entry) => sum + entry.amount, 0),
+const totalExpensesCost = computed(() =>
+    props.expenses.reduce((sum, expense) => sum + expense.amount, 0),
 );
 
 // ─── Profit card color ────────────────────────────────────────────────────────
@@ -98,11 +146,12 @@ const invoiceTableHeaders = [
     { title: 'Statut', key: 'status', align: 'center' },
 ];
 
-const fuelTableHeaders = [
-    { title: 'Date', key: 'filled_at' },
+const expenseTableHeaders = [
+    { title: 'Date', key: 'created_at' },
+    { title: 'Type', key: 'type', align: 'center' },
+    { title: 'Libellé', key: 'label' },
     { title: 'Montant', key: 'amount', align: 'end' },
-    { title: 'Litres', key: 'liters', align: 'end' },
-    { title: 'Notes', key: 'notes' },
+    { title: 'Actions', key: 'actions', sortable: false, align: 'center' },
 ];
 </script>
 
@@ -249,10 +298,10 @@ const fuelTableHeaders = [
                                     <v-divider />
                                     <v-list-item>
                                         <template #title>
-                                            <span class="text-body-2">Carburant réel</span>
+                                            <span class="text-body-2">Dépenses variables (carburant, parking, etc.)</span>
                                         </template>
                                         <template #append>
-                                            <span class="text-body-2 font-weight-medium">{{ formatCurrency(profitability.vehicleFuelCost) }}</span>
+                                            <span class="text-body-2 font-weight-medium">{{ formatCurrency(profitability.vehicleExpensesCost) }}</span>
                                         </template>
                                     </v-list-item>
                                     <v-divider />
@@ -460,38 +509,115 @@ const fuelTableHeaders = [
                     </v-card>
                 </div>
 
-                <!-- ── Fuel entries ── -->
-                <div v-if="fuelEntries.length > 0">
-                    <div class="text-subtitle-1 font-semibold text-gray-700 mb-3">
-                        Dépenses carburant
-                        <span class="text-caption font-normal text-gray-400 ml-2">({{ fuelEntries.length }} entrées)</span>
+                <!-- ── Expenses ── -->
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="text-subtitle-1 font-semibold text-gray-700">
+                            Dépenses du chargement
+                            <span class="text-caption font-normal text-gray-400 ml-2">({{ expenses.length }})</span>
+                        </div>
+                        <v-btn
+                            color="primary"
+                            variant="flat"
+                            size="small"
+                            prepend-icon="mdi-plus"
+                            @click="showExpenseForm = !showExpenseForm"
+                        >
+                            Ajouter
+                        </v-btn>
                     </div>
+
+                    <!-- Add expense form -->
+                    <v-expand-transition>
+                        <v-card v-if="showExpenseForm" variant="outlined" rounded="lg" class="mb-4 pa-4">
+                            <v-row dense>
+                                <v-col cols="12" sm="4">
+                                    <v-select
+                                        v-model="expenseForm.type"
+                                        :items="expenseTypeOptions"
+                                        item-title="title"
+                                        item-value="value"
+                                        label="Type"
+                                        density="compact"
+                                        hide-details
+                                        :error-messages="expenseForm.errors.type"
+                                    />
+                                </v-col>
+                                <v-col cols="12" sm="4">
+                                    <v-text-field
+                                        v-model="expenseForm.label"
+                                        label="Libellé (optionnel)"
+                                        density="compact"
+                                        hide-details
+                                        :error-messages="expenseForm.errors.label"
+                                    />
+                                </v-col>
+                                <v-col cols="12" sm="4">
+                                    <v-text-field
+                                        v-model.number="expenseForm.amount"
+                                        label="Montant (XOF)"
+                                        type="number"
+                                        density="compact"
+                                        hide-details
+                                        :error-messages="expenseForm.errors.amount"
+                                    />
+                                </v-col>
+                            </v-row>
+                            <div class="flex justify-end gap-2 mt-3">
+                                <v-btn variant="text" size="small" @click="showExpenseForm = false; expenseForm.reset()">Annuler</v-btn>
+                                <v-btn color="primary" variant="flat" size="small" :loading="expenseForm.processing" @click="submitExpense">
+                                    Enregistrer
+                                </v-btn>
+                            </div>
+                        </v-card>
+                    </v-expand-transition>
+
                     <v-card rounded="lg">
                         <v-data-table
-                            :headers="fuelTableHeaders"
-                            :items="fuelEntries"
+                            :headers="expenseTableHeaders"
+                            :items="expenses"
                             :items-per-page="-1"
                             density="comfortable"
                             class="elevation-0"
                             hide-default-footer
                         >
-                            <template #item.filled_at="{ item }">
-                                {{ formatDate(item.filled_at) }}
+                            <template #item.created_at="{ item }">
+                                {{ formatDate(item.created_at) }}
+                            </template>
+                            <template #item.type="{ item }">
+                                <v-chip :color="expenseTypeColor(item.type)" size="small" variant="tonal">
+                                    {{ item.type_label }}
+                                </v-chip>
+                            </template>
+                            <template #item.label="{ item }">
+                                <span class="text-grey">{{ item.label || '—' }}</span>
                             </template>
                             <template #item.amount="{ item }">
                                 {{ formatCurrency(item.amount) }}
                             </template>
-                            <template #item.liters="{ item }">
-                                {{ item.liters != null ? `${item.liters} L` : '—' }}
-                            </template>
-                            <template #item.notes="{ item }">
-                                <span class="text-grey">{{ item.notes || '—' }}</span>
+                            <template #item.actions="{ item }">
+                                <v-btn
+                                    icon="mdi-delete"
+                                    variant="text"
+                                    color="error"
+                                    size="small"
+                                    density="compact"
+                                    :loading="deleteExpenseForm.processing"
+                                    @click="deleteExpense(item.id)"
+                                />
                             </template>
 
-                            <template #bottom>
+                            <template v-if="expenses.length === 0" #no-data>
+                                <div class="text-center py-6 text-grey">
+                                    <v-icon size="32" color="grey-lighten-2" class="mb-2 d-block mx-auto">mdi-receipt-text-outline</v-icon>
+                                    Aucune dépense enregistrée
+                                </div>
+                            </template>
+
+                            <template v-if="expenses.length > 0" #bottom>
                                 <div class="pa-3 border-t">
                                     <span class="text-sm font-medium">
-                                        Total carburant : <strong>{{ formatCurrency(totalFuelCost) }}</strong>
+                                        Total dépenses : <strong>{{ formatCurrency(totalExpensesCost) }}</strong>
                                     </span>
                                 </div>
                             </template>

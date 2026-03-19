@@ -2,8 +2,9 @@
 
 namespace Tests\Feature\Abc;
 
+use App\Enums\CarLoadExpenseType;
 use App\Models\CarLoad;
-use App\Models\CarLoadFuelEntry;
+use App\Models\CarLoadExpense;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -132,26 +133,38 @@ class AbcVehicleCostServiceTest extends TestCase
         $this->assertEquals($expectedCost, $this->service->computeFixedCostForCarLoad($carLoad));
     }
 
-    public function test_fuel_cost_for_carload_sums_all_fuel_entries(): void
+    public function test_variable_expenses_for_carload_sums_all_expenses(): void
     {
         $vehicle = $this->makeVehicle();
         $carLoad = $this->makeCarLoad($vehicle);
 
-        CarLoadFuelEntry::create(['car_load_id' => $carLoad->id, 'amount' => 25_000, 'filled_at' => today()]);
-        CarLoadFuelEntry::create(['car_load_id' => $carLoad->id, 'amount' => 18_000, 'filled_at' => today()]);
+        CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 25_000, 'type' => CarLoadExpenseType::Fuel]);
+        CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 18_000, 'type' => CarLoadExpenseType::Fuel]);
 
-        $this->assertEquals(43_000, $this->service->computeFuelCostForCarLoad($carLoad));
+        $this->assertEquals(43_000, $this->service->computeVariableExpensesForCarLoad($carLoad));
     }
 
-    public function test_fuel_cost_is_zero_when_no_fuel_entries(): void
+    public function test_variable_expenses_sums_all_expense_types_together(): void
     {
         $vehicle = $this->makeVehicle();
         $carLoad = $this->makeCarLoad($vehicle);
 
-        $this->assertEquals(0, $this->service->computeFuelCostForCarLoad($carLoad));
+        CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 20_000, 'type' => CarLoadExpenseType::Fuel]);
+        CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 2_000, 'type' => CarLoadExpenseType::Parking]);
+        CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 3_000, 'type' => CarLoadExpenseType::Wash]);
+
+        $this->assertEquals(25_000, $this->service->computeVariableExpensesForCarLoad($carLoad));
     }
 
-    public function test_total_vehicle_cost_is_fixed_plus_fuel(): void
+    public function test_variable_expenses_is_zero_when_no_expenses(): void
+    {
+        $vehicle = $this->makeVehicle();
+        $carLoad = $this->makeCarLoad($vehicle);
+
+        $this->assertEquals(0, $this->service->computeVariableExpensesForCarLoad($carLoad));
+    }
+
+    public function test_total_vehicle_cost_is_fixed_plus_variable_expenses(): void
     {
         $vehicle = $this->makeVehicle();
         // Completed 2-day trip with return_date in the past.
@@ -160,7 +173,7 @@ class AbcVehicleCostServiceTest extends TestCase
             'return_date' => Carbon::today(),
         ]);
 
-        CarLoadFuelEntry::create(['car_load_id' => $carLoad->id, 'amount' => 30_000, 'filled_at' => today()]);
+        CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 30_000, 'type' => CarLoadExpenseType::Fuel]);
 
         $expectedFixedCost = $this->service->computeDailyFixedCost($vehicle) * 2;
         $expectedTotal = $expectedFixedCost + 30_000;

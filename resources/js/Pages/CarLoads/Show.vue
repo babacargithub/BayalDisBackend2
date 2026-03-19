@@ -9,6 +9,7 @@ const props = defineProps({
     carLoad: { type: Object, required: true },
     products: { type: Array, required: true },
     missingInventoryProducts: { type: Array, default: () => [] },
+    expenses: { type: Array, default: () => [] },
 });
 
 // ─── Computed helpers ────────────────────────────────────────────────────────
@@ -358,6 +359,59 @@ const exportInventoryPdf = () => {
     }));
 };
 
+// ─── Expenses tab ─────────────────────────────────────────────────────────────
+const expenseTypeOptions = [
+    { title: 'Carburant', value: 'FUEL' },
+    { title: 'Parking', value: 'PARKING' },
+    { title: 'Lavage', value: 'WASH' },
+    { title: 'Amende', value: 'POLICE_FINE' },
+    { title: 'Crédit', value: 'CREDIT' },
+    { title: 'Autre', value: 'OTHER' },
+];
+
+const expenseTypeColor = (type) => {
+    const colorMap = {
+        FUEL: 'orange',
+        PARKING: 'blue',
+        WASH: 'cyan',
+        POLICE_FINE: 'red',
+        CREDIT: 'purple',
+        OTHER: 'grey',
+    };
+    return colorMap[type] ?? 'grey';
+};
+
+const showExpenseForm = ref(false);
+const expenseForm = useForm({
+    label: '',
+    amount: null,
+    type: 'FUEL',
+});
+
+const submitExpense = () => {
+    expenseForm.post(route('car-loads.expenses.store', props.carLoad.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            showExpenseForm.value = false;
+            expenseForm.reset();
+            notifySuccess('Dépense ajoutée avec succès');
+        },
+        onError: notifyError,
+    });
+};
+
+const deleteExpenseForm = useForm({});
+const deleteExpense = (expenseId) => {
+    deleteExpenseForm.delete(route('car-loads.expenses.destroy', {
+        carLoad: props.carLoad.id,
+        expense: expenseId,
+    }), {
+        preserveScroll: true,
+        onSuccess: () => notifySuccess('Dépense supprimée'),
+        onError: notifyError,
+    });
+};
+
 // ─── Expose computed properties for testing ──────────────────────────────────
 defineExpose({ groupedCarLoadItems, filteredProducts, inventoryResultValue, statusLabel, statusColor, activeTab, showParentProductsOnly, inventoryEntryRows });
 
@@ -463,6 +517,13 @@ const inventoryTableHeaders = [
                             Articles
                             <v-chip class="ml-1" size="x-small" color="primary" variant="tonal">
                                 {{ carLoad.items?.length ?? 0 }}
+                            </v-chip>
+                        </v-tab>
+                        <v-tab value="depenses">
+                            <v-icon start size="small">mdi-receipt-text</v-icon>
+                            Dépenses
+                            <v-chip v-if="expenses.length > 0" class="ml-1" size="x-small" color="orange" variant="tonal">
+                                {{ expenses.length }}
                             </v-chip>
                         </v-tab>
                         <v-tab value="inventaire">
@@ -677,6 +738,126 @@ const inventoryTableHeaders = [
                                         </tr>
                                     </template>
                                 </v-data-table>
+
+                            </v-card-text>
+                        </v-window-item>
+
+                        <!-- ═══════════ DÉPENSES TAB ═══════════ -->
+                        <v-window-item value="depenses">
+                            <v-card-text class="pa-2 sm:pa-4">
+
+                                <!-- Add expense form toggle -->
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-sm text-grey">{{ expenses.length }} dépense(s) enregistrée(s)</span>
+                                    <v-btn
+                                        color="primary"
+                                        variant="flat"
+                                        size="small"
+                                        prepend-icon="mdi-plus"
+                                        @click="showExpenseForm = !showExpenseForm"
+                                    >Ajouter</v-btn>
+                                </div>
+
+                                <v-expand-transition>
+                                    <v-card v-if="showExpenseForm" variant="outlined" class="mb-3">
+                                        <v-card-text class="pa-3">
+                                            <v-row dense>
+                                                <v-col cols="12" sm="4">
+                                                    <v-select
+                                                        v-model="expenseForm.type"
+                                                        :items="expenseTypeOptions"
+                                                        item-title="title"
+                                                        item-value="value"
+                                                        label="Type"
+                                                        density="compact"
+                                                        hide-details
+                                                        :error-messages="expenseForm.errors.type"
+                                                    />
+                                                </v-col>
+                                                <v-col cols="12" sm="4">
+                                                    <v-text-field
+                                                        v-model="expenseForm.label"
+                                                        label="Libellé (optionnel)"
+                                                        density="compact"
+                                                        hide-details
+                                                        :error-messages="expenseForm.errors.label"
+                                                    />
+                                                </v-col>
+                                                <v-col cols="12" sm="4">
+                                                    <v-text-field
+                                                        v-model.number="expenseForm.amount"
+                                                        label="Montant (XOF)"
+                                                        type="number"
+                                                        density="compact"
+                                                        hide-details
+                                                        :error-messages="expenseForm.errors.amount"
+                                                    />
+                                                </v-col>
+                                            </v-row>
+                                        </v-card-text>
+                                        <v-card-actions class="pa-2">
+                                            <v-spacer />
+                                            <v-btn variant="text" size="small" @click="showExpenseForm = false; expenseForm.reset()">Annuler</v-btn>
+                                            <v-btn color="primary" variant="flat" size="small" :loading="expenseForm.processing" @click="submitExpense">
+                                                Enregistrer
+                                            </v-btn>
+                                        </v-card-actions>
+                                    </v-card>
+                                </v-expand-transition>
+
+                                <!-- Expenses table -->
+                                <v-table v-if="expenses.length > 0" density="compact" class="rounded border">
+                                    <thead>
+                                        <tr>
+                                            <th class="text-left">Date</th>
+                                            <th class="text-center">Type</th>
+                                            <th class="text-left">Libellé</th>
+                                            <th class="text-right">Montant</th>
+                                            <th class="text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="expense in expenses" :key="expense.id">
+                                            <td class="text-sm text-grey py-2">
+                                                {{ expense.created_at ? new Date(expense.created_at).toLocaleDateString('fr-FR') : '—' }}
+                                            </td>
+                                            <td class="text-center py-2">
+                                                <v-chip :color="expenseTypeColor(expense.type)" size="x-small" variant="tonal">
+                                                    {{ expense.type_label }}
+                                                </v-chip>
+                                            </td>
+                                            <td class="text-sm py-2">{{ expense.label || '—' }}</td>
+                                            <td class="text-right text-sm font-weight-medium py-2">
+                                                {{ new Intl.NumberFormat('fr-FR').format(expense.amount) }} XOF
+                                            </td>
+                                            <td class="text-center py-2">
+                                                <v-btn
+                                                    icon="mdi-delete"
+                                                    variant="text"
+                                                    color="error"
+                                                    size="small"
+                                                    density="compact"
+                                                    :loading="deleteExpenseForm.processing"
+                                                    @click="deleteExpense(expense.id)"
+                                                />
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="bg-grey-lighten-5">
+                                            <td colspan="3" class="text-sm font-weight-bold py-2 pl-4">Total</td>
+                                            <td class="text-right text-sm font-weight-bold py-2">
+                                                {{ new Intl.NumberFormat('fr-FR').format(expenses.reduce((s, e) => s + e.amount, 0)) }} XOF
+                                            </td>
+                                            <td></td>
+                                        </tr>
+                                    </tfoot>
+                                </v-table>
+
+                                <div v-else class="text-center py-10">
+                                    <v-icon size="40" color="grey-lighten-2">mdi-receipt-text-outline</v-icon>
+                                    <p class="text-grey mt-2">Aucune dépense enregistrée pour ce chargement.</p>
+                                </div>
 
                             </v-card-text>
                         </v-window-item>

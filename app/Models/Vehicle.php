@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Jobs\RecalculateInvoicesDeliveryCostJob;
+use App\Services\Abc\AbcVehicleCostService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -37,21 +39,45 @@ class Vehicle extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // When any cost-related field on the vehicle changes, refresh the stored
+        // fixed_daily_cost snapshot on every car load that uses this vehicle, then
+        // redistribute today's delivery costs across their invoices.
+        static::saved(function (Vehicle $vehicle): void {
+            $newDailyRate = app(AbcVehicleCostService::class)->computeDailyFixedCost($vehicle);
+
+            CarLoad::where('vehicle_id', $vehicle->id)
+                ->update(['fixed_daily_cost' => $newDailyRate]);
+
+            $today = today()->toDateString();
+
+            CarLoad::where('vehicle_id', $vehicle->id)
+                ->pluck('id')
+                ->each(function (int $carLoadId) use ($today): void {
+                    RecalculateInvoicesDeliveryCostJob::dispatch(
+                        carLoadId: $carLoadId,
+                        workDay: $today,
+                    );
+                });
+        });
+    }
+
     public function carLoads(): HasMany
     {
         return $this->hasMany(CarLoad::class);
     }
 
-    public function fuelEntries(): HasMany
+    public function expenses(): HasMany
     {
-        return $this->hasMany(CarLoadFuelEntry::class, 'car_load_id')
+        return $this->hasMany(CarLoadExpense::class, 'car_load_id')
             ->whereHas('carLoad', fn ($query) => $query->where('vehicle_id', $this->id));
     }
 
     /**
      * Total monthly fixed cost for this vehicle.
      * Fuel cost is prorated: estimated_daily_fuel_consumption × working_days_per_month.
-     * Actual fuel receipts per trip are tracked separately via CarLoadFuelEntry.
+     * Actual fuel receipts per trip are tracked separately via CarLoadExpense.
      */
     public function getTotalMonthlyFixedCostAttribute(): int
     {
@@ -68,7 +94,7 @@ class Vehicle extends Model
     /**
      * Daily fixed cost based on working days per month.
      * Includes estimated daily fuel cost in XOF.
-     * Actual fuel receipts per trip are tracked separately via CarLoadFuelEntry.
+     * Actual fuel receipts per trip are tracked separately via CarLoadExpense.
      */
     public function getDailyFixedCostAttribute(): int
     {

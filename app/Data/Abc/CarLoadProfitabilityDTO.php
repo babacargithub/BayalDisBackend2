@@ -14,7 +14,7 @@ final class CarLoadProfitabilityDTO
         public readonly int $totalRevenue,
         public readonly int $totalGrossProfit,
         public readonly int $vehicleFixedCost,
-        public readonly int $vehicleFuelCost,
+        public readonly int $vehicleExpensesCost,
         public readonly int $storageAllocation,
         public readonly int $overheadAllocation,
         public readonly bool $isMonthFinalized,
@@ -22,7 +22,7 @@ final class CarLoadProfitabilityDTO
 
     public function totalVehicleCost(): int
     {
-        return $this->vehicleFixedCost + $this->vehicleFuelCost;
+        return $this->vehicleFixedCost + $this->vehicleExpensesCost;
     }
 
     public function totalFixedCostBurden(): int

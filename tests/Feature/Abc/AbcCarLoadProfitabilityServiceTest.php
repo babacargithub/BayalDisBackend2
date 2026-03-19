@@ -2,10 +2,11 @@
 
 namespace Tests\Feature\Abc;
 
+use App\Enums\CarLoadExpenseType;
 use App\Enums\MonthlyFixedCostPool;
 use App\Enums\MonthlyFixedCostSubCategory;
 use App\Models\CarLoad;
-use App\Models\CarLoadFuelEntry;
+use App\Models\CarLoadExpense;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\MonthlyFixedCost;
@@ -105,7 +106,7 @@ class AbcCarLoadProfitabilityServiceTest extends TestCase
 
         $this->addSalesInvoiceToCarLoad($carLoad, totalAmount: 3_200_000, totalEstimatedProfit: 896_000);
 
-        CarLoadFuelEntry::create(['car_load_id' => $carLoad->id, 'amount' => 34_000, 'filled_at' => '2026-03-01']);
+        CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 34_000, 'type' => CarLoadExpenseType::Fuel]);
 
         MonthlyFixedCost::create([
             'cost_pool' => MonthlyFixedCostPool::Storage,
@@ -137,7 +138,7 @@ class AbcCarLoadProfitabilityServiceTest extends TestCase
         $this->assertEquals(3_200_000, $profitability->totalRevenue);
         $this->assertEquals(896_000, $profitability->totalGrossProfit);
         $this->assertEquals($expectedDailyFixed, $profitability->vehicleFixedCost);
-        $this->assertEquals(34_000, $profitability->vehicleFuelCost);
+        $this->assertEquals(34_000, $profitability->vehicleExpensesCost);
         $this->assertEquals(172_000, $profitability->storageAllocation);
         $this->assertEquals(225_000, $profitability->overheadAllocation);
 

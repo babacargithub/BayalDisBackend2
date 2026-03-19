@@ -11,14 +11,14 @@ use App\Models\SalesInvoice;
  *
  * Profitability layers:
  *   1. Gross profit = SUM(sales_invoices.total_estimated_profit) — product margin only
- *   2. Vehicle costs = fixed daily rate × trip days + actual fuel receipts
+ *   2. Vehicle costs = fixed daily rate × trip days + actual variable expenses (fuel, parking, fines, etc.)
  *   3. Fixed burdens = storage + overhead allocations (equal per vehicle per month)
  *   4. Net profit = gross profit − vehicle costs − fixed burdens
  */
 readonly class AbcCarLoadProfitabilityService
 {
     public function __construct(
-        private AbcVehicleCostService           $abcVehicleCostService,
+        private AbcVehicleCostService $abcVehicleCostService,
         private AbcFixedCostDistributionService $abcFixedCostDistributionService,
     ) {}
 
@@ -34,8 +34,7 @@ readonly class AbcCarLoadProfitabilityService
         $totalGrossProfit = $this->computeTotalGrossProfitForCarLoad($carLoad);
 
         $vehicleFixedCost = $this->abcVehicleCostService->computeFixedCostForCarLoad($carLoad);
-        $vehicleFuelCost = $this->abcVehicleCostService->computeFuelCostForCarLoad($carLoad);
-        // TODO find a way to distribue vehicle fuel cost
+        $vehicleExpensesCost = $this->abcVehicleCostService->computeVariableExpensesForCarLoad($carLoad);
 
         $fixedCostAllocation = $this->abcFixedCostDistributionService->computeAllocatedFixedCostsForCarLoad($carLoad);
 
@@ -49,7 +48,7 @@ readonly class AbcCarLoadProfitabilityService
             totalRevenue: $totalRevenue,
             totalGrossProfit: $totalGrossProfit,
             vehicleFixedCost: $vehicleFixedCost,
-            vehicleFuelCost: $vehicleFuelCost,
+            vehicleExpensesCost: $vehicleExpensesCost,
             storageAllocation: $fixedCostAllocation->storageAllocation,
             overheadAllocation: $fixedCostAllocation->overheadAllocation,
             isMonthFinalized: $isMonthFinalized,

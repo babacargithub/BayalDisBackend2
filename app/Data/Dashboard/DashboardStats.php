@@ -51,6 +51,18 @@ readonly class DashboardStats
 
         /** Total expenses = SUM(depense.amount) in the period. */
         public int $totalExpenses,
+
+        /** Total commercial commissions = SUM(sales_invoices.estimated_commercial_commission). */
+        public int $totalCommissions,
+
+        /** Total delivery cost = SUM(sales_invoices.delivery_cost). */
+        public int $totalDeliveryCost,
+
+        /**
+         * Net profit after commissions and delivery costs.
+         * Formula: totalRealizedProfit - totalCommissions - totalDeliveryCost.
+         */
+        public int $netProfit,
     ) {}
 
     /**
@@ -71,6 +83,9 @@ readonly class DashboardStats
             'total_realized_profit' => $this->totalRealizedProfit,
             'total_payments_received' => $this->totalPaymentsReceived,
             'total_expenses' => $this->totalExpenses,
+            'total_commissions' => $this->totalCommissions,
+            'total_delivery_cost' => $this->totalDeliveryCost,
+            'net_profit' => $this->netProfit,
         ];
     }
 

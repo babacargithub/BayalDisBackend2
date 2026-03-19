@@ -94,15 +94,16 @@ class CarLoadController extends Controller
                 'created_at' => $invoice->created_at?->format('Y-m-d'),
             ]);
 
-        $fuelEntries = $carLoad->fuelEntries()
-            ->orderBy('filled_at', 'desc')
+        $expenses = $carLoad->expenses()
+            ->orderBy('created_at', 'desc')
             ->get()
-            ->map(fn ($entry): array => [
-                'id' => $entry->id,
-                'amount' => $entry->amount,
-                'liters' => $entry->liters,
-                'filled_at' => $entry->filled_at?->format('Y-m-d'),
-                'notes' => $entry->notes,
+            ->map(fn ($expense): array => [
+                'id' => $expense->id,
+                'label' => $expense->label,
+                'amount' => $expense->amount,
+                'type' => $expense->type->value,
+                'type_label' => $expense->type->label(),
+                'created_at' => $expense->created_at?->format('Y-m-d'),
             ]);
 
         // Compute trip duration for display purposes (mirrors AbcVehicleCostService logic).
@@ -132,7 +133,7 @@ class CarLoadController extends Controller
                 'totalRevenue' => $profitability->totalRevenue,
                 'totalGrossProfit' => $profitability->totalGrossProfit,
                 'vehicleFixedCost' => $profitability->vehicleFixedCost,
-                'vehicleFuelCost' => $profitability->vehicleFuelCost,
+                'vehicleExpensesCost' => $profitability->vehicleExpensesCost,
                 'storageAllocation' => $profitability->storageAllocation,
                 'overheadAllocation' => $profitability->overheadAllocation,
                 'isMonthFinalized' => $profitability->isMonthFinalized,
@@ -146,7 +147,7 @@ class CarLoadController extends Controller
                 'isDeficit' => $profitability->isDeficit(),
             ],
             'salesInvoices' => $salesInvoices,
-            'fuelEntries' => $fuelEntries,
+            'expenses' => $expenses,
         ]);
     }
 
@@ -177,15 +178,16 @@ class CarLoadController extends Controller
 
         $profitability = $this->abcCarLoadProfitabilityService->computeProfitability($carLoad);
 
-        $fuelEntries = $carLoad->fuelEntries()
-            ->orderBy('filled_at', 'desc')
+        $expenses = $carLoad->expenses()
+            ->orderBy('created_at', 'desc')
             ->get()
-            ->map(fn ($entry): array => [
-                'id' => $entry->id,
-                'amount' => $entry->amount,
-                'liters' => $entry->liters,
-                'filled_at' => $entry->filled_at?->format('Y-m-d'),
-                'notes' => $entry->notes,
+            ->map(fn ($expense): array => [
+                'id' => $expense->id,
+                'label' => $expense->label,
+                'amount' => $expense->amount,
+                'type' => $expense->type->value,
+                'type_label' => $expense->type->label(),
+                'created_at' => $expense->created_at?->format('Y-m-d'),
             ]);
 
         return Inertia::render('CarLoads/Show', [
@@ -193,12 +195,12 @@ class CarLoadController extends Controller
             'products' => $products,
             'missingInventoryProducts' => $missingInventoryProducts,
             'vehicles' => $vehicles,
-            'fuelEntries' => $fuelEntries,
+            'expenses' => $expenses,
             'profitability' => [
                 'totalRevenue' => $profitability->totalRevenue,
                 'totalGrossProfit' => $profitability->totalGrossProfit,
                 'vehicleFixedCost' => $profitability->vehicleFixedCost,
-                'vehicleFuelCost' => $profitability->vehicleFuelCost,
+                'vehicleExpensesCost' => $profitability->vehicleExpensesCost,
                 'storageAllocation' => $profitability->storageAllocation,
                 'overheadAllocation' => $profitability->overheadAllocation,
                 'isMonthFinalized' => $profitability->isMonthFinalized,

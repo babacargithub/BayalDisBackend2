@@ -313,6 +313,30 @@ class SalesInvoiceStatsService
     }
 
     /**
+     * Compute the total estimated commercial commissions from the stored column on sales_invoices.
+     *
+     * Reads from sales_invoices.estimated_commercial_commission (denormalized, kept in sync by
+     * SalesInvoice::recalculateStoredTotals()). Scoped to invoices created within the date range.
+     */
+    public function totalCommissions(?Carbon $startDate, ?Carbon $endDate): int
+    {
+        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+            ->sum('estimated_commercial_commission');
+    }
+
+    /**
+     * Compute the total delivery cost from the stored column on sales_invoices.
+     *
+     * Reads from sales_invoices.delivery_cost (denormalized, kept in sync by
+     * InvoiceDeliveryCostService). Scoped to invoices created within the date range.
+     */
+    public function totalDeliveryCost(?Carbon $startDate, ?Carbon $endDate): int
+    {
+        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+            ->sum('delivery_cost');
+    }
+
+    /**
      * Count sales invoices created within the given date range.
      */
     public function salesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
@@ -488,6 +512,10 @@ class SalesInvoiceStatsService
             $depenseQuery->where('created_at', '<=', $endDate);
         }
 
+        $totalCommissions = $this->totalCommissions($startDate, $endDate);
+        $totalDeliveryCost = $this->totalDeliveryCost($startDate, $endDate);
+        $totalRealizedProfit = $this->totalRealizedProfits($startDate, $endDate, $allFilter);
+
         return new DashboardStats(
             totalCustomers: (clone $customerQuery)->count(),
             totalProspects: (clone $customerQuery)->prospects()->count(),
@@ -498,9 +526,12 @@ class SalesInvoiceStatsService
             unpaidSalesInvoicesCount: $this->unpaidSalesInvoicesCount($startDate, $endDate),
             totalSales: $this->totalSales($startDate, $endDate, $allFilter),
             totalEstimatedProfit: $this->totalEstimatedProfits($startDate, $endDate, $allFilter),
-            totalRealizedProfit: $this->totalRealizedProfits($startDate, $endDate, $allFilter),
+            totalRealizedProfit: $totalRealizedProfit,
             totalPaymentsReceived: (int) $paymentQuery->sum('amount'),
             totalExpenses: (int) $depenseQuery->sum('amount'),
+            totalCommissions: $totalCommissions,
+            totalDeliveryCost: $totalDeliveryCost,
+            netProfit: $totalRealizedProfit - $totalCommissions - $totalDeliveryCost,
         );
     }
 

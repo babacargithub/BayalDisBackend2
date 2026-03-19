@@ -14,6 +14,9 @@ const emptyStats = () => ({
     total_realized_profit: 0,
     total_payments_received: 0,
     total_expenses: 0,
+    total_commissions: 0,
+    total_delivery_cost: 0,
+    net_profit: 0,
 });
 </script>
 
@@ -278,6 +281,51 @@ const periodTabs = [
                             </div>
                         </div>
 
+                        <!-- Commissions -->
+                        <div class="kpi-card kpi-card--orange">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--orange">
+                                    <v-icon size="22">mdi-account-cash</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">COMMISSIONS</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--orange">
+                                        {{ formatCurrency(overallStats.total_commissions) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Coût livraison -->
+                        <div class="kpi-card kpi-card--purple">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--purple">
+                                    <v-icon size="22">mdi-truck-delivery-outline</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">COÛT LIVRAISON</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--purple">
+                                        {{ formatCurrency(overallStats.total_delivery_cost) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bénéfice net -->
+                        <div class="kpi-card kpi-card--cyan">
+                            <div class="kpi-card-body">
+                                <div class="kpi-icon kpi-icon--cyan">
+                                    <v-icon size="22">mdi-bank-outline</v-icon>
+                                </div>
+                                <div class="kpi-content">
+                                    <div class="kpi-label">BÉNÉFICE NET</div>
+                                    <div class="kpi-value kpi-value--currency kpi-value--cyan">
+                                        {{ formatCurrency(overallStats.net_profit) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </section>
 
@@ -377,7 +425,7 @@ const periodTabs = [
                                     <v-icon size="16" style="color: #10b981">mdi-cash</v-icon>
                                     Finances
                                 </div>
-                                <div class="period-metrics-grid period-metrics-grid--5">
+                                <div class="period-metrics-grid period-metrics-grid--4">
                                     <div class="period-metric">
                                         <div class="period-metric-value period-metric-value--currency">{{ formatCurrency(currentPeriodStats.total_sales) }}</div>
                                         <div class="period-metric-label">Chiffre d'affaires</div>
@@ -397,6 +445,18 @@ const periodTabs = [
                                     <div class="period-metric">
                                         <div class="period-metric-value period-metric-value--currency period-metric-value--red">{{ formatCurrency(currentPeriodStats.total_expenses) }}</div>
                                         <div class="period-metric-label">Dépenses</div>
+                                    </div>
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency period-metric-value--orange">{{ formatCurrency(currentPeriodStats.total_commissions) }}</div>
+                                        <div class="period-metric-label">Commissions</div>
+                                    </div>
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency period-metric-value--purple">{{ formatCurrency(currentPeriodStats.total_delivery_cost) }}</div>
+                                        <div class="period-metric-label">Coût livraison</div>
+                                    </div>
+                                    <div class="period-metric">
+                                        <div class="period-metric-value period-metric-value--currency period-metric-value--cyan">{{ formatCurrency(currentPeriodStats.net_profit) }}</div>
+                                        <div class="period-metric-label">Bénéfice net</div>
                                     </div>
                                 </div>
                             </div>
@@ -463,6 +523,9 @@ const periodTabs = [
 .kpi-card--teal    { border-left-color: #14b8a6; }
 .kpi-card--amber   { border-left-color: #f59e0b; }
 .kpi-card--red     { border-left-color: #ef4444; }
+.kpi-card--orange  { border-left-color: #f97316; }
+.kpi-card--purple  { border-left-color: #a855f7; }
+.kpi-card--cyan    { border-left-color: #06b6d4; }
 
 .kpi-card-body {
     display: flex;
@@ -489,6 +552,9 @@ const periodTabs = [
 .kpi-icon--teal    { background: #f0fdfa; color: #0d9488; }
 .kpi-icon--amber   { background: #fffbeb; color: #d97706; }
 .kpi-icon--red     { background: #fef2f2; color: #dc2626; }
+.kpi-icon--orange  { background: #fff7ed; color: #ea580c; }
+.kpi-icon--purple  { background: #faf5ff; color: #9333ea; }
+.kpi-icon--cyan    { background: #ecfeff; color: #0891b2; }
 
 /* KPI Content */
 .kpi-content {
@@ -523,6 +589,9 @@ const periodTabs = [
 .kpi-value--teal    { color: #0f766e; }
 .kpi-value--amber   { color: #b45309; }
 .kpi-value--red     { color: #b91c1c; }
+.kpi-value--orange  { color: #c2410c; }
+.kpi-value--purple  { color: #7e22ce; }
+.kpi-value--cyan    { color: #0e7490; }
 
 /* KPI Badges */
 .kpi-badges {
@@ -724,6 +793,9 @@ const periodTabs = [
 .period-metric-value--amber  { color: #d97706; }
 .period-metric-value--red    { color: #dc2626; }
 .period-metric-value--teal   { color: #0d9488; }
+.period-metric-value--orange { color: #c2410c; }
+.period-metric-value--purple { color: #7e22ce; }
+.period-metric-value--cyan   { color: #0e7490; }
 
 .period-metric-label {
     font-size: 10.5px;
