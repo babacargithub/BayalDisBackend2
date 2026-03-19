@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Jobs\RecalculateInvoicesDeliveryCostJob;
-use App\Services\Abc\AbcVehicleCostService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -45,11 +44,10 @@ class Vehicle extends Model
         // fixed_daily_cost snapshot on every car load that uses this vehicle, then
         // redistribute today's delivery costs across their invoices.
         static::saved(function (Vehicle $vehicle): void {
-            $newDailyRate = app(AbcVehicleCostService::class)->computeDailyFixedCost($vehicle);
-
-            CarLoad::where('vehicle_id', $vehicle->id)
-                ->update(['fixed_daily_cost' => $newDailyRate]);
-
+            // The fixed_daily_cost on each CarLoad is a snapshot frozen at the time the
+            // car load was created — vehicle cost changes must NOT retroactively overwrite it.
+            // Only dispatch the delivery-cost recalculation job; it will use the frozen
+            // snapshot already stored on the car load.
             $today = today()->toDateString();
 
             CarLoad::where('vehicle_id', $vehicle->id)

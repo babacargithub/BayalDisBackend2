@@ -41,7 +41,7 @@ class CarLoad extends Model
         // reflect the vehicle's current monthly cost structure.
         static::saving(function (CarLoad $carLoad): void {
             if ($carLoad->vehicle_id === null) {
-                $carLoad->fixed_daily_cost = 0;
+                $carLoad->fixed_daily_cost = null;
             } else {
                 $vehicle = Vehicle::find($carLoad->vehicle_id);
                 if ($vehicle !== null) {

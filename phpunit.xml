@@ -5,11 +5,42 @@
          colors="true"
 >
     <testsuites>
+        <!-- Granular suites: run individually when memory is tight.
+             Usage: php artisan test -testsuite=Commission
+             Usage: php artisan test -testsuite=Abc,Statistics -->
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
         </testsuite>
-        <testsuite name="Feature">
-            <directory>tests/Feature</directory>
+        <testsuite name="Abc">
+            <directory>tests/Feature/Abc</directory>
+        </testsuite>
+        <testsuite name="Commission">
+            <directory>tests/Feature/Commission</directory>
+        </testsuite>
+        <testsuite name="Statistics">
+            <directory>tests/Feature/Statistics</directory>
+        </testsuite>
+        <testsuite name="Inventory">
+            <directory>tests/Feature/Inventory</directory>
+        </testsuite>
+        <testsuite name="Auth">
+            <directory>tests/Feature/Auth</directory>
+        </testsuite>
+        <testsuite name="Core">
+            <directory>tests/Feature/CarLoad</directory>
+            <directory>tests/Feature/Product</directory>
+            <directory>tests/Feature/VenteStats</directory>
+            <directory>tests/Feature/Dashboard</directory>
+            <directory>tests/Feature/DeliveryCost</directory>
+            <directory>tests/Feature/ActivityReport</directory>
+            <directory>tests/Feature/PurchaseInvoice</directory>
+            <directory>tests/Feature/SalesInvoice</directory>
+            <directory>tests/Feature/SalespersonApi</directory>
+            <file>tests/Feature/PurchaseInvoicePutInStockTest.php</file>
+            <file>tests/Feature/PurchaseInvoiceTransportationCostDistributionTest.php</file>
+            <file>tests/Feature/CarLoadStockValueTest.php</file>
+            <file>tests/Feature/CarLoadTransformToVariantsTest.php</file>
+            <file>tests/Feature/ProfileTest.php</file>
         </testsuite>
     </testsuites>
     <source>
@@ -18,6 +49,7 @@
         </include>
     </source>
     <php>
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_DRIVER" value="array"/>
