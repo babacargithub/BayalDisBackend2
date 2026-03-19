@@ -6,6 +6,9 @@
                     <div class="text-h6">
                         Total des factures: {{ formatPrice(totalInvoicesAmount) }}
                     </div>
+                    <div class="text-h6">
+                        Total transport: {{ formatPrice(totalTransportationCost) }}
+                    </div>
                     <v-btn color="primary" @click="showCreateDialog">
                         <v-icon>mdi-plus</v-icon>
                         Nouvelle facture
@@ -25,6 +28,7 @@
                                 <th>Date</th>
                                 <th>Échéance</th>
                                 <th>Montant</th>
+                                <th>Transport</th>
                                 <th>Payé</th>
                                 <th>Statut</th>
                                 <th>Actions</th>
@@ -37,6 +41,7 @@
                                 <td>{{ formatDate(invoice.invoice_date) }}</td>
                                 <td>{{ formatDate(invoice.due_date) }}</td>
                                 <td>{{ formatPrice(invoice.total_amount) }}</td>
+                                <td>{{ formatPrice(invoice.transportation_cost) }}</td>
                                 <td>{{ formatPrice(invoice.paid_amount) }}</td>
                                 <td>
                                     <v-chip
@@ -435,6 +440,12 @@ const putInStockForm = useForm({
 const totalInvoicesAmount = computed(() => {
     return props.purchaseInvoices.reduce((total, invoice) => {
         return total + (invoice.total_amount || 0);
+    }, 0);
+});
+
+const totalTransportationCost = computed(() => {
+    return props.purchaseInvoices.reduce((total, invoice) => {
+        return total + (invoice.transportation_cost || 0);
     }, 0);
 });
 

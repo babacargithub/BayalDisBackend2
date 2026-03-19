@@ -63,6 +63,24 @@ class RefactorOldData extends Command
      */
     private const WEEKLY_FUEL_COST_XOF = 15_000;
 
+    /**
+     * Products that carry a per-unit packaging cost not recorded at purchase time.
+     * Applied to both the products table and every linked stock_entry.
+     *
+     * @var array<int>
+     */
+    private const PRODUCT_IDS_WITH_PACKAGING_COST = [3, 7, 10];
+
+    /** Per-unit packaging cost in XOF applied to PRODUCT_IDS_WITH_PACKAGING_COST. */
+    private const PRODUCT_PACKAGING_COST_XOF = 13;
+
+    /**
+     * Standard transportation cost per purchase invoice, in XOF.
+     * Historically not recorded — this backfill applies 8 000 F to every invoice
+     * and distributes it proportionally across the invoice's line items.
+     */
+    private const PURCHASE_INVOICE_TRANSPORTATION_COST_XOF = 8_000;
+
     private const DEPOT_OUEST_FOIRE_ADDRESS = 'Ouest Foire, Dakar';
 
     /**
@@ -174,31 +192,47 @@ class RefactorOldData extends Command
             $this->info('═══════════════════════════════════════════════════════════');
         }
 
+        // Step 0.1: set packaging cost for specific products + their stock entries (idempotent)
+        // Must run before the profit-correction pipeline so cost prices are complete.
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0.1 — Backfill product packaging costs');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->backfillProductPackagingCosts($isDryRun);
+
         // Step 0: seed fleet vehicles (idempotent — skips existing plate numbers)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 0/5 — Seed fleet vehicles');
+        $this->info('  Step 0 — Seed fleet vehicles');
         $this->info('───────────────────────────────────────────────────────────');
         $this->seedFleetVehicles($isDryRun);
 
         // Step 0.2: link all unassigned car loads to the fleet vehicle (idempotent)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 0.2/6 — Link all car loads to the fleet vehicle');
+        $this->info('  Step 0.2 — Link all car loads to the fleet vehicle');
         $this->info('───────────────────────────────────────────────────────────');
         $this->backfillCarLoadVehicle($isDryRun);
 
-        // Step 0.3: backfill daily fuel entries for car loads with no fuel data (idempotent)
+        // Step 0.3: backfill weekly fuel entries for car loads with no expense data (idempotent)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 0.3/6 — Backfill daily fuel entries for historical car loads');
+        $this->info('  Step 0.3 — Backfill weekly fuel entries for historical car loads');
         $this->info('───────────────────────────────────────────────────────────');
         $this->backfillFuelEntries($isDryRun);
+
+        // Step 0.4: set transportation cost on all purchase invoices and distribute to items
+        // + update linked stock entries. Must run before the profit-correction pipeline.
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0.4 — Backfill purchase invoice transportation costs');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->backfillPurchaseInvoiceTransportationCosts($isDryRun);
 
         // Step 0.5: seed monthly fixed costs (idempotent — skips existing pool+sub_category+period)
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 0.5/6 — Seed monthly fixed costs');
+        $this->info('  Step 0.5 — Seed monthly fixed costs');
         $this->info('───────────────────────────────────────────────────────────');
         $this->seedMonthlyFixedCosts($isDryRun);
 
@@ -260,6 +294,175 @@ class RefactorOldData extends Command
         $this->info('═══════════════════════════════════════════════════════════');
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Sets packaging_cost = PRODUCT_PACKAGING_COST_XOF on the products listed in
+     * PRODUCT_IDS_WITH_PACKAGING_COST, then propagates that same value to every
+     * stock_entry row for those products.
+     *
+     * Both updates are skipped when the value is already correct — idempotent.
+     */
+    private function backfillProductPackagingCosts(bool $isDryRun): void
+    {
+        $productIds = self::PRODUCT_IDS_WITH_PACKAGING_COST;
+        $packagingCost = self::PRODUCT_PACKAGING_COST_XOF;
+
+        // ── Products ──────────────────────────────────────────────────────────
+
+        $productsToUpdate = DB::table('products')
+            ->whereIn('id', $productIds)
+            ->where('packaging_cost', '!=', $packagingCost)
+            ->get(['id', 'name', 'packaging_cost']);
+
+        if ($productsToUpdate->isEmpty()) {
+            $this->info("  All target products already have packaging_cost = {$packagingCost} F. Skipping product update.");
+        } else {
+            foreach ($productsToUpdate as $product) {
+                $this->line("  Product #{$product->id} «{$product->name}»: packaging_cost {$product->packaging_cost} → {$packagingCost} F.");
+
+                if (! $isDryRun) {
+                    DB::table('products')
+                        ->where('id', $product->id)
+                        ->update(['packaging_cost' => $packagingCost]);
+                }
+            }
+
+            $this->info("  Done — {$productsToUpdate->count()} product(s) updated.");
+        }
+
+        // ── Stock entries ─────────────────────────────────────────────────────
+
+        $stockEntriesToUpdate = DB::table('stock_entries')
+            ->whereIn('product_id', $productIds)
+            ->where('packaging_cost', '!=', $packagingCost)
+            ->count();
+
+        if ($stockEntriesToUpdate === 0) {
+            $this->info("  All stock entries for target products already have packaging_cost = {$packagingCost} F. Skipping.");
+
+            return;
+        }
+
+        $this->line("  {$stockEntriesToUpdate} stock entry/entries for target products need packaging_cost → {$packagingCost} F.");
+
+        if ($isDryRun) {
+            $this->warn("  [DRY RUN] Would update {$stockEntriesToUpdate} stock entry/entries.");
+
+            return;
+        }
+
+        DB::table('stock_entries')
+            ->whereIn('product_id', $productIds)
+            ->update(['packaging_cost' => $packagingCost]);
+
+        $this->info("  Done — {$stockEntriesToUpdate} stock entry/entries updated.");
+    }
+
+    /**
+     * Sets transportation_cost = PURCHASE_INVOICE_TRANSPORTATION_COST_XOF on every
+     * purchase invoice, then distributes that cost proportionally (by quantity) across
+     * the invoice's line items, and finally propagates the per-unit transport rate to
+     * each item's linked stock entry.
+     *
+     * Distribution formula (exact integer, no rounding loss):
+     *   base_cost_per_unit = floor(8000 / total_invoice_quantity)
+     *   remainder_units    = 8000 % total_invoice_quantity
+     *   item.transportation_cost = base_cost_per_unit × item.quantity
+     *                              + min(remainder_units_left, item.quantity)  [first items absorb 1 F each]
+     *   SUM(item.transportation_cost) == 8000 guaranteed.
+     *
+     * stock_entry.transportation_cost = round(item.transportation_cost / item.quantity) [per-unit].
+     *
+     * Idempotent: re-running produces the same values.
+     */
+    private function backfillPurchaseInvoiceTransportationCosts(bool $isDryRun): void
+    {
+        $invoiceTransportCost = self::PURCHASE_INVOICE_TRANSPORTATION_COST_XOF;
+
+        $purchaseInvoices = DB::table('purchase_invoices')
+            ->orderBy('id')
+            ->get(['id', 'transportation_cost']);
+
+        if ($purchaseInvoices->isEmpty()) {
+            $this->info('  No purchase invoices found. Nothing to backfill.');
+
+            return;
+        }
+
+        $this->line("  {$purchaseInvoices->count()} purchase invoice(s) will be set to {$invoiceTransportCost} F transportation cost.");
+
+        $totalItemsUpdated = 0;
+        $totalStockEntriesUpdated = 0;
+
+        foreach ($purchaseInvoices as $purchaseInvoice) {
+            $items = DB::table('purchase_invoice_items')
+                ->where('purchase_invoice_id', $purchaseInvoice->id)
+                ->orderBy('id')
+                ->get(['id', 'quantity', 'transportation_cost']);
+
+            if ($items->isEmpty()) {
+                $this->line("  Invoice #{$purchaseInvoice->id}: no items — skipping distribution.");
+
+                continue;
+            }
+
+            $totalInvoiceQuantity = $items->sum('quantity');
+
+            if ($totalInvoiceQuantity <= 0) {
+                $this->line("  Invoice #{$purchaseInvoice->id}: total quantity is 0 — skipping.");
+
+                continue;
+            }
+
+            $this->line("  Invoice #{$purchaseInvoice->id}: {$items->count()} item(s), total qty {$totalInvoiceQuantity}, distributing {$invoiceTransportCost} F.");
+
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would set transportation_cost = {$invoiceTransportCost} F and distribute to items.");
+
+                continue;
+            }
+
+            // ── Set total transportation cost on the invoice ──────────────────
+
+            DB::table('purchase_invoices')
+                ->where('id', $purchaseInvoice->id)
+                ->update(['transportation_cost' => $invoiceTransportCost]);
+
+            // ── Distribute to line items (exact integer, no rounding loss) ────
+
+            $baseCostPerUnit = intdiv($invoiceTransportCost, $totalInvoiceQuantity);
+            $remainderUnits = $invoiceTransportCost % $totalInvoiceQuantity;
+
+            foreach ($items as $item) {
+                // Give this item its proportional share plus absorb up to item.quantity
+                // units of the remainder (1 F per unit) so the total is exact.
+                $itemTransportCost = $baseCostPerUnit * $item->quantity
+                    + min($remainderUnits, $item->quantity);
+
+                $remainderUnits = max(0, $remainderUnits - $item->quantity);
+
+                DB::table('purchase_invoice_items')
+                    ->where('id', $item->id)
+                    ->update(['transportation_cost' => $itemTransportCost]);
+
+                $totalItemsUpdated++;
+
+                // ── Propagate per-unit cost to the linked stock entry ─────────
+
+                $perUnitTransportCost = $item->quantity > 0
+                    ? (int) round($itemTransportCost / $item->quantity)
+                    : 0;
+
+                $updatedStockEntryCount = DB::table('stock_entries')
+                    ->where('purchase_invoice_item_id', $item->id)
+                    ->update(['transportation_cost' => $perUnitTransportCost]);
+
+                $totalStockEntriesUpdated += $updatedStockEntryCount;
+            }
+        }
+
+        $this->info("  Done — {$purchaseInvoices->count()} invoice(s) updated, {$totalItemsUpdated} item(s) updated, {$totalStockEntriesUpdated} stock entry/entries updated.");
     }
 
     /**

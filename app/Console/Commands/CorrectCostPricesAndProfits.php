@@ -197,11 +197,23 @@ class CorrectCostPricesAndProfits extends Command
             // Only include items from invoices that were actually stocked (goods received).
             // Unstocked invoices represent orders that never arrived and must not distort
             // the weighted-average cost price.
+            //
+            // Full unit cost = unit_price + transportation_cost_per_unit + packaging_cost.
+            // transportation_cost on purchase_invoice_items is the LINE total (not per-unit),
+            // so total_value = SUM(qty * unit_price + transport_line + qty * packaging) which
+            // simplifies to the sum of all-in costs across all batches.
             $purchaseAggregate = DB::table('purchase_invoice_items')
                 ->join('purchase_invoices', 'purchase_invoices.id', '=', 'purchase_invoice_items.purchase_invoice_id')
                 ->where('purchase_invoice_items.product_id', $parentProduct->id)
                 ->where('purchase_invoices.is_stocked', true)
-                ->selectRaw('SUM(purchase_invoice_items.quantity) as total_quantity, SUM(purchase_invoice_items.quantity * purchase_invoice_items.unit_price) as total_value')
+                ->selectRaw('
+                    SUM(purchase_invoice_items.quantity) as total_quantity,
+                    SUM(
+                        purchase_invoice_items.quantity * purchase_invoice_items.unit_price
+                        + purchase_invoice_items.transportation_cost
+                        + purchase_invoice_items.quantity * ?
+                    ) as total_value
+                ', [$parentProduct->packaging_cost])
                 ->first();
 
             if ($purchaseAggregate === null || $purchaseAggregate->total_quantity <= 0) {
