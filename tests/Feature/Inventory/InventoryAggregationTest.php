@@ -225,8 +225,8 @@ class InventoryAggregationTest extends TestCase
         $service = new CarLoadService;
         $total = $service->determineTotalSoldOfAParentProductFromChildren($carLoad, $parent);
 
-        // Current implementation ignores parent direct ventes and only converts children then adds persisted inventory parent total
-        // child base_quantity 6 vs parent 12 -> ratio 12/6 = 2, so 6 child -> 3 parent-equivalent
+        // The current implementation ignores parent direct ventes and only converts children, then adds persisted inventory parent total
+        // child base_quantity 6 vs. parent 12 -> ratio 12/6 = 2, so 6 child -> 3 parent-equivalent
         $this->assertEquals(0.12, (float) $total, 'Current behavior: parent direct sales are not added by the service');
     }
 }

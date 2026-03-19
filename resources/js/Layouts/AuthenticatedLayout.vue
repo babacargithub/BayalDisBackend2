@@ -98,6 +98,7 @@ const menuItems = [
         items: [
             { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
             { name: 'Statistiques', route: 'admin.statistiques', icon: 'mdi-chart-line' },
+            { name: 'Zones & Lignes', route: 'admin.geo-stats', icon: 'mdi-map-marker-path' },
             { name: 'Utilisateurs', route: 'users.index', icon: 'mdi-account-multiple' },
             { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
             { name: 'Coûts d\'exploitation', route: 'monthly-fixed-costs.index', icon: 'mdi-office-building-cog' },
