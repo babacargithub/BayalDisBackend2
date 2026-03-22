@@ -8,6 +8,7 @@
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <v-tabs v-model="activeTab" color="primary" class="mb-6">
                     <v-tab value="general">Général</v-tab>
+                    <v-tab value="nouveaux-clients">Nouveaux clients</v-tab>
                     <v-tab value="commerciaux">Commerciaux</v-tab>
                 </v-tabs>
 
@@ -111,6 +112,55 @@
                         </v-card>
                     </v-tabs-window-item>
 
+                    <!-- ── TAB: NOUVEAUX CLIENTS ── -->
+                    <v-tabs-window-item value="nouveaux-clients">
+                        <v-card>
+                            <v-card-title>Bonus nouveaux clients par commercial</v-card-title>
+                            <v-card-subtitle class="pb-2">
+                                Montant fixe (XOF) attribué par nouveau client créé dans la journée. Séparé par type : client confirmé (is_prospect = false) et prospect (is_prospect = true).
+                            </v-card-subtitle>
+
+                            <v-table density="compact">
+                                <thead>
+                                    <tr>
+                                        <th>Commercial</th>
+                                        <th class="text-right">Bonus client confirmé (XOF)</th>
+                                        <th class="text-right">Bonus prospect (XOF)</th>
+                                        <th class="text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        v-for="commercial in commerciaux"
+                                        :key="commercial.id"
+                                    >
+                                        <td class="font-weight-medium">{{ commercial.name }}</td>
+                                        <td class="text-right">
+                                            {{ formatCurrency(getNewCustomerSetting(commercial.id).confirmed_customer_bonus) }}
+                                        </td>
+                                        <td class="text-right">
+                                            {{ formatCurrency(getNewCustomerSetting(commercial.id).prospect_customer_bonus) }}
+                                        </td>
+                                        <td class="text-center">
+                                            <v-btn
+                                                icon="mdi-pencil"
+                                                size="x-small"
+                                                variant="text"
+                                                color="primary"
+                                                @click="openNewCustomerSettingDialog(commercial)"
+                                            />
+                                        </td>
+                                    </tr>
+                                    <tr v-if="commerciaux.length === 0">
+                                        <td colspan="4" class="text-center text-grey py-4">
+                                            Aucun commercial enregistré
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </v-table>
+                        </v-card>
+                    </v-tabs-window-item>
+
                     <!-- ── TAB: COMMERCIAUX ── -->
                     <v-tabs-window-item value="commerciaux">
                         <div class="d-flex justify-space-between align-center mb-4">
@@ -188,7 +238,9 @@
                                                             <th class="text-right">Base</th>
                                                             <th class="text-right">Basket</th>
                                                             <th class="text-right">Objectif</th>
+                                                            <th class="text-right">Nvx clients</th>
                                                             <th class="text-right text-error">Pénalités</th>
+                                                            <th class="text-right">Seuil</th>
                                                             <th class="text-right font-weight-bold">Net</th>
                                                         </tr>
                                                     </thead>
@@ -220,8 +272,29 @@
                                                                     (P{{ dailyCommission.achieved_tier_level }})
                                                                 </span>
                                                             </td>
+                                                            <td class="text-right">
+                                                                <span
+                                                                    v-if="dailyCommission.new_confirmed_customers_bonus > 0 || dailyCommission.new_prospect_customers_bonus > 0"
+                                                                    :title="`Confirmés : ${formatCurrency(dailyCommission.new_confirmed_customers_bonus)} · Prospects : ${formatCurrency(dailyCommission.new_prospect_customers_bonus)}`"
+                                                                >
+                                                                    {{ formatCurrency(dailyCommission.new_confirmed_customers_bonus + dailyCommission.new_prospect_customers_bonus) }}
+                                                                </span>
+                                                                <span v-else class="text-grey text-caption">—</span>
+                                                            </td>
                                                             <td class="text-right text-error">
                                                                 {{ dailyCommission.total_penalties > 0 ? '− ' + formatCurrency(dailyCommission.total_penalties) : '—' }}
+                                                            </td>
+                                                            <td class="text-right">
+                                                                <template v-if="dailyCommission.mandatory_daily_threshold > 0">
+                                                                    <v-chip
+                                                                        :color="dailyCommission.mandatory_threshold_reached ? 'success' : 'error'"
+                                                                        size="x-small"
+                                                                        :title="dailyCommission.mandatory_threshold_reached ? 'Seuil atteint' : 'Seuil non atteint'"
+                                                                    >
+                                                                        {{ formatCurrency(dailyCommission.mandatory_daily_threshold) }}
+                                                                    </v-chip>
+                                                                </template>
+                                                                <span v-else class="text-grey text-caption">—</span>
                                                             </td>
                                                             <td class="text-right font-weight-bold text-primary">
                                                                 {{ formatCurrency(dailyCommission.net_commission) }}
@@ -234,9 +307,11 @@
                                                             <td class="text-right">{{ formatCurrency(periodBaseTotal(workPeriod)) }}</td>
                                                             <td class="text-right">{{ formatCurrency(periodBasketTotal(workPeriod)) }}</td>
                                                             <td class="text-right">{{ formatCurrency(periodObjectiveTotal(workPeriod)) }}</td>
+                                                            <td class="text-right">{{ formatCurrency(periodNewCustomerBonusTotal(workPeriod)) }}</td>
                                                             <td class="text-right text-error">
                                                                 {{ periodPenaltiesTotal(workPeriod) > 0 ? '− ' + formatCurrency(periodPenaltiesTotal(workPeriod)) : '—' }}
                                                             </td>
+                                                            <td></td>
                                                             <td class="text-right text-primary">{{ formatCurrency(periodNetTotal(workPeriod)) }}</td>
                                                         </tr>
                                                     </tfoot>
@@ -375,6 +450,45 @@
                 </v-tabs-window>
             </div>
         </div>
+
+        <!-- Dialog: New customer commission setting -->
+        <v-dialog v-model="newCustomerSettingDialog" max-width="440px" persistent>
+            <v-card>
+                <v-card-title>Bonus nouveaux clients — {{ newCustomerSettingForm.commercial_name }}</v-card-title>
+                <v-card-text>
+                    <v-text-field
+                        v-model.number="newCustomerSettingForm.confirmed_customer_bonus"
+                        label="Bonus client confirmé (XOF)"
+                        type="number"
+                        min="0"
+                        suffix="XOF"
+                        required
+                        :error-messages="newCustomerSettingForm.errors.confirmed_customer_bonus"
+                        hint="Montant par nouveau client confirmé créé dans la journée"
+                        persistent-hint
+                    />
+                    <v-text-field
+                        v-model.number="newCustomerSettingForm.prospect_customer_bonus"
+                        label="Bonus prospect (XOF)"
+                        type="number"
+                        min="0"
+                        suffix="XOF"
+                        required
+                        class="mt-2"
+                        :error-messages="newCustomerSettingForm.errors.prospect_customer_bonus"
+                        hint="Montant par nouveau prospect créé dans la journée"
+                        persistent-hint
+                    />
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="error" @click="newCustomerSettingDialog = false">Annuler</v-btn>
+                    <v-btn color="primary" :loading="newCustomerSettingForm.processing" @click="saveNewCustomerSetting">
+                        Enregistrer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <!-- Dialog: Set category rate -->
         <v-dialog v-model="rateDialog" max-width="440px" persistent>
@@ -612,6 +726,7 @@ const props = defineProps({
     commerciaux: { type: Array, default: () => [] },
     categoryRates: { type: Array, default: () => [] },
     workPeriods: { type: Array, default: () => [] },
+    newCustomerCommissionSettings: { type: Array, default: () => [] },
 });
 
 const activeTab = ref('general');
@@ -657,8 +772,22 @@ function periodPenaltiesTotal(workPeriod) {
     return workPeriod.daily_commissions.reduce((sum, dc) => sum + dc.total_penalties, 0);
 }
 
+function periodNewCustomerBonusTotal(workPeriod) {
+    return workPeriod.daily_commissions.reduce(
+        (sum, dc) => sum + (dc.new_confirmed_customers_bonus ?? 0) + (dc.new_prospect_customers_bonus ?? 0),
+        0,
+    );
+}
+
 function periodNetTotal(workPeriod) {
     return workPeriod.daily_commissions.reduce((sum, dc) => sum + dc.net_commission, 0);
+}
+
+// ─── New customer commission settings helpers ─────────────────────────────────
+
+function getNewCustomerSetting(commercialId) {
+    return props.newCustomerCommissionSettings.find((s) => s.commercial_id === commercialId)
+        ?? { confirmed_customer_bonus: 0, prospect_customer_bonus: 0 };
 }
 
 // ─── Filter ───────────────────────────────────────────────────────────────────
@@ -667,6 +796,31 @@ const filteredWorkPeriods = computed(() => {
     if (!filterCommercialId.value) return props.workPeriods;
     return props.workPeriods.filter((wp) => wp.commercial_id === filterCommercialId.value);
 });
+
+// ─── New customer commission setting dialog ───────────────────────────────────
+
+const newCustomerSettingDialog = ref(false);
+const newCustomerSettingForm = useForm({
+    commercial_id: null,
+    commercial_name: '',
+    confirmed_customer_bonus: 0,
+    prospect_customer_bonus: 0,
+});
+
+function openNewCustomerSettingDialog(commercial) {
+    const existingSetting = getNewCustomerSetting(commercial.id);
+    newCustomerSettingForm.commercial_id = commercial.id;
+    newCustomerSettingForm.commercial_name = commercial.name;
+    newCustomerSettingForm.confirmed_customer_bonus = existingSetting.confirmed_customer_bonus;
+    newCustomerSettingForm.prospect_customer_bonus = existingSetting.prospect_customer_bonus;
+    newCustomerSettingDialog.value = true;
+}
+
+function saveNewCustomerSetting() {
+    newCustomerSettingForm.post(route('commissions.new-customer-settings.upsert'), {
+        onSuccess: () => { newCustomerSettingDialog.value = false; },
+    });
+}
 
 // ─── Category rate dialog ─────────────────────────────────────────────────────
 

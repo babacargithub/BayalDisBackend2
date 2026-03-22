@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Hash;
 
 class Commercial extends Model
@@ -88,6 +89,11 @@ class Commercial extends Model
     public function penalties(): HasManyThrough
     {
         return $this->hasManyThrough(CommercialPenalty::class, CommercialWorkPeriod::class);
+    }
+
+    public function newCustomerCommissionSetting(): HasOne
+    {
+        return $this->hasOne(CommercialNewCustomerCommissionSetting::class);
     }
 
     public function verifySecretCode(string $secretCode): bool

@@ -17,6 +17,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Team;
 use App\Models\User;
+use App\Services\Abc\AbcVehicleCostService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
@@ -66,6 +67,7 @@ class CommissionPeriodSummaryTest extends TestCase
 
         $this->service = new DailyCommissionService(
             new CommissionCalculatorService(new CommissionRateResolverService),
+            new AbcVehicleCostService,
         );
 
         $this->user = User::factory()->create();
@@ -194,6 +196,12 @@ class CommissionPeriodSummaryTest extends TestCase
             totalPenalties: 50,
             tierBonus: 100,
             basketBonus: 100,
+            totalNewConfirmedCustomersCount: 5,
+            totalNewProspectCustomersCount: 3,
+            totalNewConfirmedCustomersBonus: 2_500,
+            totalNewProspectCustomersBonus: 900,
+            totalDaysThresholdReached: 3,
+            totalDaysBelowThreshold: 1,
             days: [],
         );
 
@@ -206,10 +214,14 @@ class CommissionPeriodSummaryTest extends TestCase
         $this->assertSame(50, $dto->totalPenalties);
         $this->assertSame(100, $dto->tierBonus);
         $this->assertSame(100, $dto->basketBonus);
+        $this->assertSame(5, $dto->totalNewConfirmedCustomersCount);
+        $this->assertSame(3, $dto->totalNewProspectCustomersCount);
+        $this->assertSame(2_500, $dto->totalNewConfirmedCustomersBonus);
+        $this->assertSame(900, $dto->totalNewProspectCustomersBonus);
         $this->assertSame([], $dto->days);
     }
 
-    public function test_dto_to_array_returns_ten_expected_keys(): void
+    public function test_dto_to_array_returns_sixteen_expected_keys(): void
     {
         $dto = new CommissionPeriodSummaryData(
             startDate: '2026-03-02',
@@ -221,12 +233,18 @@ class CommissionPeriodSummaryTest extends TestCase
             totalPenalties: 0,
             tierBonus: 0,
             basketBonus: 0,
+            totalNewConfirmedCustomersCount: 0,
+            totalNewProspectCustomersCount: 0,
+            totalNewConfirmedCustomersBonus: 0,
+            totalNewProspectCustomersBonus: 0,
+            totalDaysThresholdReached: 0,
+            totalDaysBelowThreshold: 0,
             days: [],
         );
 
         $array = $dto->toArray();
 
-        $this->assertCount(10, $array);
+        $this->assertCount(16, $array);
         $this->assertArrayHasKey('start_date', $array);
         $this->assertArrayHasKey('end_date', $array);
         $this->assertArrayHasKey('mandatory_daily_sales', $array);
@@ -236,6 +254,12 @@ class CommissionPeriodSummaryTest extends TestCase
         $this->assertArrayHasKey('total_penalties', $array);
         $this->assertArrayHasKey('tier_bonus', $array);
         $this->assertArrayHasKey('basket_bonus', $array);
+        $this->assertArrayHasKey('total_new_confirmed_customers_count', $array);
+        $this->assertArrayHasKey('total_new_prospect_customers_count', $array);
+        $this->assertArrayHasKey('total_new_confirmed_customers_bonus', $array);
+        $this->assertArrayHasKey('total_new_prospect_customers_bonus', $array);
+        $this->assertArrayHasKey('total_days_threshold_reached', $array);
+        $this->assertArrayHasKey('total_days_below_threshold', $array);
         $this->assertArrayHasKey('days', $array);
     }
 
@@ -244,7 +268,9 @@ class CommissionPeriodSummaryTest extends TestCase
         $days = [
             ['date' => '2026-03-02', 'mandatory_daily_sales' => 5000, 'total_payments' => 5000,
                 'commissions_earned' => 500, 'total_penalties' => 0, 'tier_bonus' => 0,
-                'reached_tier_level' => null, 'basket_bonus' => 0],
+                'reached_tier_level' => null, 'basket_bonus' => 0,
+                'new_confirmed_customers_count' => 0, 'new_prospect_customers_count' => 0,
+                'new_confirmed_customers_bonus' => 0, 'new_prospect_customers_bonus' => 0],
         ];
 
         $dto = new CommissionPeriodSummaryData(
@@ -257,6 +283,12 @@ class CommissionPeriodSummaryTest extends TestCase
             totalPenalties: 0,
             tierBonus: 0,
             basketBonus: 0,
+            totalNewConfirmedCustomersCount: 0,
+            totalNewProspectCustomersCount: 0,
+            totalNewConfirmedCustomersBonus: 0,
+            totalNewProspectCustomersBonus: 0,
+            totalDaysThresholdReached: 0,
+            totalDaysBelowThreshold: 0,
             days: $days,
         );
 
@@ -271,6 +303,12 @@ class CommissionPeriodSummaryTest extends TestCase
         $this->assertSame(0, $array['total_penalties']);
         $this->assertSame(0, $array['tier_bonus']);
         $this->assertSame(0, $array['basket_bonus']);
+        $this->assertSame(0, $array['total_new_confirmed_customers_count']);
+        $this->assertSame(0, $array['total_new_prospect_customers_count']);
+        $this->assertSame(0, $array['total_new_confirmed_customers_bonus']);
+        $this->assertSame(0, $array['total_new_prospect_customers_bonus']);
+        $this->assertSame(0, $array['total_days_threshold_reached']);
+        $this->assertSame(0, $array['total_days_below_threshold']);
         $this->assertSame($days, $array['days']);
     }
 
@@ -458,6 +496,12 @@ class CommissionPeriodSummaryTest extends TestCase
             'total_penalties',
             'tier_bonus',
             'basket_bonus',
+            'total_new_confirmed_customers_count',
+            'total_new_prospect_customers_count',
+            'total_new_confirmed_customers_bonus',
+            'total_new_prospect_customers_bonus',
+            'total_days_threshold_reached',
+            'total_days_below_threshold',
             'days',
         ]);
     }
@@ -619,6 +663,12 @@ class CommissionPeriodSummaryTest extends TestCase
             'total_penalties',
             'tier_bonus',
             'basket_bonus',
+            'total_new_confirmed_customers_count',
+            'total_new_prospect_customers_count',
+            'total_new_confirmed_customers_bonus',
+            'total_new_prospect_customers_bonus',
+            'total_days_threshold_reached',
+            'total_days_below_threshold',
             'days',
         ]);
     }

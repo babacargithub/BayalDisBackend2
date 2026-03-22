@@ -5,14 +5,18 @@ namespace App\Services\Commission;
 use App\Data\Commission\CommissionPeriodData;
 use App\Data\Commission\CommissionPeriodSummaryData;
 use App\Data\Commission\DailyCommissionSummaryData;
+use App\Models\CarLoad;
 use App\Models\Commercial;
 use App\Models\CommercialWorkPeriod;
 use App\Models\CommissionPaymentLine;
 use App\Models\CommissionPeriodSetting;
+use App\Models\Customer;
 use App\Models\DailyCommission;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
+use App\Models\Vente;
+use App\Services\Abc\AbcVehicleCostService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -41,6 +45,7 @@ readonly class DailyCommissionService
 {
     public function __construct(
         private CommissionCalculatorService $commissionCalculatorService,
+        private AbcVehicleCostService $abcVehicleCostService,
     ) {}
 
     /**
@@ -200,7 +205,32 @@ readonly class DailyCommissionService
                 ->whereDate('work_day', $workDay)
                 ->sum('amount');
 
-            $netCommission = max(0, $baseCommission + $basketBonus + $objectiveBonus - $totalPenalties);
+            // --- New customer bonuses ---
+            $newCustomerBonuses = $this->computeNewCustomerBonusesForDay($workPeriod, $workDay);
+            $newConfirmedCustomersBonus = $newCustomerBonuses['confirmed'];
+            $newProspectCustomersBonus = $newCustomerBonuses['prospect'];
+
+            // --- Mandatory daily threshold ---
+            $mandatoryDailySales = (int) SalesInvoice::where('commercial_id', $commercial->id)
+                ->whereDate('created_at', $workDay)
+                ->sum('total_amount');
+
+            $thresholdData = $this->computeMandatoryDailyThresholdForWorkDay($commercial, $workDay);
+            $mandatoryDailyThreshold = $thresholdData['threshold'];
+            $cachedAverageMarginRate = $thresholdData['margin_rate'];
+            $mandatoryThresholdReached = $mandatoryDailyThreshold > 0
+                ? $mandatoryDailySales >= $mandatoryDailyThreshold
+                : true;
+
+            $netCommission = max(
+                0,
+                $baseCommission
+                + $basketBonus
+                + $objectiveBonus
+                + $newConfirmedCustomersBonus
+                + $newProspectCustomersBonus
+                - $totalPenalties,
+            );
 
             // --- Persist DailyCommission ---
             $dailyCommission->update([
@@ -208,6 +238,11 @@ readonly class DailyCommissionService
                 'basket_bonus' => $basketBonus,
                 'objective_bonus' => $objectiveBonus,
                 'total_penalties' => $totalPenalties,
+                'new_confirmed_customers_bonus' => $newConfirmedCustomersBonus,
+                'new_prospect_customers_bonus' => $newProspectCustomersBonus,
+                'mandatory_daily_threshold' => $mandatoryDailyThreshold,
+                'mandatory_threshold_reached' => $mandatoryThresholdReached,
+                'cached_average_margin_rate' => $cachedAverageMarginRate,
                 'net_commission' => $netCommission,
                 'basket_achieved' => $basketAchieved,
                 'basket_multiplier_applied' => $basketMultiplierApplied,
@@ -228,6 +263,134 @@ readonly class DailyCommissionService
 
             return $dailyCommission->fresh();
         });
+    }
+
+    /**
+     * Computes new-customer bonuses earned by the commercial on a specific work day.
+     *
+     * Counts customers where:
+     *  - commercial_id = the work period's commercial
+     *  - DATE(created_at) = work_day
+     *  - is_prospect = false → confirmed customer
+     *  - is_prospect = true → prospect customer
+     *
+     * Returns ['confirmed' => int, 'prospect' => int].
+     * Both are 0 when no CommercialNewCustomerCommissionSetting exists for the commercial.
+     *
+     * @return array{confirmed: int, prospect: int}
+     */
+    public function computeNewCustomerBonusesForDay(
+        CommercialWorkPeriod $workPeriod,
+        string $workDay,
+    ): array {
+        $setting = $workPeriod->commercial->newCustomerCommissionSetting;
+
+        if ($setting === null) {
+            return ['confirmed' => 0, 'prospect' => 0];
+        }
+
+        $commercial = $workPeriod->commercial;
+
+        $counts = Customer::where('commercial_id', $commercial->id)
+            ->whereDate('created_at', $workDay)
+            ->selectRaw('
+            SUM(CASE WHEN is_prospect = 0 THEN 1 ELSE 0 END) as confirmed_count,
+            SUM(CASE WHEN is_prospect = 1 THEN 1 ELSE 0 END) as prospect_count
+        ')
+            ->first();
+
+        $newConfirmedCustomersCount = $counts->confirmed_count ?? 0;
+        $newProspectCustomersCount = $counts->prospect_count ?? 0;
+
+        return [
+            'confirmed' => $newConfirmedCustomersCount * $setting->confirmed_customer_bonus,
+            'prospect' => $newProspectCustomersCount * $setting->prospect_customer_bonus,
+        ];
+    }
+
+    /**
+     * Finds the CarLoad that was active for the commercial's team on a given work day.
+     *
+     * Looks for a CarLoad whose load_date <= workDay and whose return_date is null
+     * (still active) or >= workDay (not yet returned). Returns the most recent one
+     * by load_date when multiple overlap (e.g. back-to-back trips).
+     */
+    private function findActiveCarLoadForCommercialOnWorkDay(
+        Commercial $commercial,
+        string $workDay,
+    ): ?CarLoad {
+        if ($commercial->team_id === null) {
+            return null;
+        }
+
+        return CarLoad::where('team_id', $commercial->team_id)
+            ->whereDate('load_date', '<=', $workDay)
+            ->where(fn ($query) => $query->whereNull('return_date')->orWhereDate('return_date', '>=', $workDay))
+            ->latest('load_date')
+            ->first();
+    }
+
+    /**
+     * Computes the global average margin rate across all existing Vente records.
+     *
+     * Formula: SUM(profit) / SUM(price × quantity)
+     *
+     * Returns null when there are no sales or total revenue is zero (cannot compute margin).
+     */
+    private function computeAverageMarginRateFromAllSales(): ?float
+    {
+        $result = Vente::selectRaw('SUM(profit) as total_profit, SUM(price * quantity) as total_revenue')
+            ->first();
+
+        if ($result === null || (float) $result->total_revenue === 0.0) {
+            return null;
+        }
+
+        return (float) $result->total_profit / (float) $result->total_revenue;
+    }
+
+    /**
+     * Computes the mandatory daily sales threshold for a commercial on a given work day.
+     *
+     * The threshold is the minimum invoiced sales revenue needed so that the margin
+     * from those sales covers the car load's daily operating cost.
+     *
+     * Formula: threshold = ceil(daily_total_cost / average_margin_rate)
+     * Example: cost = 15,000 XOF, margin = 30% → threshold = ceil(15000 / 0.30) = 50,000 XOF
+     *
+     * Returns ['threshold' => 0, 'margin_rate' => null] when:
+     *  - No active CarLoad was found for the commercial's team on that day
+     *  - The CarLoad has zero daily cost
+     *  - No sales data exists to compute an average margin rate
+     *  - The average margin rate is zero or negative
+     *
+     * @return array{threshold: int, margin_rate: float|null}
+     */
+    public function computeMandatoryDailyThresholdForWorkDay(
+        Commercial $commercial,
+        string $workDay,
+    ): array {
+        $activeCarLoad = $this->findActiveCarLoadForCommercialOnWorkDay($commercial, $workDay);
+
+        if ($activeCarLoad === null) {
+            return ['threshold' => 0, 'margin_rate' => null];
+        }
+
+        $dailyTotalCost = $this->abcVehicleCostService->computeDailyTotalCostForCarLoad($activeCarLoad);
+
+        if ($dailyTotalCost === 0) {
+            return ['threshold' => 0, 'margin_rate' => null];
+        }
+
+        $averageMarginRate = $this->computeAverageMarginRateFromAllSales();
+
+        if ($averageMarginRate === null || $averageMarginRate <= 0.0) {
+            return ['threshold' => 0, 'margin_rate' => $averageMarginRate];
+        }
+
+        $threshold = (int) ceil($dailyTotalCost / $averageMarginRate);
+
+        return ['threshold' => $threshold, 'margin_rate' => $averageMarginRate];
     }
 
     /**
@@ -338,6 +501,13 @@ readonly class DailyCommissionService
                 tierBonus: 0,
                 reachedTierLevel: null,
                 basketBonus: 0,
+                newConfirmedCustomersCount: 0,
+                newProspectCustomersCount: 0,
+                newConfirmedCustomersBonus: 0,
+                newProspectCustomersBonus: 0,
+                mandatoryDailyThreshold: 0,
+                mandatoryThresholdReached: true,
+                cachedAverageMarginRate: null,
             );
         }
 
@@ -354,8 +524,25 @@ readonly class DailyCommissionService
                 tierBonus: 0,
                 reachedTierLevel: null,
                 basketBonus: 0,
+                newConfirmedCustomersCount: 0,
+                newProspectCustomersCount: 0,
+                newConfirmedCustomersBonus: 0,
+                newProspectCustomersBonus: 0,
+                mandatoryDailyThreshold: 0,
+                mandatoryThresholdReached: true,
+                cachedAverageMarginRate: null,
             );
         }
+
+        $newConfirmedCustomersCount = Customer::where('commercial_id', $workPeriod->commercial_id)
+            ->where('is_prospect', false)
+            ->whereDate('created_at', $workDay)
+            ->count();
+
+        $newProspectCustomersCount = Customer::where('commercial_id', $workPeriod->commercial_id)
+            ->where('is_prospect', true)
+            ->whereDate('created_at', $workDay)
+            ->count();
 
         return new DailyCommissionSummaryData(
             mandatoryDailySales: $mandatoryDailySales,
@@ -365,6 +552,15 @@ readonly class DailyCommissionService
             tierBonus: $dailyCommission->objective_bonus,
             reachedTierLevel: $dailyCommission->achieved_tier_level,
             basketBonus: $dailyCommission->basket_bonus,
+            newConfirmedCustomersCount: $newConfirmedCustomersCount,
+            newProspectCustomersCount: $newProspectCustomersCount,
+            newConfirmedCustomersBonus: $dailyCommission->new_confirmed_customers_bonus,
+            newProspectCustomersBonus: $dailyCommission->new_prospect_customers_bonus,
+            mandatoryDailyThreshold: $dailyCommission->mandatory_daily_threshold,
+            mandatoryThresholdReached: (bool) $dailyCommission->mandatory_threshold_reached,
+            cachedAverageMarginRate: $dailyCommission->cached_average_margin_rate !== null
+                ? (float) $dailyCommission->cached_average_margin_rate
+                : null,
         );
     }
 
@@ -450,6 +646,34 @@ readonly class DailyCommissionService
         $totalPenalties = (int) $dailyCommissionsByDate->sum('total_penalties');
         $tierBonus = (int) $dailyCommissionsByDate->sum('objective_bonus');
         $basketBonus = (int) $dailyCommissionsByDate->sum('basket_bonus');
+        $totalNewConfirmedCustomersBonus = (int) $dailyCommissionsByDate->sum('new_confirmed_customers_bonus');
+        $totalNewProspectCustomersBonus = (int) $dailyCommissionsByDate->sum('new_prospect_customers_bonus');
+
+        // Period-level new customer counts (queried directly for accuracy).
+        $totalNewConfirmedCustomersCount = (int) Customer::where('commercial_id', $commercial->id)
+            ->where('is_prospect', false)
+            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
+            ->count();
+
+        $totalNewProspectCustomersCount = (int) Customer::where('commercial_id', $commercial->id)
+            ->where('is_prospect', true)
+            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
+            ->count();
+
+        // Per-day new-customer counts grouped by calendar date.
+        $newConfirmedCustomerCountsByDate = Customer::where('commercial_id', $commercial->id)
+            ->where('is_prospect', false)
+            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
+            ->selectRaw('DATE(created_at) as day, COUNT(*) as day_count')
+            ->groupBy('day')
+            ->pluck('day_count', 'day');
+
+        $newProspectCustomerCountsByDate = Customer::where('commercial_id', $commercial->id)
+            ->where('is_prospect', true)
+            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
+            ->selectRaw('DATE(created_at) as day, COUNT(*) as day_count')
+            ->groupBy('day')
+            ->pluck('day_count', 'day');
 
         // Per-day invoice and payment sums (single query each, grouped by calendar date).
         // toBase() bypasses Eloquent model hydration, preventing accessor conflicts (e.g. getTotalAttribute).
@@ -468,11 +692,29 @@ readonly class DailyCommissionService
 
         // Build one entry per calendar day in the range, zero-filling days with no activity.
         $days = [];
+        $totalDaysThresholdReached = 0;
+        $totalDaysBelowThreshold = 0;
         $currentDate = $startDate;
 
         while ($currentDate->lte($endDate)) {
             $dateString = $currentDate->toDateString();
             $dailyCommission = $dailyCommissionsByDate->get($dateString);
+
+            $dayMandatoryDailyThreshold = $dailyCommission?->mandatory_daily_threshold ?? 0;
+            $dayMandatoryThresholdReached = $dailyCommission !== null
+                ? (bool) $dailyCommission->mandatory_threshold_reached
+                : true;
+            $dayCachedAverageMarginRate = $dailyCommission?->cached_average_margin_rate !== null
+                ? (float) $dailyCommission->cached_average_margin_rate
+                : null;
+
+            if ($dailyCommission !== null && $dayMandatoryDailyThreshold > 0) {
+                if ($dayMandatoryThresholdReached) {
+                    $totalDaysThresholdReached++;
+                } else {
+                    $totalDaysBelowThreshold++;
+                }
+            }
 
             $days[] = [
                 'date' => $dateString,
@@ -483,6 +725,13 @@ readonly class DailyCommissionService
                 'tier_bonus' => $dailyCommission?->objective_bonus ?? 0,
                 'reached_tier_level' => $dailyCommission?->achieved_tier_level,
                 'basket_bonus' => $dailyCommission?->basket_bonus ?? 0,
+                'new_confirmed_customers_count' => (int) ($newConfirmedCustomerCountsByDate[$dateString] ?? 0),
+                'new_prospect_customers_count' => (int) ($newProspectCustomerCountsByDate[$dateString] ?? 0),
+                'new_confirmed_customers_bonus' => $dailyCommission?->new_confirmed_customers_bonus ?? 0,
+                'new_prospect_customers_bonus' => $dailyCommission?->new_prospect_customers_bonus ?? 0,
+                'mandatory_daily_threshold' => $dayMandatoryDailyThreshold,
+                'mandatory_threshold_reached' => $dayMandatoryThresholdReached,
+                'cached_average_margin_rate' => $dayCachedAverageMarginRate,
             ];
 
             $currentDate = $currentDate->addDay();
@@ -498,6 +747,12 @@ readonly class DailyCommissionService
             totalPenalties: $totalPenalties,
             tierBonus: $tierBonus,
             basketBonus: $basketBonus,
+            totalNewConfirmedCustomersCount: $totalNewConfirmedCustomersCount,
+            totalNewProspectCustomersCount: $totalNewProspectCustomersCount,
+            totalNewConfirmedCustomersBonus: $totalNewConfirmedCustomersBonus,
+            totalNewProspectCustomersBonus: $totalNewProspectCustomersBonus,
+            totalDaysThresholdReached: $totalDaysThresholdReached,
+            totalDaysBelowThreshold: $totalDaysBelowThreshold,
             days: $days,
         );
     }

@@ -20,6 +20,7 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
+use App\Services\Abc\AbcVehicleCostService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
@@ -64,7 +65,8 @@ class DailyCommissionSummaryTest extends TestCase
         parent::setUp();
 
         $this->service = new DailyCommissionService(
-            new CommissionCalculatorService(new CommissionRateResolverService)
+            new CommissionCalculatorService(new CommissionRateResolverService),
+            new AbcVehicleCostService,
         );
 
         $this->user = User::factory()->create();
@@ -168,6 +170,13 @@ class DailyCommissionSummaryTest extends TestCase
             tierBonus: 15_000,
             reachedTierLevel: 2,
             basketBonus: 1_260,
+            newConfirmedCustomersCount: 0,
+            newProspectCustomersCount: 0,
+            newConfirmedCustomersBonus: 0,
+            newProspectCustomersBonus: 0,
+            mandatoryDailyThreshold: 0,
+            mandatoryThresholdReached: true,
+            cachedAverageMarginRate: null,
         );
 
         $this->assertEquals(500_000, $summaryData->mandatoryDailySales);
@@ -189,12 +198,19 @@ class DailyCommissionSummaryTest extends TestCase
             tierBonus: 0,
             reachedTierLevel: null,
             basketBonus: 0,
+            newConfirmedCustomersCount: 0,
+            newProspectCustomersCount: 0,
+            newConfirmedCustomersBonus: 0,
+            newProspectCustomersBonus: 0,
+            mandatoryDailyThreshold: 0,
+            mandatoryThresholdReached: true,
+            cachedAverageMarginRate: null,
         );
 
         $this->assertNull($summaryData->reachedTierLevel);
     }
 
-    public function test_dto_to_array_returns_all_seven_keys_with_correct_snake_case_names(): void
+    public function test_dto_to_array_returns_all_fourteen_keys_with_correct_snake_case_names(): void
     {
         $summaryData = new DailyCommissionSummaryData(
             mandatoryDailySales: 100,
@@ -204,6 +220,13 @@ class DailyCommissionSummaryTest extends TestCase
             tierBonus: 500,
             reachedTierLevel: 1,
             basketBonus: 600,
+            newConfirmedCustomersCount: 2,
+            newProspectCustomersCount: 1,
+            newConfirmedCustomersBonus: 1_000,
+            newProspectCustomersBonus: 500,
+            mandatoryDailyThreshold: 50_000,
+            mandatoryThresholdReached: false,
+            cachedAverageMarginRate: 0.30,
         );
 
         $array = $summaryData->toArray();
@@ -215,7 +238,14 @@ class DailyCommissionSummaryTest extends TestCase
         $this->assertArrayHasKey('tier_bonus', $array);
         $this->assertArrayHasKey('reached_tier_level', $array);
         $this->assertArrayHasKey('basket_bonus', $array);
-        $this->assertCount(7, $array);
+        $this->assertArrayHasKey('new_confirmed_customers_count', $array);
+        $this->assertArrayHasKey('new_prospect_customers_count', $array);
+        $this->assertArrayHasKey('new_confirmed_customers_bonus', $array);
+        $this->assertArrayHasKey('new_prospect_customers_bonus', $array);
+        $this->assertArrayHasKey('mandatory_daily_threshold', $array);
+        $this->assertArrayHasKey('mandatory_threshold_reached', $array);
+        $this->assertArrayHasKey('cached_average_margin_rate', $array);
+        $this->assertCount(14, $array);
     }
 
     public function test_dto_to_array_maps_values_correctly(): void
@@ -228,6 +258,13 @@ class DailyCommissionSummaryTest extends TestCase
             tierBonus: 15_000,
             reachedTierLevel: 2,
             basketBonus: 1_260,
+            newConfirmedCustomersCount: 3,
+            newProspectCustomersCount: 1,
+            newConfirmedCustomersBonus: 1_500,
+            newProspectCustomersBonus: 300,
+            mandatoryDailyThreshold: 50_000,
+            mandatoryThresholdReached: true,
+            cachedAverageMarginRate: 0.30,
         );
 
         $this->assertEquals([
@@ -238,6 +275,13 @@ class DailyCommissionSummaryTest extends TestCase
             'tier_bonus' => 15_000,
             'reached_tier_level' => 2,
             'basket_bonus' => 1_260,
+            'new_confirmed_customers_count' => 3,
+            'new_prospect_customers_count' => 1,
+            'new_confirmed_customers_bonus' => 1_500,
+            'new_prospect_customers_bonus' => 300,
+            'mandatory_daily_threshold' => 50_000,
+            'mandatory_threshold_reached' => true,
+            'cached_average_margin_rate' => 0.30,
         ], $summaryData->toArray());
     }
 
@@ -251,6 +295,13 @@ class DailyCommissionSummaryTest extends TestCase
             tierBonus: 0,
             reachedTierLevel: null,
             basketBonus: 0,
+            newConfirmedCustomersCount: 0,
+            newProspectCustomersCount: 0,
+            newConfirmedCustomersBonus: 0,
+            newProspectCustomersBonus: 0,
+            mandatoryDailyThreshold: 0,
+            mandatoryThresholdReached: true,
+            cachedAverageMarginRate: null,
         );
 
         $this->assertNull($summaryData->toArray()['reached_tier_level']);
@@ -430,7 +481,7 @@ class DailyCommissionSummaryTest extends TestCase
             ->assertStatus(401);
     }
 
-    public function test_endpoint_returns_200_with_all_seven_keys(): void
+    public function test_endpoint_returns_200_with_all_keys(): void
     {
         Sanctum::actingAs($this->user);
 
@@ -444,6 +495,13 @@ class DailyCommissionSummaryTest extends TestCase
                 'tier_bonus',
                 'reached_tier_level',
                 'basket_bonus',
+                'new_confirmed_customers_count',
+                'new_prospect_customers_count',
+                'new_confirmed_customers_bonus',
+                'new_prospect_customers_bonus',
+                'mandatory_daily_threshold',
+                'mandatory_threshold_reached',
+                'cached_average_margin_rate',
             ]);
     }
 
@@ -461,6 +519,13 @@ class DailyCommissionSummaryTest extends TestCase
                 'tier_bonus' => 0,
                 'reached_tier_level' => null,
                 'basket_bonus' => 0,
+                'new_confirmed_customers_count' => 0,
+                'new_prospect_customers_count' => 0,
+                'new_confirmed_customers_bonus' => 0,
+                'new_prospect_customers_bonus' => 0,
+                'mandatory_daily_threshold' => 0,
+                'mandatory_threshold_reached' => true,
+                'cached_average_margin_rate' => null,
             ]);
     }
 

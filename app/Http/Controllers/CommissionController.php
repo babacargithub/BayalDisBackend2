@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Data\Commission\CommissionPeriodData;
 use App\Models\Commercial;
 use App\Models\CommercialCategoryCommissionRate;
+use App\Models\CommercialNewCustomerCommissionSetting;
 use App\Models\CommercialObjectiveTier;
 use App\Models\CommercialPenalty;
 use App\Models\CommercialWorkPeriod;
@@ -33,7 +34,18 @@ class CommissionController extends Controller
                 'commission_rate' => $productCategory->commission_rate !== null ? (float) $productCategory->commission_rate : null,
             ]);
 
-        $commerciaux = Commercial::query()->orderBy('name')->get(['id', 'name']);
+        $commerciaux = Commercial::query()->orderBy('name')->with('newCustomerCommissionSetting')->get();
+
+        $commerciauxData = $commerciaux->map(fn (Commercial $commercial): array => [
+            'id' => $commercial->id,
+            'name' => $commercial->name,
+        ]);
+
+        $newCustomerCommissionSettings = $commerciaux->map(fn (Commercial $commercial): array => [
+            'commercial_id' => $commercial->id,
+            'confirmed_customer_bonus' => $commercial->newCustomerCommissionSetting?->confirmed_customer_bonus ?? 0,
+            'prospect_customer_bonus' => $commercial->newCustomerCommissionSetting?->prospect_customer_bonus ?? 0,
+        ]);
 
         $categoryRates = CommercialCategoryCommissionRate::query()->get()
             ->map(fn (CommercialCategoryCommissionRate $rate): array => [
@@ -64,6 +76,13 @@ class CommissionController extends Controller
                         'basket_bonus' => $dailyCommission->basket_bonus,
                         'objective_bonus' => $dailyCommission->objective_bonus,
                         'total_penalties' => $dailyCommission->total_penalties,
+                        'new_confirmed_customers_bonus' => $dailyCommission->new_confirmed_customers_bonus,
+                        'new_prospect_customers_bonus' => $dailyCommission->new_prospect_customers_bonus,
+                        'mandatory_daily_threshold' => $dailyCommission->mandatory_daily_threshold,
+                        'mandatory_threshold_reached' => $dailyCommission->mandatory_threshold_reached,
+                        'cached_average_margin_rate' => $dailyCommission->cached_average_margin_rate !== null
+                            ? (float) $dailyCommission->cached_average_margin_rate
+                            : null,
                         'net_commission' => $dailyCommission->net_commission,
                         'basket_achieved' => $dailyCommission->basket_achieved,
                         'achieved_tier_level' => $dailyCommission->achieved_tier_level,
@@ -88,10 +107,32 @@ class CommissionController extends Controller
 
         return Inertia::render('Commissions/Index', [
             'productCategories' => $productCategories,
-            'commerciaux' => $commerciaux,
+            'commerciaux' => $commerciauxData,
             'categoryRates' => $categoryRates,
             'workPeriods' => $workPeriods,
+            'newCustomerCommissionSettings' => $newCustomerCommissionSettings,
         ]);
+    }
+
+    // ─── Général tab — New customer commission settings ─────────────────────────
+
+    public function upsertNewCustomerCommissionSetting(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'commercial_id' => 'required|exists:commercials,id',
+            'confirmed_customer_bonus' => 'required|integer|min:0',
+            'prospect_customer_bonus' => 'required|integer|min:0',
+        ]);
+
+        CommercialNewCustomerCommissionSetting::updateOrCreate(
+            ['commercial_id' => $validated['commercial_id']],
+            [
+                'confirmed_customer_bonus' => $validated['confirmed_customer_bonus'],
+                'prospect_customer_bonus' => $validated['prospect_customer_bonus'],
+            ],
+        );
+
+        return redirect()->back()->with('success', 'Paramètres nouveaux clients mis à jour.');
     }
 
     // ─── Général tab — Category commission rates ────────────────────────────────

@@ -17,6 +17,7 @@ use App\Models\ProductCategory;
 use App\Models\SalesInvoice;
 use App\Models\User;
 use App\Models\Vente;
+use App\Services\Abc\AbcVehicleCostService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
@@ -47,7 +48,8 @@ class DailyCommissionServiceTest extends TestCase
         parent::setUp();
 
         $this->service = new DailyCommissionService(
-            new CommissionCalculatorService(new CommissionRateResolverService)
+            new CommissionCalculatorService(new CommissionRateResolverService),
+            new AbcVehicleCostService,
         );
 
         $this->user = User::factory()->create();
@@ -269,6 +271,9 @@ class DailyCommissionServiceTest extends TestCase
         $this->assertEquals(300, $wednesday->base_commission); // 30_000 × 1%
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function test_recalculating_a_day_replaces_payment_lines_not_duplicates(): void
     {
         $category = $this->makeCategory('ALM');
@@ -287,6 +292,7 @@ class DailyCommissionServiceTest extends TestCase
         );
         $lineCountAfterFirstRun = CommissionPaymentLine::where('daily_commission_id', $firstRun->id)->count();
 
+        /** @noinspection PhpSuspiciousNameCombinationInspection */
         $secondRun = $this->service->recalculateDailyCommissionForWorkDay(
             $this->commercial, $this->weeklyWorkPeriod, '2026-03-04'
         );
@@ -296,6 +302,9 @@ class DailyCommissionServiceTest extends TestCase
         $this->assertEquals(1, DailyCommission::where('commercial_work_period_id', $this->weeklyWorkPeriod->id)->count());
     }
 
+    /**
+     * @throws \Throwable
+     */
     public function test_commission_payment_lines_are_persisted_with_correct_daily_commission_id(): void
     {
         $category = $this->makeCategory('ALM');

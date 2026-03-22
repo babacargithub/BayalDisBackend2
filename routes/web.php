@@ -12,6 +12,7 @@ use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\DepenseController;
+use App\Http\Controllers\GeographicStatsController;
 use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\LigneController;
 use App\Http\Controllers\MonthlyFixedCostController;
@@ -23,7 +24,6 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SectorController;
-use App\Http\Controllers\GeographicStatsController;
 use App\Http\Controllers\StatisticsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TeamController;
@@ -112,7 +112,6 @@ Route::middleware('auth')->group(function () {
         Route::post('/{visitBatch}/add-customers', [VisitBatchController::class, 'addCustomers'])->name('add-customers');
 
         // Customer Visits
-        Route::post('/customer-visits', [CustomerVisitController::class, 'store'])->name('customer-visits.store');
         Route::get('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'show'])->name('customer-visits.show');
         Route::post('/customer-visits/{customerVisit}/complete', [CustomerVisitController::class, 'complete'])->name('customer-visits.complete');
         Route::post('/customer-visits/{customerVisit}/cancel', [CustomerVisitController::class, 'cancel'])->name('customer-visits.cancel');
@@ -122,6 +121,7 @@ Route::middleware('auth')->group(function () {
     // Commission Management Routes
     Route::prefix('commissions')->name('commissions.')->group(function () {
         Route::get('/', [CommissionController::class, 'index'])->name('index');
+        Route::post('/new-customer-settings', [CommissionController::class, 'upsertNewCustomerCommissionSetting'])->name('new-customer-settings.upsert');
         Route::post('/category-rates', [CommissionController::class, 'upsertCategoryRate'])->name('category-rates.upsert');
         Route::delete('/category-rates/{categoryRate}', [CommissionController::class, 'destroyCategoryRate'])->name('category-rates.destroy');
         Route::post('/work-periods', [CommissionController::class, 'storeWorkPeriod'])->name('work-periods.store');
