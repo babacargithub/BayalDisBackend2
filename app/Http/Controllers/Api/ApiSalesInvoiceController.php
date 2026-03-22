@@ -4,7 +4,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvoicePaymentMismatchException;
 use App\Http\Controllers\Controller;
@@ -17,6 +16,7 @@ use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
+use App\Services\Commission\DailyCommissionService;
 use App\Services\SalesInvoiceService;
 use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
@@ -29,6 +29,7 @@ class ApiSalesInvoiceController extends Controller
     public function __construct(
         private readonly SalesInvoiceService $salesInvoiceService,
         private readonly SalesInvoiceStatsService $salesInvoiceStatsService,
+        private readonly DailyCommissionService $dailyCommissionService,
     ) {}
 
     public function createSalesInvoice(CreateSalesInvoiceRequest $request): JsonResponse
@@ -60,18 +61,21 @@ class ApiSalesInvoiceController extends Controller
     public function getSalesAndPaymentsOfATeamInAPeriod(Request $request): JsonResponse
     {
         $date = $request->query('date', today()->toDateString());
+        $commercial = $request->user()->commercial;
 
-        $invoicesQuery = SalesInvoice::with(['customer', 'items.product'])
-            ->whereDate('created_at', $date);
+        $invoices = SalesInvoice::with(['customer', 'items.product', 'payments'])
+            ->whereDate('created_at', $date)
+            ->get();
 
-        $paymentsQuery = Payment::whereDate('created_at', $date)
-            ->where('user_id', $request->user()->id);
+        $debtCollectionPayments = Payment::with('salesInvoice.customer')
+            ->whereDate('created_at', $date)
+            ->where('user_id', $request->user()->id)
+            ->get()
+            ->filter(fn (Payment $payment) => $payment->salesInvoice?->created_at?->toDateString() !== $date);
 
-        $invoices = $invoicesQuery->get();
-        $activityReport = $this->salesInvoiceStatsService->buildCommercialActivityReport(auth()->user()->commercial,
-            Carbon::parse($date), Carbon::parse($date));
-        $totalSales = $activityReport->totalSales;
-        $totalPayments = $activityReport->totalPayments;
+        $dailyCommissionSummary = $commercial !== null
+            ? $this->dailyCommissionService->getDailyCommissionSummary($commercial, $date)
+            : null;
 
         return response()->json([
             'ventes' => [],
@@ -81,22 +85,29 @@ class ApiSalesInvoiceController extends Controller
                 'customer' => [
                     'name' => $invoice->customer->name,
                     'phone_number' => $invoice->customer->phone_number,
+                    'address' => $invoice->customer->address,
                 ],
                 'items' => [],
                 'total' => $invoice->total_amount,
-                'paid' => $invoice->status == SalesInvoiceStatus::FullyPaid,
+                'status' => $invoice->status->value,
+                'payment_method' => $invoice->payments->first()?->payment_method,
                 'should_be_paid_at' => $invoice->should_be_paid_at,
                 'created_at' => $invoice->created_at,
             ]),
-            'payments' => $paymentsQuery->get()->map(fn ($payment) => [
+            'payments' => $debtCollectionPayments->values()->map(fn (Payment $payment) => [
                 'id' => $payment->id,
                 'amount' => $payment->amount,
                 'payment_method' => $payment->payment_method,
                 'created_at' => $payment->created_at,
+                'invoice_date' => $payment->salesInvoice?->created_at,
+                'invoice_number' => $payment->salesInvoice?->invoice_number,
                 'label' => 'Paiement : '.$payment->salesInvoice?->customer?->name,
             ]),
-            'total_payments' => $totalPayments,
-            'total' => $totalSales,
+            'total' => $dailyCommissionSummary?->mandatoryDailySales ?? 0,
+            'total_payments' => $dailyCommissionSummary?->totalPayments ?? 0,
+            'mandatory_daily_sales' => $dailyCommissionSummary?->mandatoryDailySales ?? 0,
+            'mandatory_daily_threshold' => $dailyCommissionSummary?->mandatoryDailyThreshold ?? 0,
+            'commissions_earned' => $dailyCommissionSummary?->commissionsEarned ?? 0,
         ]);
     }
 

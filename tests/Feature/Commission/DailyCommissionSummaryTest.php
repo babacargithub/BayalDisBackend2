@@ -24,6 +24,7 @@ use App\Services\Abc\AbcVehicleCostService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -67,6 +68,7 @@ class DailyCommissionSummaryTest extends TestCase
         $this->service = new DailyCommissionService(
             new CommissionCalculatorService(new CommissionRateResolverService),
             new AbcVehicleCostService,
+            new SalesInvoiceStatsService(new CommissionRateResolverService),
         );
 
         $this->user = User::factory()->create();

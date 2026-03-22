@@ -93,5 +93,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('daily-commission', [ApiCommissionController::class, 'getDailyCommission'])->name('salesperson.daily-commission');
         Route::get('weekly-commissions', [ApiCommissionController::class, 'getWeeklyCommissions'])->name('salesperson.weekly-commissions');
         Route::get('monthly-commissions', [ApiCommissionController::class, 'getMonthlyCommissions'])->name('salesperson.monthly-commissions');
+        Route::get('commission-overview', [ApiCommissionController::class, 'getCommissionOverview'])->name('salesperson.commission-overview');
+        Route::get('commission-detail', [ApiCommissionController::class, 'getCommissionDetail'])->name('salesperson.commission-detail');
     });
 });

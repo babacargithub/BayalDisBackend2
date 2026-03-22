@@ -5,6 +5,7 @@ namespace App\Services\Commission;
 use App\Data\Commission\CommissionPeriodData;
 use App\Data\Commission\CommissionPeriodSummaryData;
 use App\Data\Commission\DailyCommissionSummaryData;
+use App\Data\Vente\VenteStatsFilter;
 use App\Models\CarLoad;
 use App\Models\Commercial;
 use App\Models\CommercialWorkPeriod;
@@ -15,8 +16,9 @@ use App\Models\DailyCommission;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
-use App\Models\Vente;
 use App\Services\Abc\AbcVehicleCostService;
+use App\Services\SalesInvoiceStatsService;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -46,6 +48,7 @@ readonly class DailyCommissionService
     public function __construct(
         private CommissionCalculatorService $commissionCalculatorService,
         private AbcVehicleCostService $abcVehicleCostService,
+        private SalesInvoiceStatsService $salesInvoiceStatsService,
     ) {}
 
     /**
@@ -211,9 +214,12 @@ readonly class DailyCommissionService
             $newProspectCustomersBonus = $newCustomerBonuses['prospect'];
 
             // --- Mandatory daily threshold ---
-            $mandatoryDailySales = (int) SalesInvoice::where('commercial_id', $commercial->id)
-                ->whereDate('created_at', $workDay)
-                ->sum('total_amount');
+            $workDayActivityReport = $this->salesInvoiceStatsService->buildCommercialActivityReport(
+                $commercial,
+                Carbon::parse($workDay)->startOfDay(),
+                Carbon::parse($workDay)->endOfDay(),
+            );
+            $mandatoryDailySales = $workDayActivityReport->totalSales;
 
             $thresholdData = $this->computeMandatoryDailyThresholdForWorkDay($commercial, $workDay);
             $mandatoryDailyThreshold = $thresholdData['threshold'];
@@ -339,14 +345,15 @@ readonly class DailyCommissionService
      */
     private function computeAverageMarginRateFromAllSales(): ?float
     {
-        $result = Vente::selectRaw('SUM(profit) as total_profit, SUM(price * quantity) as total_revenue')
-            ->first();
+        $allSalesFilter = VenteStatsFilter::regardlessOfPaymentStatus();
+        $totalRevenue = $this->salesInvoiceStatsService->totalSales(null, null, $allSalesFilter);
+        $totalProfit = $this->salesInvoiceStatsService->totalEstimatedProfits(null, null, $allSalesFilter);
 
-        if ($result === null || (float) $result->total_revenue === 0.0) {
+        if ($totalRevenue === 0) {
             return null;
         }
 
-        return (float) $result->total_profit / (float) $result->total_revenue;
+        return (float) $totalProfit / (float) $totalRevenue;
     }
 
     /**
@@ -391,6 +398,281 @@ readonly class DailyCommissionService
         $threshold = (int) ceil($dailyTotalCost / $averageMarginRate);
 
         return ['threshold' => $threshold, 'margin_rate' => $averageMarginRate];
+    }
+
+    /**
+     * Builds a structured overview of commissions for the current month, organised
+     * into three sections that a salesperson's mobile app can render at once.
+     *
+     * daily   – One entry per calendar day from the 1st of the target month up to
+     *           and including today (upcoming days are omitted).
+     *           Ordered latest-first (today at index 0).
+     *
+     * weekly  – One entry per Monday–Sunday week that overlaps the target month,
+     *           up to and including the week containing today (future weeks omitted).
+     *           Weeks that bleed into the previous month are included in full so
+     *           their commissions are always accurate.
+     *           Ordered latest-first (current week at index 0).
+     *
+     * monthly – One entry per calendar month from the earliest stored DailyCommission
+     *           for this commercial up to and including the target month.
+     *           Returns only the target month when no historical records exist.
+     *           Ordered latest-first (current month at index 0).
+     *
+     * All commission amounts are integers (XOF). Days with no DailyCommission record
+     * are zero-filled so the mobile app never has to handle missing dates.
+     *
+     * @return array{
+     *   daily: array<int, array{date: string, commissions_earned: int, total_penalties: int}>,
+     *   weekly: array<int, array{start_date: string, end_date: string, commissions_earned: int, total_penalties: int}>,
+     *   monthly: array<int, array{year: int, month: int, commissions_earned: int, total_penalties: int}>,
+     * }
+     */
+    public function getCommissionOverviewForMonth(
+        Commercial $commercial,
+        CarbonImmutable $targetMonth,
+    ): array {
+        $monthStart = $targetMonth->startOfMonth();
+        $today = CarbonImmutable::now()->startOfDay();
+
+        // Daily and weekly sections stop at today, not end-of-month.
+        $dailyCutoff = $today->lt($targetMonth->endOfMonth()) ? $today : $targetMonth->endOfMonth();
+
+        $workPeriodIds = CommercialWorkPeriod::where('commercial_id', $commercial->id)->pluck('id');
+
+        // Single query – load every DailyCommission record for this commercial.
+        // Keyed by 'YYYY-MM-DD' for O(1) lookups in the per-day loops below.
+        $allDailyCommissions = DailyCommission::whereIn('commercial_work_period_id', $workPeriodIds)->get();
+
+        $allDailyCommissionsKeyedByDate = $allDailyCommissions
+            ->keyBy(fn (DailyCommission $dailyCommission) => $dailyCommission->work_day->toDateString());
+
+        // ─── Daily section ────────────────────────────────────────────────────────
+        // One entry per calendar day from the 1st of the month to today.
+        // Built chronologically then reversed so the most recent day is first.
+        $dailyEntries = [];
+        $dayCursor = $monthStart;
+
+        while ($dayCursor->lte($dailyCutoff)) {
+            $dateString = $dayCursor->toDateString();
+            $dailyCommission = $allDailyCommissionsKeyedByDate->get($dateString);
+
+            $dailyEntries[] = [
+                'date' => $dateString,
+                'commissions_earned' => $dailyCommission?->net_commission ?? 0,
+                'total_penalties' => $dailyCommission?->total_penalties ?? 0,
+            ];
+
+            $dayCursor = $dayCursor->addDay();
+        }
+
+        $dailyEntries = array_reverse($dailyEntries);
+
+        // ─── Weekly section ───────────────────────────────────────────────────────
+        // Every Monday–Sunday week that overlaps the target month, stopping at the
+        // week that contains today (future weeks are excluded).
+        // Weeks that bleed into the previous month are included in full.
+        // Built chronologically then reversed so the current week is first.
+        $weeklyEntries = [];
+        $firstWeekMonday = $monthStart->startOfWeek();      // Mon on or before 1st of month
+        $currentWeekMonday = $dailyCutoff->startOfWeek();   // Mon of the week containing today
+
+        $weekStartCursor = $firstWeekMonday;
+
+        while ($weekStartCursor->lte($currentWeekMonday)) {
+            $weekEnd = $weekStartCursor->endOfWeek();
+            $weekCommissionsEarned = 0;
+            $weekTotalPenalties = 0;
+
+            $weekDayCursor = $weekStartCursor;
+
+            while ($weekDayCursor->lte($weekEnd)) {
+                $dailyCommission = $allDailyCommissionsKeyedByDate->get($weekDayCursor->toDateString());
+                $weekCommissionsEarned += $dailyCommission?->net_commission ?? 0;
+                $weekTotalPenalties += $dailyCommission?->total_penalties ?? 0;
+                $weekDayCursor = $weekDayCursor->addDay();
+            }
+
+            $weeklyEntries[] = [
+                'start_date' => $weekStartCursor->toDateString(),
+                'end_date' => $weekEnd->toDateString(),
+                'commissions_earned' => $weekCommissionsEarned,
+                'total_penalties' => $weekTotalPenalties,
+            ];
+
+            $weekStartCursor = $weekStartCursor->addWeek();
+        }
+
+        $weeklyEntries = array_reverse($weeklyEntries);
+
+        // ─── Monthly section ──────────────────────────────────────────────────────
+        // All calendar months from the commercial's earliest commission up to now.
+        // Falls back to just the target month when no historical records exist.
+        // Built chronologically then reversed so the most recent month is first.
+        $monthlyEntries = [];
+        $monthEnd = $targetMonth->endOfMonth();
+
+        if ($allDailyCommissions->isNotEmpty()) {
+            $earliestDateString = $allDailyCommissionsKeyedByDate->keys()->sort()->first();
+            $firstAvailableMonth = CarbonImmutable::parse($earliestDateString)->startOfMonth();
+        } else {
+            $firstAvailableMonth = $monthStart;
+        }
+
+        // Group all records once by 'YYYY-MM' to avoid iterating the full set per month.
+        $allDailyCommissionsGroupedByYearMonth = $allDailyCommissions->groupBy(
+            fn (DailyCommission $dailyCommission) => $dailyCommission->work_day->format('Y-m'),
+        );
+
+        $monthCursor = $firstAvailableMonth;
+
+        while ($monthCursor->lte($monthEnd)) {
+            $yearMonthKey = $monthCursor->format('Y-m');
+            $monthDailyCommissions = $allDailyCommissionsGroupedByYearMonth->get($yearMonthKey, collect());
+
+            $monthlyEntries[] = [
+                'year' => $monthCursor->year,
+                'month' => $monthCursor->month,
+                'commissions_earned' => (int) $monthDailyCommissions->sum('net_commission'),
+                'total_penalties' => (int) $monthDailyCommissions->sum('total_penalties'),
+            ];
+
+            $monthCursor = $monthCursor->addMonth();
+        }
+
+        $monthlyEntries = array_reverse($monthlyEntries);
+
+        return [
+            'daily' => $dailyEntries,
+            'weekly' => $weeklyEntries,
+            'monthly' => $monthlyEntries,
+        ];
+    }
+
+    /**
+     * Builds a detailed commission breakdown for a specific period.
+     *
+     * Returns three sections:
+     *  - period   : type (daily|weekly|monthly), start_date, end_date
+     *  - summary  : aggregated totals across all DailyCommission records in the period.
+     *               mandatory_threshold_reached is true only if every day with a non-zero
+     *               threshold actually reached it.
+     *  - days     : one entry per DailyCommission record found in the period (days without
+     *               any record are omitted). Ordered by work_day descending (latest first).
+     *
+     * mandatory_daily_sales in both summary and days entries is sourced from SalesInvoice
+     * totals (not stored on DailyCommission) so it always reflects the invoiced amounts.
+     *
+     * @return array{
+     *   period: array{type: string, start_date: string, end_date: string},
+     *   summary: array{
+     *     base_commission: int,
+     *     basket_bonus: int,
+     *     objective_bonus: int,
+     *     new_confirmed_customers_bonus: int,
+     *     new_prospect_customers_bonus: int,
+     *     total_penalties: int,
+     *     net_commission: int,
+     *     mandatory_daily_sales: int,
+     *     mandatory_daily_threshold: int,
+     *     mandatory_threshold_reached: bool,
+     *   },
+     *   days: array<int, array{
+     *     date: string,
+     *     base_commission: int,
+     *     basket_bonus: int,
+     *     objective_bonus: int,
+     *     new_confirmed_customers_bonus: int,
+     *     new_prospect_customers_bonus: int,
+     *     total_penalties: int,
+     *     net_commission: int,
+     *     mandatory_daily_sales: int,
+     *     mandatory_daily_threshold: int,
+     *     mandatory_threshold_reached: bool,
+     *   }>,
+     * }
+     */
+    public function getCommissionDetailForPeriod(
+        Commercial $commercial,
+        CarbonImmutable $startDate,
+        CarbonImmutable $endDate,
+        string $periodType,
+    ): array {
+        $startDateString = $startDate->toDateString();
+        $endDateString = $endDate->toDateString();
+
+        $workPeriodIds = CommercialWorkPeriod::where('commercial_id', $commercial->id)->pluck('id');
+
+        // All DailyCommission records in the period, ordered latest first.
+        $dailyCommissionsInPeriod = DailyCommission::whereIn('commercial_work_period_id', $workPeriodIds)
+            ->whereDate('work_day', '>=', $startDateString)
+            ->whereDate('work_day', '<=', $endDateString)
+            ->orderBy('work_day', 'desc')
+            ->get();
+
+        // Per-day SalesInvoice totals for mandatory_daily_sales (not stored on DailyCommission).
+        // toBase() bypasses Eloquent model hydration, preventing accessor conflicts.
+        $invoiceTotalsByDate = SalesInvoice::where('commercial_id', $commercial->id)
+            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
+            ->selectRaw('DATE(created_at) as day, SUM(total_amount) as day_total')
+            ->groupBy('day')
+            ->toBase()
+            ->pluck('day_total', 'day');
+
+        $periodTotalMandatoryDailySales = (int) $invoiceTotalsByDate->sum();
+
+        // ─── Days array ───────────────────────────────────────────────────────────
+        // Only days that have a DailyCommission record (already in desc order).
+        $days = $dailyCommissionsInPeriod->map(function (DailyCommission $dailyCommission) use ($invoiceTotalsByDate) {
+            $dateString = $dailyCommission->work_day->toDateString();
+
+            return [
+                'date' => $dateString,
+                'base_commission' => $dailyCommission->base_commission,
+                'basket_bonus' => $dailyCommission->basket_bonus,
+                'objective_bonus' => $dailyCommission->objective_bonus,
+                'new_confirmed_customers_bonus' => $dailyCommission->new_confirmed_customers_bonus ?? 0,
+                'new_prospect_customers_bonus' => $dailyCommission->new_prospect_customers_bonus ?? 0,
+                'total_penalties' => $dailyCommission->total_penalties,
+                'net_commission' => $dailyCommission->net_commission,
+                'mandatory_daily_sales' => (int) ($invoiceTotalsByDate[$dateString] ?? 0),
+                'mandatory_daily_threshold' => $dailyCommission->mandatory_daily_threshold ?? 0,
+                'mandatory_threshold_reached' => (bool) $dailyCommission->mandatory_threshold_reached,
+            ];
+        })->values()->all();
+
+        // ─── Summary ──────────────────────────────────────────────────────────────
+        // mandatory_threshold_reached: true only when every day whose threshold is
+        // non-zero actually reached it (days with no threshold are not a failure).
+        $daysWithNonZeroThreshold = $dailyCommissionsInPeriod
+            ->filter(fn (DailyCommission $dc) => ($dc->mandatory_daily_threshold ?? 0) > 0);
+
+        $allDaysWithThresholdReachedIt = $daysWithNonZeroThreshold->isNotEmpty()
+            ? $daysWithNonZeroThreshold->every(fn (DailyCommission $dc) => (bool) $dc->mandatory_threshold_reached)
+            : true;
+
+        $summary = [
+            'base_commission' => (int) $dailyCommissionsInPeriod->sum('base_commission'),
+            'basket_bonus' => (int) $dailyCommissionsInPeriod->sum('basket_bonus'),
+            'objective_bonus' => (int) $dailyCommissionsInPeriod->sum('objective_bonus'),
+            'new_confirmed_customers_bonus' => (int) $dailyCommissionsInPeriod->sum('new_confirmed_customers_bonus'),
+            'new_prospect_customers_bonus' => (int) $dailyCommissionsInPeriod->sum('new_prospect_customers_bonus'),
+            'total_penalties' => (int) $dailyCommissionsInPeriod->sum('total_penalties'),
+            'net_commission' => (int) $dailyCommissionsInPeriod->sum('net_commission'),
+            'mandatory_daily_sales' => $periodTotalMandatoryDailySales,
+            'mandatory_daily_threshold' => (int) $dailyCommissionsInPeriod->sum('mandatory_daily_threshold'),
+            'mandatory_threshold_reached' => $allDaysWithThresholdReachedIt,
+        ];
+
+        return [
+            'period' => [
+                'type' => $periodType,
+                'start_date' => $startDateString,
+                'end_date' => $endDateString,
+            ],
+            'summary' => $summary,
+            'days' => $days,
+        ];
     }
 
     /**
@@ -478,13 +760,13 @@ readonly class DailyCommissionService
         Commercial $commercial,
         string $workDay,
     ): DailyCommissionSummaryData {
-        $mandatoryDailySales = SalesInvoice::where('commercial_id', $commercial->id)
-            ->whereDate('created_at', $workDay)
-            ->sum('total_amount');
-
-        $totalPayments = $commercial->payments()
-            ->whereDate('created_at', $workDay)
-            ->sum('amount');
+        $workDayActivityReport = $this->salesInvoiceStatsService->buildCommercialActivityReport(
+            $commercial,
+            Carbon::parse($workDay)->startOfDay(),
+            Carbon::parse($workDay)->endOfDay(),
+        );
+        $mandatoryDailySales = $workDayActivityReport->totalSales;
+        $totalPayments = $workDayActivityReport->totalPayments;
 
         $workPeriod = CommercialWorkPeriod::query()
             ->where('commercial_id', $commercial->id)
@@ -622,13 +904,13 @@ readonly class DailyCommissionService
         $endDateString = $endDate->toDateString();
 
         // Period-level invoice and payment totals.
-        $mandatoryDailySales = (int) SalesInvoice::where('commercial_id', $commercial->id)
-            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
-            ->sum('total_amount');
-
-        $totalPayments = (int) $commercial->payments()
-            ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
-            ->sum('amount');
+        $periodActivityReport = $this->salesInvoiceStatsService->buildCommercialActivityReport(
+            $commercial,
+            Carbon::parse($startDate->startOfDay()),
+            Carbon::parse($endDate->endOfDay()),
+        );
+        $mandatoryDailySales = $periodActivityReport->totalSales;
+        $totalPayments = $periodActivityReport->totalPayments;
 
         // Collect all work-period IDs for this commercial, then load matching DailyCommissions.
         $workPeriodIds = CommercialWorkPeriod::where('commercial_id', $commercial->id)->pluck('id');
