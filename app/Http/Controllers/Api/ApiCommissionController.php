@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CommercialWorkPeriod;
 use App\Services\Commission\DailyCommissionService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -165,5 +166,83 @@ class ApiCommissionController extends Controller
         $overview = $dailyCommissionService->getCommissionOverviewForMonth($commercial, $currentMonth);
 
         return response()->json($overview);
+    }
+
+    /**
+     * Return the full commission structure applicable to the authenticated salesperson.
+     *
+     * This is a static/configuration endpoint — it returns the rules, not the
+     * salesperson's performance. All values are derived from the current work period
+     * (the period covering today) and the commercial's customer bonus settings.
+     *
+     * Response:
+     *   ca_tiers[]              – Objective tiers for the current work period, ordered by
+     *                             ca_threshold ascending. Empty when no work period covers today.
+     *   new_customer_bonuses[]  – Confirmed and prospect bonus amounts. Empty when no setting exists.
+     *   mandatory_daily_threshold – Minimum daily sales (CA) before any tier bonus applies.
+     *                              0 when no active car load or no margin data is available.
+     *
+     * Returns HTTP 404 if the authenticated user has no linked Commercial profile.
+     */
+    public function getCommissionStructure(Request $request, DailyCommissionService $dailyCommissionService): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($commercial === null) {
+            return response()->json(['message' => 'Aucun profil commercial lié à cet utilisateur.'], 404);
+        }
+
+        $today = today()->toDateString();
+
+        // --- CA tiers from the current work period ---
+        $currentWorkPeriod = CommercialWorkPeriod::query()
+            ->where('commercial_id', $commercial->id)
+            ->whereDate('period_start_date', '<=', $today)
+            ->whereDate('period_end_date', '>=', $today)
+            ->first();
+
+        $caTiers = [];
+
+        if ($currentWorkPeriod !== null) {
+            $caTiers = $currentWorkPeriod->objectiveTiers()
+                ->orderBy('ca_threshold')
+                ->get()
+                ->map(fn ($tier) => [
+                    'tier_level' => $tier->tier_level,
+                    'ca_threshold' => $tier->ca_threshold,
+                    'bonus_amount' => $tier->bonus_amount,
+                    'description' => 'Atteindre '.number_format($tier->ca_threshold, 0, ',', ' ').' F de CA journalier',
+                ])
+                ->values()
+                ->all();
+        }
+
+        // --- New customer bonuses ---
+        $newCustomerBonuses = [];
+        $newCustomerSetting = $commercial->newCustomerCommissionSetting;
+
+        if ($newCustomerSetting !== null) {
+            $newCustomerBonuses = [
+                [
+                    'customer_type' => 'confirmed',
+                    'bonus_amount' => $newCustomerSetting->confirmed_customer_bonus,
+                    'description' => 'Nouveau client confirmé',
+                ],
+                [
+                    'customer_type' => 'prospect',
+                    'bonus_amount' => $newCustomerSetting->prospect_customer_bonus,
+                    'description' => 'Nouveau prospect',
+                ],
+            ];
+        }
+
+        // --- Mandatory daily threshold ---
+        $thresholdData = $dailyCommissionService->computeMandatoryDailyThresholdForWorkDay($commercial, $today);
+
+        return response()->json([
+            'ca_tiers' => $caTiers,
+            'new_customer_bonuses' => $newCustomerBonuses,
+            'mandatory_daily_threshold' => $thresholdData['threshold'],
+        ]);
     }
 }

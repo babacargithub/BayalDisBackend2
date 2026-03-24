@@ -195,7 +195,7 @@ class SalespersonCommissionIntegrationTest extends TestCase
                 ['product_id' => $product->id, 'quantity' => $quantity, 'price' => $pricePerUnit],
             ],
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ]);
 
         $response->assertStatus(201);
@@ -225,7 +225,7 @@ class SalespersonCommissionIntegrationTest extends TestCase
             'customer_id' => $this->customer->id,
             'items' => $items,
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ]);
 
         $response->assertStatus(201);
@@ -552,13 +552,22 @@ class SalespersonCommissionIntegrationTest extends TestCase
     // Guard rails — no work period / finalized period / no invoice
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function test_no_daily_commission_is_created_when_payment_falls_outside_any_work_period(): void
+    public function test_payment_outside_pre_configured_period_auto_creates_a_weekly_period_and_tracks_commission(): void
     {
-        Carbon::setTestNow('2026-03-10'); // After the period ends (Sat 7 Mar)
+        Carbon::setTestNow('2026-03-10'); // Tuesday — after the pre-configured period ends (Sat 7 Mar)
 
         $this->salespersonMakesSale($this->productAlm, 1, 10_000);
 
-        $this->assertEquals(0, DailyCommission::count());
+        // A new Mon 9 Mar → Sun 15 Mar period must have been auto-created.
+        $autoCreatedPeriod = CommercialWorkPeriod::whereDate('period_start_date', '2026-03-09')->first();
+        $this->assertNotNull($autoCreatedPeriod, 'A weekly period starting Mon 9 Mar must be auto-created.');
+        $this->assertEquals('2026-03-15', $autoCreatedPeriod->period_end_date->toDateString());
+
+        // Commission for the sale on 10 Mar must be tracked.
+        $this->assertEquals(1, DailyCommission::count());
+        $dailyCommission = DailyCommission::first();
+        $this->assertEquals('2026-03-10', $dailyCommission->work_day->toDateString());
+        $this->assertEquals($autoCreatedPeriod->id, $dailyCommission->commercial_work_period_id);
     }
 
     public function test_payment_in_a_finalized_period_does_not_update_the_daily_commission(): void

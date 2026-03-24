@@ -136,7 +136,7 @@ readonly class SalesInvoiceService
     public function addItemToInvoice(SalesInvoice $salesInvoice, array $validatedData): Vente
     {
         return DB::transaction(function () use ($salesInvoice, $validatedData) {
-            $salesInvoiceItem = Vente::create([
+            $salesInvoiceItem = new Vente([
                 'sales_invoice_id' => $salesInvoice->id,
                 'product_id' => $validatedData['product_id'],
                 'quantity' => $validatedData['quantity'],
@@ -145,6 +145,8 @@ readonly class SalesInvoiceService
                 'paid' => $salesInvoice->paid,
                 'should_be_paid_at' => $salesInvoice->should_be_paid_at,
             ]);
+            $salesInvoiceItem->calculateProfit();
+            $salesInvoiceItem->save();
             $salesInvoiceItem->refresh();
 
             $currentCarLoad = $salesInvoice->commercial
@@ -229,8 +231,15 @@ readonly class SalesInvoiceService
         array $validatedData,
     ): void {
         DB::transaction(function () use ($salesInvoice, $payment, $validatedData) {
+            // Refresh so stored total_amount and total_estimated_profit are current
+            // before computing the proportional profit and commission for the new amount.
+            $salesInvoice->refresh();
+            $newAmount = $validatedData['amount'];
+
             $payment->update([
-                'amount' => $validatedData['amount'],
+                'amount' => $newAmount,
+                'profit' => $salesInvoice->computeRealizedProfitForPaymentAmount($newAmount),
+                'commercial_commission' => $salesInvoice->computeCommercialCommissionForPaymentAmount($newAmount),
                 'payment_method' => $validatedData['payment_method'],
                 'comment' => $validatedData['comment'] ?? null,
             ]);

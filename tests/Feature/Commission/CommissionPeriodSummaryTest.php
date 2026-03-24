@@ -180,7 +180,7 @@ class CommissionPeriodSummaryTest extends TestCase
             'customer_id' => $this->customer->id,
             'items' => $items,
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertSuccessful();
     }
 

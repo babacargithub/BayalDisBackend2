@@ -90,6 +90,7 @@ class ApiSalesInvoiceController extends Controller
                 'items' => [],
                 'total' => $invoice->total_amount,
                 'status' => $invoice->status->value,
+                "commercial_commission"=> $invoice->estimated_commercial_commission,
                 'payment_method' => $invoice->payments->first()?->payment_method,
                 'should_be_paid_at' => $invoice->should_be_paid_at,
                 'created_at' => $invoice->created_at,
@@ -101,6 +102,7 @@ class ApiSalesInvoiceController extends Controller
                 'created_at' => $payment->created_at,
                 'invoice_date' => $payment->salesInvoice?->created_at,
                 'invoice_number' => $payment->salesInvoice?->invoice_number,
+                "commercial_commission"=> $payment->commercial_commission,
                 'label' => 'Paiement : '.$payment->salesInvoice?->customer?->name,
             ]),
             'total' => $dailyCommissionSummary?->mandatoryDailySales ?? 0,
@@ -129,13 +131,33 @@ class ApiSalesInvoiceController extends Controller
 
         $activityReport = $this->salesInvoiceStatsService->buildCommercialActivityReport($commercial, $startDate, $endDate);
 
+        $nextTierProgress = null;
+
+        if ($validated['type'] === 'daily') {
+            $workDay = $date->toDateString();
+            $thresholdData = $this->dailyCommissionService->computeMandatoryDailyThresholdForWorkDay($commercial, $workDay);
+            $mandatoryThresholdReached = $thresholdData['threshold'] === 0
+                || $activityReport->totalSales >= $thresholdData['threshold'];
+
+            if ($mandatoryThresholdReached) {
+                $nextTierProgress = $this->dailyCommissionService->computeNextTierProgressForCommercialOnDay(
+                    $commercial,
+                    $workDay,
+                    $activityReport->totalPayments,
+                );
+            }
+        }
+
+        $responseData = $activityReport->toSnakeCaseArray();
+        $responseData['next_tier_progress'] = $nextTierProgress?->toArray();
+
         return response()->json([
             'period' => [
                 'start' => $startDate->toDateTimeString(),
                 'end' => $endDate->toDateTimeString(),
                 'type' => $validated['type'],
             ],
-            'data' => $activityReport->toSnakeCaseArray(),
+            'data' => $responseData,
         ]);
     }
 

@@ -241,32 +241,32 @@ class SalespersonCriticalEndpointsTest extends TestCase
 
         return [
             // ── 12 Cash invoices (10:00–12:30) ────────────────────────────
-            [0, [['A', 2]],           true,  'Cash', null],       // 01  5 000
-            [1, [['B', 3]],           true,  'Cash', null],       // 02  4 500
-            [2, [['C', 1]],           true,  'Cash', null],       // 03  3 000
-            [3, [['A', 1], ['B', 2]], true,  'Cash', null],       // 04  5 500
-            [4, [['B', 4]],           true,  'Cash', null],       // 05  6 000
-            [5, [['C', 2]],           true,  'Cash', null],       // 06  6 000
-            [6, [['A', 3]],           true,  'Cash', null],       // 07  7 500
-            [7, [['B', 1], ['C', 1]], true,  'Cash', null],       // 08  4 500
-            [8, [['A', 2]],           true,  'Cash', null],       // 09  5 000
-            [9, [['C', 1]],           true,  'Cash', null],       // 10  3 000
-            [0, [['A', 1], ['B', 1]], true,  'Cash', null],       // 11  4 000
-            [1, [['B', 2]],           true,  'Cash', null],       // 12  3 000
+            [0, [['A', 2]],           true,  'CASH', null],       // 01  5 000
+            [1, [['B', 3]],           true,  'CASH', null],       // 02  4 500
+            [2, [['C', 1]],           true,  'CASH', null],       // 03  3 000
+            [3, [['A', 1], ['B', 2]], true,  'CASH', null],       // 04  5 500
+            [4, [['B', 4]],           true,  'CASH', null],       // 05  6 000
+            [5, [['C', 2]],           true,  'CASH', null],       // 06  6 000
+            [6, [['A', 3]],           true,  'CASH', null],       // 07  7 500
+            [7, [['B', 1], ['C', 1]], true,  'CASH', null],       // 08  4 500
+            [8, [['A', 2]],           true,  'CASH', null],       // 09  5 000
+            [9, [['C', 1]],           true,  'CASH', null],       // 10  3 000
+            [0, [['A', 1], ['B', 1]], true,  'CASH', null],       // 11  4 000
+            [1, [['B', 2]],           true,  'CASH', null],       // 12  3 000
             // ── 8 Wave invoices (13:00–15:30) ─────────────────────────────
-            [2, [['A', 3]],           true,  'Wave', null],       // 13  7 500
-            [3, [['C', 2]],           true,  'Wave', null],       // 14  6 000
-            [4, [['B', 5]],           true,  'Wave', null],       // 15  7 500
-            [5, [['A', 2], ['C', 1]], true,  'Wave', null],       // 16  8 000
-            [6, [['B', 3]],           true,  'Wave', null],       // 17  4 500
-            [7, [['A', 1]],           true,  'Wave', null],       // 18  2 500
-            [8, [['C', 3]],           true,  'Wave', null],       // 19  9 000
-            [9, [['B', 2], ['A', 1]], true,  'Wave', null],       // 20  5 500
+            [2, [['A', 3]],           true,  'WAVE', null],       // 13  7 500
+            [3, [['C', 2]],           true,  'WAVE', null],       // 14  6 000
+            [4, [['B', 5]],           true,  'WAVE', null],       // 15  7 500
+            [5, [['A', 2], ['C', 1]], true,  'WAVE', null],       // 16  8 000
+            [6, [['B', 3]],           true,  'WAVE', null],       // 17  4 500
+            [7, [['A', 1]],           true,  'WAVE', null],       // 18  2 500
+            [8, [['C', 3]],           true,  'WAVE', null],       // 19  9 000
+            [9, [['B', 2], ['A', 1]], true,  'WAVE', null],       // 20  5 500
             // ── 4 OM invoices (15:30–16:30) ───────────────────────────────
-            [0, [['C', 1]],           true,  'Om',   null],       // 21  3 000
-            [1, [['A', 2]],           true,  'Om',   null],       // 22  5 000
-            [2, [['B', 3]],           true,  'Om',   null],       // 23  4 500
-            [3, [['C', 2]],           true,  'Om',   null],       // 24  6 000
+            [0, [['C', 1]],           true,  'OM',   null],       // 21  3 000
+            [1, [['A', 2]],           true,  'OM',   null],       // 22  5 000
+            [2, [['B', 3]],           true,  'OM',   null],       // 23  4 500
+            [3, [['C', 2]],           true,  'OM',   null],       // 24  6 000
             // ── 6 Credit invoices (16:30–18:00) ───────────────────────────
             [4, [['A', 3]],           false, null,   $nextWeek],  // 25  7 500  credit
             [5, [['B', 4]],           false, null,   $nextWeek],  // 26  6 000  credit
@@ -359,7 +359,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[0]->id,
             'items' => $this->items([['A', 1]]),
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(422)
             ->assertJsonPath('message', fn ($msg) => str_contains($msg, 'chargement'));
     }
@@ -374,7 +374,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[0]->id,
             'items' => [['product_id' => $this->productA->id, 'quantity' => self::STOCK_PER_PRODUCT + 1, 'price' => 2500]],
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(422)
             ->assertJsonPath('message', fn ($msg) => str_contains($msg, 'Stock insuffisant'));
     }
@@ -388,7 +388,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[0]->id,
             'items' => [['product_id' => $this->productA->id, 'quantity' => self::STOCK_PER_PRODUCT + 50, 'price' => 2500]],
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(422);
 
         $this->assertEquals($stockBefore, $this->remainingStock($this->productA));
@@ -405,7 +405,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[0]->id,
             'items' => $this->items([['A', 2], ['B', 3]]),  // 5000 + 4500 = 9500
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ]);
 
         $response->assertStatus(201);
@@ -423,7 +423,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[1]->id,
             'items' => $this->items([['C', 2]]),  // 6000
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(201);
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
@@ -431,7 +431,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
 
         $this->assertCount(1, $payments);
         $this->assertEquals(6000, $payments->first()->amount);
-        $this->assertEquals('Cash', $payments->first()->payment_method);
+        $this->assertEquals('CASH', $payments->first()->payment_method);
     }
 
     public function test_cash_invoice_deducts_correct_quantities_from_car_load_stock(): void
@@ -443,7 +443,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[2]->id,
             'items' => $this->items([['A', 3], ['B', 2]]),
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(201);
 
         $this->assertEquals($stockABefore - 3, $this->remainingStock($this->productA));
@@ -460,12 +460,12 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[3]->id,
             'items' => $this->items([['A', 1]]),  // 2500
             'paid' => true,
-            'payment_method' => 'Wave',
+            'payment_method' => 'WAVE',
         ])->assertStatus(201);
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
         $this->assertEquals(SalesInvoiceStatus::FullyPaid, $invoice->status);
-        $this->assertEquals('Wave', $invoice->payments->first()->payment_method);
+        $this->assertEquals('WAVE', $invoice->payments->first()->payment_method);
     }
 
     // =========================================================================
@@ -478,12 +478,12 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[4]->id,
             'items' => $this->items([['C', 1]]),  // 3000
             'paid' => true,
-            'payment_method' => 'Om',
+            'payment_method' => 'OM',
         ])->assertStatus(201);
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
         $this->assertEquals(SalesInvoiceStatus::FullyPaid, $invoice->status);
-        $this->assertEquals('Om', $invoice->payments->first()->payment_method);
+        $this->assertEquals('OM', $invoice->payments->first()->payment_method);
     }
 
     // =========================================================================
@@ -536,7 +536,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[0]->id,
             'items' => $this->items([['A', 2], ['B', 3]]),
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(201);
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
@@ -554,7 +554,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
             'customer_id' => $this->customers[0]->id,
             'items' => $this->items([['A', 2], ['B', 3]]),  // 9500 total
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(201);
 
         $invoice = SalesInvoice::with('payments')->orderByDesc('id')->first();
@@ -584,7 +584,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
 
-        $this->payInvoice($invoice, 3000, 'Wave')->assertOk();
+        $this->payInvoice($invoice, 3000, 'WAVE')->assertOk();
 
         $invoice->refresh();
         $this->assertEquals(6000, $invoice->total_amount);
@@ -604,11 +604,11 @@ class SalespersonCriticalEndpointsTest extends TestCase
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
 
-        $this->payInvoice($invoice, 2000, 'Cash')->assertOk();  // partial
+        $this->payInvoice($invoice, 2000, 'CASH')->assertOk();  // partial
         $invoice->refresh();
         $this->assertEquals(SalesInvoiceStatus::PartiallyPaid, $invoice->status);
 
-        $this->payInvoice($invoice, 3000, 'Wave')->assertOk();  // remainder
+        $this->payInvoice($invoice, 3000, 'WAVE')->assertOk();  // remainder
 
         $invoice->refresh();
         $this->assertEquals(5000, $invoice->total_payments);
@@ -629,7 +629,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
         ])->assertStatus(201);
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
-        $this->payInvoice($invoice, 3000, 'Om')->assertOk();  // half payment
+        $this->payInvoice($invoice, 3000, 'OM')->assertOk();  // half payment
 
         $invoice->refresh();
         $payment = $invoice->payments()->orderByDesc('id')->first();
@@ -655,7 +655,7 @@ class SalespersonCriticalEndpointsTest extends TestCase
         ]);
 
         $invoice = SalesInvoice::orderByDesc('id')->first();
-        $this->payInvoice($invoice, 0, 'Cash')->assertStatus(422)
+        $this->payInvoice($invoice, 0, 'CASH')->assertStatus(422)
             ->assertJsonValidationErrors(['amount']);
     }
 
@@ -766,13 +766,13 @@ class SalespersonCriticalEndpointsTest extends TestCase
 
         // ── Step 2: Add late payments to 3 of the 6 credit invoices ─────────
         // Invoice 25 (index 24): 7 500 — partial Wave payment of 3 000
-        $this->payInvoice($createdInvoices[24], 3000, 'Wave')->assertOk();
+        $this->payInvoice($createdInvoices[24], 3000, 'WAVE')->assertOk();
 
         // Invoice 27 (index 26): 3 000 — full OM payment (settles the debt)
-        $this->payInvoice($createdInvoices[26], 3000, 'Om')->assertOk();
+        $this->payInvoice($createdInvoices[26], 3000, 'OM')->assertOk();
 
         // Invoice 29 (index 28): 4 500 — partial Cash payment of 2 000
-        $this->payInvoice($createdInvoices[28], 2000, 'Cash')->assertOk();
+        $this->payInvoice($createdInvoices[28], 2000, 'CASH')->assertOk();
 
         // ── Step 3: Compute ground truth directly from the database ──────────
         $expectedTotalSales = (int) SalesInvoice::where('commercial_id', $this->commercial->id)
@@ -792,17 +792,17 @@ class SalespersonCriticalEndpointsTest extends TestCase
         $expectedCash = (int) Payment::whereHas(
             'salesInvoice',
             fn ($q) => $q->where('commercial_id', $this->commercial->id)
-        )->whereDate('created_at', today())->where('payment_method', 'Cash')->sum('amount');
+        )->whereDate('created_at', today())->where('payment_method', 'CASH')->sum('amount');
 
         $expectedWave = (int) Payment::whereHas(
             'salesInvoice',
             fn ($q) => $q->where('commercial_id', $this->commercial->id)
-        )->whereDate('created_at', today())->where('payment_method', 'Wave')->sum('amount');
+        )->whereDate('created_at', today())->where('payment_method', 'WAVE')->sum('amount');
 
         $expectedOm = (int) Payment::whereHas(
             'salesInvoice',
             fn ($q) => $q->where('commercial_id', $this->commercial->id)
-        )->whereDate('created_at', today())->where('payment_method', 'Om')->sum('amount');
+        )->whereDate('created_at', today())->where('payment_method', 'OM')->sum('amount');
 
         // Sanity-check our own DB queries before comparing to the report.
         $this->assertEquals(

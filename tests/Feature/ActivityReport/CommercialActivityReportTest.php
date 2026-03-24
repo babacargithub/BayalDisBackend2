@@ -347,6 +347,31 @@ class CommercialActivityReportTest extends TestCase
         $this->assertEquals($expectedMethodsSum, $report->totalPayments);
     }
 
+    /**
+     * This test intentionally uses the literal strings sent by the mobile app ('CASH', 'WAVE', 'OM')
+     * rather than the Vente constants. If a constant value ever diverges from what the app sends,
+     * the breakdown will silently return 0 while totalPayments remains correct — this test catches
+     * that exact mismatch before it reaches production.
+     */
+    public function test_payment_method_breakdown_uses_the_exact_strings_stored_by_the_mobile_app(): void
+    {
+        $invoice = $this->makeInvoiceWithItems($this->commercial, [['quantity' => 1, 'price' => 9000]], $this->today);
+        $this->makePayment($invoice, 4000, 'CASH', $this->today);
+        $this->makePayment($invoice, 3000, 'WAVE', $this->today);
+        $this->makePayment($invoice, 2000, 'OM', $this->today);
+
+        $report = $this->buildReport();
+
+        $this->assertEquals(4000, $report->totalPaymentsCash);
+        $this->assertEquals(3000, $report->totalPaymentsWave);
+        $this->assertEquals(2000, $report->totalPaymentsOm);
+        $this->assertEquals(
+            $report->totalPaymentsCash + $report->totalPaymentsWave + $report->totalPaymentsOm,
+            $report->totalPayments,
+            'Sum of per-method totals must equal totalPayments — a mismatch means a payment method constant does not match what is stored in the database.',
+        );
+    }
+
     public function test_payment_method_breakdown_excludes_payments_outside_the_period(): void
     {
         $invoice = $this->makeInvoiceWithItems($this->commercial, [['quantity' => 1, 'price' => 5000]], $this->today);

@@ -104,6 +104,11 @@ class DailyCommissionServiceTest extends TestCase
         int $pricePerUnit,
         Carbon $paymentDate,
     ): Payment {
+        // Freeze time so that SalesInvoice::create() and Payment::create() both use
+        // $paymentDate as created_at. This ensures the sync-queue job dispatched by
+        // Payment::saved fires with the correct workDay instead of today's date.
+        Carbon::setTestNow($paymentDate);
+
         $customer = $this->makeCustomer();
         $invoice = SalesInvoice::create([
             'customer_id' => $customer->id,
@@ -123,12 +128,11 @@ class DailyCommissionServiceTest extends TestCase
         $payment = Payment::create([
             'sales_invoice_id' => $invoice->fresh()->id,
             'amount' => $quantity * $pricePerUnit,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $this->user->id,
         ]);
 
-        $payment->created_at = $paymentDate;
-        $payment->saveQuietly();
+        Carbon::setTestNow();
 
         return $payment;
     }
@@ -143,6 +147,11 @@ class DailyCommissionServiceTest extends TestCase
         array $productQuantityPriceTuples,
         Carbon $paymentDate,
     ): Payment {
+        // Freeze time so that SalesInvoice::create() and Payment::create() both use
+        // $paymentDate as created_at. This ensures the sync-queue job dispatched by
+        // Payment::saved fires with the correct workDay instead of today's date.
+        Carbon::setTestNow($paymentDate);
+
         $customer = $this->makeCustomer();
         $invoice = SalesInvoice::create([
             'customer_id' => $customer->id,
@@ -167,12 +176,11 @@ class DailyCommissionServiceTest extends TestCase
         $payment = Payment::create([
             'sales_invoice_id' => $invoice->fresh()->id,
             'amount' => $totalAmount,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $this->user->id,
         ]);
 
-        $payment->created_at = $paymentDate;
-        $payment->saveQuietly();
+        Carbon::setTestNow();
 
         return $payment;
     }
@@ -669,7 +677,7 @@ class DailyCommissionServiceTest extends TestCase
         $payment = Payment::create([
             'sales_invoice_id' => null,
             'amount' => 10_000,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $this->user->id,
         ]);
 
@@ -692,7 +700,7 @@ class DailyCommissionServiceTest extends TestCase
         $payment = Payment::create([
             'sales_invoice_id' => $invoice->id,
             'amount' => 10_000,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $userWithoutCommercial->id,
         ]);
 
@@ -701,39 +709,33 @@ class DailyCommissionServiceTest extends TestCase
         $this->assertEquals(0, DailyCommission::count());
     }
 
-    public function test_payment_outside_any_work_period_is_silently_skipped(): void
+    public function test_payment_outside_pre_configured_period_auto_creates_a_weekly_period_and_tracks_commission(): void
     {
         $category = $this->makeCategory('ALM');
         $product = $this->makeProduct($category, 10_000);
-        $customer = $this->makeCustomer();
-        $invoice = SalesInvoice::create([
-            'customer_id' => $customer->id,
+
+        CommercialProductCommissionRate::create([
             'commercial_id' => $this->commercial->id,
-            'status' => 'DRAFT',
-        ]);
-
-        Vente::create([
-            'sales_invoice_id' => $invoice->id,
             'product_id' => $product->id,
-            'quantity' => 1,
-            'price' => 10_000,
-            'profit' => 0,
-            'type' => Vente::TYPE_INVOICE,
+            'rate' => 0.0100,
         ]);
 
-        // Payment on Sunday 8 Mar — outside the Mon-Sat work period
-        $payment = Payment::create([
-            'sales_invoice_id' => $invoice->fresh()->id,
-            'amount' => 10_000,
-            'payment_method' => 'Cash',
-            'user_id' => $this->user->id,
-        ]);
-        $payment->created_at = Carbon::parse('2026-03-08');
-        $payment->saveQuietly();
+        // Payment on Sunday 8 Mar — outside the Mon-Sat pre-configured work period.
+        // The system must auto-create a Mon 2 Mar → Sun 8 Mar weekly period and track commission.
+        $payment = $this->makePaidInvoiceOnDate($product, 1, 10_000, Carbon::parse('2026-03-08'));
 
         $this->service->recalculateDailyCommissionForPayment($payment);
 
-        $this->assertEquals(0, DailyCommission::count());
+        // A new period covering Sunday 8 Mar must have been auto-created.
+        $autoCreatedPeriod = CommercialWorkPeriod::whereDate('period_end_date', '2026-03-08')->first();
+        $this->assertNotNull($autoCreatedPeriod, 'A weekly period ending on Sun 8 Mar must be auto-created.');
+        $this->assertEquals('2026-03-02', $autoCreatedPeriod->period_start_date->toDateString());
+
+        // A DailyCommission for 8 Mar must exist and carry the correct commission.
+        $dailyCommission = DailyCommission::whereDate('work_day', '2026-03-08')->first();
+        $this->assertNotNull($dailyCommission, 'A DailyCommission for 8 Mar must be created.');
+        $this->assertEquals(100, $dailyCommission->base_commission); // 10_000 × 1%
+        $this->assertEquals($autoCreatedPeriod->id, $dailyCommission->commercial_work_period_id);
     }
 
     public function test_payment_in_a_finalized_work_period_is_silently_skipped(): void

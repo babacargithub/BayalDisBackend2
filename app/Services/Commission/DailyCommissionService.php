@@ -2,6 +2,7 @@
 
 namespace App\Services\Commission;
 
+use App\Data\ActivityReport\NextTierProgressDTO;
 use App\Data\Commission\CommissionPeriodData;
 use App\Data\Commission\CommissionPeriodSummaryData;
 use App\Data\Commission\DailyCommissionSummaryData;
@@ -75,13 +76,12 @@ readonly class DailyCommissionService
 
         // Use whereDate so that date-only columns stored as '2026-03-02 00:00:00' in
         // SQLite (test DB) still compare correctly against the plain date string.
-        $workPeriod = CommercialWorkPeriod::query()
-            ->where('commercial_id', $commercial->id)
-            ->whereDate('period_start_date', '<=', $workDay)
-            ->whereDate('period_end_date', '>=', $workDay)
-            ->first();
+        $workPeriod = CommercialWorkPeriod::findOrCreateWeeklyPeriodForCommercialOnDate(
+            commercialId: $commercial->id,
+            date: $workDay,
+        );
 
-        if ($workPeriod === null || $workPeriod->is_finalized) {
+        if ($workPeriod->is_finalized) {
             return;
         }
 
@@ -1036,6 +1036,50 @@ readonly class DailyCommissionService
             totalDaysThresholdReached: $totalDaysThresholdReached,
             totalDaysBelowThreshold: $totalDaysBelowThreshold,
             days: $days,
+        );
+    }
+
+    /**
+     * Returns the nearest unachieved objective tier for a commercial on a given work day.
+     *
+     * Looks up the CommercialWorkPeriod that covers the work day, then finds the tier
+     * with the lowest ca_threshold that is still above the commercial's current daily
+     * encaissement (total payments collected on that day).
+     *
+     * Returns null when:
+     *  - No work period covers the given day
+     *  - No tiers are configured for the work period
+     *  - All tiers have already been achieved (currentDailyEncaissement >= every ca_threshold)
+     */
+    public function computeNextTierProgressForCommercialOnDay(
+        Commercial $commercial,
+        string $workDay,
+        int $currentDailyEncaissement,
+    ): ?NextTierProgressDTO {
+        $workPeriod = CommercialWorkPeriod::query()
+            ->where('commercial_id', $commercial->id)
+            ->whereDate('period_start_date', '<=', $workDay)
+            ->whereDate('period_end_date', '>=', $workDay)
+            ->first();
+
+        if ($workPeriod === null) {
+            return null;
+        }
+
+        $nextTier = $workPeriod->objectiveTiers()
+            ->where('ca_threshold', '>', $currentDailyEncaissement)
+            ->orderBy('ca_threshold')
+            ->first();
+
+        if ($nextTier === null) {
+            return null;
+        }
+
+        return new NextTierProgressDTO(
+            tierLevel: $nextTier->tier_level,
+            caThreshold: $nextTier->ca_threshold,
+            bonusAmount: $nextTier->bonus_amount,
+            missingAmount: $nextTier->ca_threshold - $currentDailyEncaissement,
         );
     }
 }

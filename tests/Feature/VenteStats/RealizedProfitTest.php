@@ -162,7 +162,7 @@ class RealizedProfitTest extends TestCase
         return Payment::create([
             'sales_invoice_id' => $invoice->id,
             'amount' => $amount,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => User::factory()->create()->id,
         ]);
     }
@@ -302,7 +302,7 @@ class RealizedProfitTest extends TestCase
             'order_id' => null,
             'sales_invoice_id' => null,
             'amount' => 5000,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => User::factory()->create()->id,
         ]);
 

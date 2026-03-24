@@ -159,6 +159,35 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * TODO: This method has two critical bugs that must be fixed before this feature is used in production.
+     *
+     * BUG 1 — Wrong variant stock quantity formula (financial logic error):
+     *   Current (wrong):
+     *     $stockEntryQuantity = ($product->base_quantity / $variant->base_quantity) - $validated['unused_quantity'];
+     *   This computes the conversion ratio for a single parent unit and ignores $validated['quantity']
+     *   (the number of parent units being transformed). For example, transforming 3 cartons of 10 packs
+     *   each yields 10 - unused instead of 30 - unused. The variant stock is systematically under-credited
+     *   by a factor of (quantity - 1).
+     *
+     *   Correct formula should be:
+     *     $totalVariantUnitsProduced = $validated['quantity'] * ($product->base_quantity / $variant->base_quantity);
+     *     $stockEntryQuantity = $totalVariantUnitsProduced - $validated['unused_quantity'];
+     *
+     *   Also verify that $validated['quantity_transformed'] matches $totalVariantUnitsProduced before
+     *   proceeding, to catch front-end/back-end mismatches early.
+     *
+     * BUG 2 — Double transaction management (DB::transaction closure + manual DB::commit/rollBack):
+     *   DB::transaction(closure) automatically commits when the closure returns normally and
+     *   automatically rolls back when the closure throws. The manual DB::commit() at line 221
+     *   and DB::rollBack() in the catch block are therefore redundant and incorrect — they operate
+     *   on the wrong transaction level, leaving the connection in an inconsistent state.
+     *
+     *   Fix: remove DB::commit() after the DB::transaction() call and remove DB::rollBack() from
+     *   the catch block. The catch should only handle the redirect response, not the DB state.
+     *   Alternatively, replace DB::transaction(closure) with DB::beginTransaction() + DB::commit()
+     *   + DB::rollBack() manually, but do not mix both styles.
+     */
     public function transformToVariants(Request $request, Product $product)
     {
         $validated = $request->validate([

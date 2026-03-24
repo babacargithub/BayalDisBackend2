@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\SalesInvoiceStatus;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
@@ -473,12 +474,30 @@ class CorrectCostPricesAndProfits extends Command
         }
 
         $invoiceCount = 0;
+        $promotedToFullyPaidCount = 0;
 
-        SalesInvoice::query()->each(function (SalesInvoice $salesInvoice) use (&$invoiceCount) {
+        SalesInvoice::query()->each(function (SalesInvoice $salesInvoice) use (&$invoiceCount, &$promotedToFullyPaidCount) {
             $salesInvoice->recalculateStoredTotals();
+
+            // recalculateStoredTotals() never auto-promotes to FULLY_PAID — only markAsFullyPaid() can.
+            // Migrated invoices start as Draft so they land on PartiallyPaid even when fully settled.
+            // Promote them here: any invoice whose payments fully cover its total is considered paid.
+            $salesInvoice->refresh();
+
+            if ($salesInvoice->total_amount > 0 && $salesInvoice->total_payments >= $salesInvoice->total_amount) {
+                DB::table('sales_invoices')
+                    ->where('id', $salesInvoice->id)
+                    ->update([
+                        'status' => SalesInvoiceStatus::FullyPaid->value,
+                        'paid' => true,
+                    ]);
+
+                $promotedToFullyPaidCount++;
+            }
+
             $invoiceCount++;
         });
 
-        $this->info("  Done — {$invoiceCount} invoices recalculated.");
+        $this->info("  Done — {$invoiceCount} invoices recalculated, {$promotedToFullyPaidCount} promoted to FULLY_PAID.");
     }
 }

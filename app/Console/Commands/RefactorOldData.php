@@ -236,6 +236,16 @@ class RefactorOldData extends Command
         $this->info('───────────────────────────────────────────────────────────');
         $this->seedMonthlyFixedCosts($isDryRun);
 
+        // Step 0.6: normalize payment_method values in payments and ventes tables to UPPERCASE.
+        // Historical records used mixed-case values ('Cash', 'Wave', 'Om') before the convention
+        // was standardised. This must run before the profit-correction pipeline so all subsequent
+        // reads use the canonical form.
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0.6 — Normalize payment methods to uppercase');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->normalizePaymentMethodsToUppercase($isDryRun);
+
         foreach (self::PIPELINE as $step) {
             $this->newLine();
             $this->info('───────────────────────────────────────────────────────────');
@@ -974,6 +984,65 @@ class RefactorOldData extends Command
         }
 
         $this->info("  Done — {$totalInvoicesUpdated} invoice(s) updated across {$carLoadIdsWithInvoices->count()} car load(s).");
+    }
+
+    /**
+     * Normalises payment_method values in both the payments and ventes tables to uppercase.
+     *
+     * Historical records were created with mixed-case values ('Cash', 'Wave', 'Om').
+     * The canonical form is now all-uppercase: 'CASH', 'WAVE', 'OM'.
+     *
+     * The mapping is applied to any mixed-case variant, making this idempotent —
+     * records already in uppercase are unaffected by the WHERE clause.
+     *
+     * Both tables are updated because legacy TYPE_SINGLE ventes stored payment_method
+     * directly on the vente row before the SalesInvoice model was introduced.
+     *
+     * @var array<string, string> Maps every known legacy value to its canonical uppercase form.
+     */
+    private function normalizePaymentMethodsToUppercase(bool $isDryRun): void
+    {
+        $canonicalMapping = [
+            'Cash' => 'CASH',
+            'cash' => 'CASH',
+            'Wave' => 'WAVE',
+            'wave' => 'WAVE',
+            'Om' => 'OM',
+            'om' => 'OM',
+        ];
+
+        $tables = ['payments', 'ventes'];
+        $totalUpdated = 0;
+
+        foreach ($tables as $table) {
+            foreach ($canonicalMapping as $legacyValue => $canonicalValue) {
+                $count = DB::table($table)
+                    ->where('payment_method', $legacyValue)
+                    ->count();
+
+                if ($count === 0) {
+                    continue;
+                }
+
+                $this->line("  {$table}: {$count} row(s) with payment_method = '{$legacyValue}' → '{$canonicalValue}'");
+
+                if (! $isDryRun) {
+                    DB::table($table)
+                        ->where('payment_method', $legacyValue)
+                        ->update(['payment_method' => $canonicalValue]);
+                }
+
+                $totalUpdated += $count;
+            }
+        }
+
+        if ($totalUpdated === 0) {
+            $this->info('  All payment methods are already uppercase. Nothing to do.');
+
+            return;
+        }
+
+        $this->info("  Done — {$totalUpdated} row(s) normalised across ".count($tables).' tables.');
     }
 
     private function allMigrationsHaveBeenRun(): bool

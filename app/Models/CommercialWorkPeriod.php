@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Data\Commission\CommissionPeriodData;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -57,6 +58,43 @@ class CommercialWorkPeriod extends Model
     public function penalties(): HasMany
     {
         return $this->hasMany(CommercialPenalty::class);
+    }
+
+    /**
+     * Returns the existing work period that covers $date for the given commercial,
+     * or creates a new Monday-to-Sunday weekly period if none exists.
+     *
+     * If a period already overlaps the given date (regardless of its exact boundaries),
+     * it is returned as-is — no duplicate is created. This ensures that manually
+     * configured bi-weekly or monthly periods are respected.
+     *
+     * When no covering period exists, a new period is created spanning the full
+     * ISO week (Monday to Sunday) that contains $date.
+     */
+    public static function findOrCreateWeeklyPeriodForCommercialOnDate(
+        int $commercialId,
+        string $date,
+    ): self {
+        $parsedDate = CarbonImmutable::parse($date);
+
+        $existingCoveringPeriod = self::query()
+            ->where('commercial_id', $commercialId)
+            ->whereDate('period_start_date', '<=', $parsedDate)
+            ->whereDate('period_end_date', '>=', $parsedDate)
+            ->first();
+
+        if ($existingCoveringPeriod !== null) {
+            return $existingCoveringPeriod;
+        }
+
+        $weekStart = $parsedDate->startOfWeek()->toDateString(); // Monday
+        $weekEnd = $parsedDate->endOfWeek()->toDateString();     // Sunday
+
+        return self::create([
+            'commercial_id' => $commercialId,
+            'period_start_date' => $weekStart,
+            'period_end_date' => $weekEnd,
+        ]);
     }
 
     /**

@@ -196,7 +196,7 @@ class MigrateSingleVentesToInvoices extends Command
 
         // Group paid ventes by payment_method; null method falls back to 'Cash'.
         $paidVentesGroupedByPaymentMethod = $paidVentes->groupBy(
-            fn ($vente) => $vente->payment_method ?? 'Cash'
+            fn ($vente) => $vente->payment_method ?? 'CASH'
         );
 
         $paymentsCreated = 0;

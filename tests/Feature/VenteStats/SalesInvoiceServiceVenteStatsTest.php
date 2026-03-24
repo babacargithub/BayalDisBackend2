@@ -157,7 +157,7 @@ class SalesInvoiceServiceVenteStatsTest extends TestCase
             Payment::create([
                 'sales_invoice_id' => $invoice->id,
                 'amount' => $price * $quantity,
-                'payment_method' => 'Cash',
+                'payment_method' => 'CASH',
                 'user_id' => User::factory()->create()->id,
             ]);
             $invoice->markAsFullyPaid();

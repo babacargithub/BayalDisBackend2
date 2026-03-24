@@ -110,6 +110,18 @@ class SalesInvoice extends Model
             }
         });
 
+        // Ensure a CommercialWorkPeriod exists covering this invoice's creation date.
+        // This guarantees that DailyCommissionService can always attach commission records
+        // to a period without silently skipping, even when no period was created upfront.
+        static::saved(function (SalesInvoice $invoice): void {
+            if ($invoice->commercial_id !== null) {
+                CommercialWorkPeriod::findOrCreateWeeklyPeriodForCommercialOnDate(
+                    commercialId: $invoice->commercial_id,
+                    date: $invoice->created_at->toDateString(),
+                );
+            }
+        });
+
         // Redistribute daily delivery costs when a car-load invoice is created or updated.
         // Back-office invoices (car_load_id is null) are excluded — their delivery_cost is
         // either set manually or left null.

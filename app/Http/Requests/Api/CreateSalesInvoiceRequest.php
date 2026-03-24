@@ -30,9 +30,6 @@ class CreateSalesInvoiceRequest extends FormRequest
                     Vente::PAYMENT_METHOD_CASH,
                     Vente::PAYMENT_METHOD_WAVE,
                     Vente::PAYMENT_METHOD_OM,
-                    strtoupper(Vente::PAYMENT_METHOD_CASH),
-                    strtoupper(Vente::PAYMENT_METHOD_WAVE),
-                    strtoupper(Vente::PAYMENT_METHOD_OM),
                 ]),
             ],
             'should_be_paid_at' => [
@@ -62,7 +59,7 @@ class CreateSalesInvoiceRequest extends FormRequest
             'paid.required' => 'Le statut de paiement est obligatoire',
             'paid.boolean' => 'Le statut de paiement doit être vrai ou faux',
             'payment_method.required' => 'Vous devez choisir un moyen de paiement',
-            'payment_method.in' => 'La méthode de paiement doit être Cash, Wave ou Om',
+            'payment_method.in' => 'La méthode de paiement doit être CASH, WAVE ou OM',
             'should_be_paid_at.required' => "Vous devez préciser l'échéance car la facture n'est pas payée",
             'should_be_paid_at.date' => "La date d'échéance n'est pas valide",
         ];

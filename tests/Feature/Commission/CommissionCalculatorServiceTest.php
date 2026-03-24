@@ -95,7 +95,7 @@ class CommissionCalculatorServiceTest extends TestCase
         return Payment::create([
             'sales_invoice_id' => $invoice->id,
             'amount' => $amount,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $this->user->id,
         ]);
     }

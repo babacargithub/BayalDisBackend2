@@ -13,6 +13,7 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
+use App\Services\SalesInvoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -99,7 +100,7 @@ class SalesInvoiceStoredTotalsTest extends TestCase
         return Payment::create([
             'sales_invoice_id' => $invoice->id,
             'amount' => $amount,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => User::factory()->create()->id,
         ]);
     }
@@ -554,6 +555,113 @@ class SalesInvoiceStoredTotalsTest extends TestCase
     }
 
     // =========================================================================
+    // Bug regression: SalesInvoiceService::addItemToInvoice must calculate profit
+    // Previously, Vente::create() was called without calculateProfit(), storing profit = null.
+    // =========================================================================
+
+    public function test_add_item_to_invoice_via_service_calculates_and_stores_correct_profit(): void
+    {
+        // defaultProduct: cost_price = 600, sell price = 1000, quantity = 2
+        // Expected profit = (1000 - 600) * 2 = 800 (no StockEntry records → falls back to cost_price)
+        $invoice = SalesInvoice::create([
+            'customer_id' => $this->defaultCustomer->id,
+            'commercial_id' => null, // no commercial → car load stock step is skipped
+        ])->fresh(); // fresh() ensures paid/should_be_paid_at are populated from DB defaults
+
+        app(SalesInvoiceService::class)->addItemToInvoice($invoice, [
+            'product_id' => $this->defaultProduct->id,
+            'quantity' => 2,
+            'price' => 1000,
+        ]);
+
+        $savedItem = Vente::where('sales_invoice_id', $invoice->id)->first();
+        $this->assertSame(800, $savedItem->profit);
+        $this->assertSame(800, $invoice->fresh()->total_estimated_profit);
+    }
+
+    public function test_add_item_to_invoice_via_service_profit_is_never_zero_when_product_has_a_cost_price(): void
+    {
+        $invoice = SalesInvoice::create([
+            'customer_id' => $this->defaultCustomer->id,
+            'commercial_id' => null,
+        ])->fresh();
+
+        app(SalesInvoiceService::class)->addItemToInvoice($invoice, [
+            'product_id' => $this->defaultProduct->id, // cost_price = 600
+            'quantity' => 1,
+            'price' => 1000,
+        ]);
+
+        $savedItem = Vente::where('sales_invoice_id', $invoice->id)->first();
+        $this->assertNotNull($savedItem->profit);
+        $this->assertGreaterThan(0, $savedItem->profit);
+    }
+
+    // =========================================================================
+    // Bug regression: SalesInvoiceService::updatePaymentOnInvoice must recalculate
+    // payment.profit and payment.commercial_commission when the amount changes.
+    // Previously, only Payment::creating recalculated these — updates were silently stale.
+    // =========================================================================
+
+    public function test_update_payment_recalculates_payment_profit_when_amount_changes(): void
+    {
+        $invoice = $this->makeEmptyInvoice();
+        // total = 2000, profit = 600 (30% margin)
+        $this->addItemToInvoice($invoice, price: 2000, quantity: 1, profit: 600);
+
+        // Initial payment covers half → profit = round(600 / 2000 * 1000) = 300
+        $payment = $this->makePaymentForInvoice($invoice, 1000);
+        $this->assertSame(300, $payment->profit);
+
+        // Update to full amount → profit should be recalculated to 600
+        app(SalesInvoiceService::class)->updatePaymentOnInvoice($invoice, $payment, [
+            'amount' => 2000,
+            'payment_method' => 'CASH',
+        ]);
+
+        $this->assertSame(600, $payment->fresh()->profit);
+    }
+
+    public function test_update_payment_recalculates_payment_commercial_commission_when_amount_changes(): void
+    {
+        $productAtFivePercent = $this->makeProductWithCategoryRate(0.05);
+        $invoice = $this->makeEmptyInvoice();
+        // subtotal = 4000, estimated_commercial_commission = 4000 × 5% = 200
+        $this->addItemToInvoiceForProduct($invoice, $productAtFivePercent, price: 1000, quantity: 4);
+
+        // Initial payment covers half → commission = round(200 / 4000 * 2000) = 100
+        $payment = $this->makePaymentForInvoice($invoice, 2000);
+        $this->assertSame(100, $payment->commercial_commission);
+
+        // Update to full amount → commission should be recalculated to 200
+        app(SalesInvoiceService::class)->updatePaymentOnInvoice($invoice, $payment, [
+            'amount' => 4000,
+            'payment_method' => 'CASH',
+        ]);
+
+        $this->assertSame(200, $payment->fresh()->commercial_commission);
+    }
+
+    public function test_invoice_total_realized_profit_is_correct_after_payment_amount_is_updated(): void
+    {
+        $invoice = $this->makeEmptyInvoice();
+        // total = 2000, profit = 800 (40% margin)
+        $this->addItemToInvoice($invoice, price: 2000, quantity: 1, profit: 800);
+
+        // Initial payment: 1000 → realized profit = round(800 / 2000 * 1000) = 400
+        $payment = $this->makePaymentForInvoice($invoice, 1000);
+        $this->assertSame(400, $invoice->fresh()->total_realized_profit);
+
+        // Reduce payment to 500 → realized profit = round(800 / 2000 * 500) = 200
+        app(SalesInvoiceService::class)->updatePaymentOnInvoice($invoice, $payment, [
+            'amount' => 500,
+            'payment_method' => 'CASH',
+        ]);
+
+        $this->assertSame(200, $invoice->fresh()->total_realized_profit);
+    }
+
+    // =========================================================================
     // Payment.commercial_commission — auto-populated on payment creation
     // =========================================================================
 
@@ -578,7 +686,7 @@ class SalesInvoiceStoredTotalsTest extends TestCase
         $payment = Payment::create([
             'sales_invoice_id' => $invoiceWithNoCommercial->id,
             'amount' => 1000,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => User::factory()->create()->id,
         ]);
 

@@ -394,13 +394,13 @@ class DailyCommissionSummaryTest extends TestCase
         \App\Models\Payment::create([
             'sales_invoice_id' => $invoice->id,
             'amount' => 80_000,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $this->user->id,
         ]);
         \App\Models\Payment::create([
             'sales_invoice_id' => $invoice->id,
             'amount' => 20_000,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $this->user->id,
         ]);
 
@@ -586,7 +586,7 @@ class DailyCommissionSummaryTest extends TestCase
                 ['product_id' => $this->productAlm->id, 'quantity' => 10, 'price' => 10_000],
             ],
             'paid' => true,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
         ])->assertStatus(201);
 
         $response = $this->getJson('/api/salesperson/daily-commission?date=2026-03-03')
@@ -720,7 +720,7 @@ class DailyCommissionSummaryTest extends TestCase
         \App\Models\Payment::create([
             'sales_invoice_id' => $invoice->id,
             'amount' => 60_000, // partial payment
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => $this->user->id,
         ]);
 

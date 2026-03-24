@@ -3,6 +3,8 @@
 namespace Tests\Feature\ActivityReport;
 
 use App\Models\Commercial;
+use App\Models\CommercialObjectiveTier;
+use App\Models\CommercialWorkPeriod;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
@@ -330,5 +332,112 @@ class ActivityReportEndpointTest extends TestCase
             ->assertJsonPath('data.total_payments', 3500)
             ->assertJsonPath('data.total_payments_cash', 1500)
             ->assertJsonPath('data.total_payments_wave', 2000);
+    }
+
+    // =========================================================================
+    // next_tier_progress — included when mandatory threshold is reached
+    //
+    // No CarLoad is set up in these tests, so the mandatory threshold is 0
+    // (always considered reached). Tests focus on the tier selection and
+    // missing_amount computation.
+    // =========================================================================
+
+    private function makeWorkPeriodCoveringToday(): CommercialWorkPeriod
+    {
+        // Use findOrCreate so that payment events (which also call this) do not
+        // cause a unique-constraint violation when the period already exists.
+        return CommercialWorkPeriod::findOrCreateWeeklyPeriodForCommercialOnDate(
+            commercialId: $this->commercial->id,
+            date: $this->today->toDateString(),
+        );
+    }
+
+    private function addTierToWorkPeriod(CommercialWorkPeriod $workPeriod, int $tierLevel, int $caThreshold, int $bonusAmount): CommercialObjectiveTier
+    {
+        return CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $workPeriod->id,
+            'tier_level' => $tierLevel,
+            'ca_threshold' => $caThreshold,
+            'bonus_amount' => $bonusAmount,
+        ]);
+    }
+
+    public function test_next_tier_progress_is_null_when_no_work_period_exists_for_the_day(): void
+    {
+        // No work period → no tiers → next_tier_progress must be null
+        $response = $this->callEndpoint($this->today->toDateString());
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.next_tier_progress', null);
+    }
+
+    public function test_next_tier_progress_is_null_when_work_period_has_no_tiers(): void
+    {
+        $this->makeWorkPeriodCoveringToday(); // no tiers added
+
+        $response = $this->callEndpoint($this->today->toDateString());
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.next_tier_progress', null);
+    }
+
+    public function test_next_tier_progress_returns_the_nearest_unachieved_tier(): void
+    {
+        // Payments collected today = 2000 (below tier 2 threshold of 3000)
+        $invoice = $this->makeInvoice(price: 2000, quantity: 1);
+        $this->makePayment($invoice, 2000, Vente::PAYMENT_METHOD_CASH);
+
+        $workPeriod = $this->makeWorkPeriodCoveringToday();
+        $this->addTierToWorkPeriod($workPeriod, tierLevel: 1, caThreshold: 1000, bonusAmount: 5000);  // already achieved
+        $this->addTierToWorkPeriod($workPeriod, tierLevel: 2, caThreshold: 3000, bonusAmount: 10000); // next
+        $this->addTierToWorkPeriod($workPeriod, tierLevel: 3, caThreshold: 6000, bonusAmount: 20000); // beyond
+
+        $response = $this->callEndpoint($this->today->toDateString());
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.next_tier_progress.tier_level', 2)
+            ->assertJsonPath('data.next_tier_progress.ca_threshold', 3000)
+            ->assertJsonPath('data.next_tier_progress.bonus_amount', 10000)
+            ->assertJsonPath('data.next_tier_progress.missing_amount', 1000); // 3000 - 2000
+    }
+
+    public function test_next_tier_progress_missing_amount_equals_threshold_minus_current_payments(): void
+    {
+        $invoice = $this->makeInvoice(price: 4000, quantity: 1);
+        $this->makePayment($invoice, 1500, Vente::PAYMENT_METHOD_CASH);
+
+        $workPeriod = $this->makeWorkPeriodCoveringToday();
+        $this->addTierToWorkPeriod($workPeriod, tierLevel: 1, caThreshold: 5000, bonusAmount: 15000);
+
+        $response = $this->callEndpoint($this->today->toDateString());
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.next_tier_progress.missing_amount', 3500); // 5000 - 1500
+    }
+
+    public function test_next_tier_progress_is_null_when_all_tiers_are_already_achieved(): void
+    {
+        // Payments = 8000, only tier has ca_threshold = 5000 → already achieved
+        $invoice = $this->makeInvoice(price: 8000, quantity: 1);
+        $this->makePayment($invoice, 8000, Vente::PAYMENT_METHOD_CASH);
+
+        $workPeriod = $this->makeWorkPeriodCoveringToday();
+        $this->addTierToWorkPeriod($workPeriod, tierLevel: 1, caThreshold: 5000, bonusAmount: 10000);
+
+        $response = $this->callEndpoint($this->today->toDateString());
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.next_tier_progress', null);
+    }
+
+    public function test_next_tier_progress_is_null_for_weekly_type_even_when_tiers_exist(): void
+    {
+        $workPeriod = $this->makeWorkPeriodCoveringToday();
+        $this->addTierToWorkPeriod($workPeriod, tierLevel: 1, caThreshold: 1000, bonusAmount: 5000);
+
+        $response = $this->callEndpoint($this->today->toDateString(), 'weekly');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.next_tier_progress', null);
     }
 }

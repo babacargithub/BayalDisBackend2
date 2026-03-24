@@ -24,9 +24,6 @@ class PaySalesInvoiceRequest extends FormRequest
                     Vente::PAYMENT_METHOD_CASH,
                     Vente::PAYMENT_METHOD_WAVE,
                     Vente::PAYMENT_METHOD_OM,
-                    strtoupper(Vente::PAYMENT_METHOD_CASH),
-                    strtoupper(Vente::PAYMENT_METHOD_WAVE),
-                    strtoupper(Vente::PAYMENT_METHOD_OM),
                 ]),
             ],
             'comment' => ['nullable', 'string'],
@@ -40,7 +37,7 @@ class PaySalesInvoiceRequest extends FormRequest
             'amount.integer' => 'Le montant doit être un nombre entier',
             'amount.min' => 'Le montant doit être au moins 1',
             'payment_method.required' => 'Vous devez choisir un moyen de paiement',
-            'payment_method.in' => 'La méthode de paiement doit être Cash, Wave ou Om',
+            'payment_method.in' => 'La méthode de paiement doit être CASH, WAVE ou OM',
         ];
     }
 }

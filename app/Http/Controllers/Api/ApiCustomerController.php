@@ -98,6 +98,7 @@ class ApiCustomerController extends Controller
                 'total' => $invoice->total,
                 'paid' => $invoice->paid,
                 'should_be_paid_at' => $invoice->should_be_paid_at,
+                'status' => $invoice->status,
                 'created_at' => $invoice->created_at,
                 'items' => $invoice->items->map(fn ($item) => [
                     'id' => $item->id,

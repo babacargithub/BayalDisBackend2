@@ -124,7 +124,7 @@ class SalesInvoiceServiceCalculationMethodsTest extends TestCase
             'sales_invoice_id' => $invoice->id,
             'amount' => $amount,
             'profit' => $profit,
-            'payment_method' => 'Cash',
+            'payment_method' => 'CASH',
             'user_id' => User::factory()->create()->id,
             'created_at' => now(),
             'updated_at' => now(),
