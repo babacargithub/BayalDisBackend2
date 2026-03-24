@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\SalesInvoiceStatus;
 use App\Models\Commercial;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,19 +15,14 @@ class CommercialController extends Controller
 {
     public function index()
     {
-        $commerciaux = Commercial::with('customers')
-            ->withCount('invoices')
-            ->withSum('invoices', DB::raw('total_amount'))
-            ->withCount(['invoices as ventes_impayees_count' => function ($query) {
-                $query->where('status', '!=', SalesInvoiceStatus::FullyPaid);
-            }])
-            ->get();
+        $commerciaux = Commercial::
+            query()->get();
 
         return Inertia::render('Commercials/Index', [
             'commerciaux' => $commerciaux,
             'statistics' => [
-                'total_commerciaux' => $commerciaux->count(),
-                'total_clients' => $commerciaux->sum(fn ($c) => $c->customers->count()),
+                'total_commerciaux' => 0,
+                'total_clients' => 0,
                 'moyenne_ventes' => $commerciaux->avg('ventes_count'),
             ],
         ]);
@@ -42,10 +38,26 @@ class CommercialController extends Controller
             'salary' => 'required|integer|min:0',
         ]);
 
-        // Hash the secret code
-        $validated['secret_code'] = Hash::make($validated['secret_code']);
+        DB::transaction(function () use ($validated) {
+            $plainSecretCode = $validated['secret_code'];
 
-        Commercial::create($validated);
+            // Create a linked user account so the commercial can log in to the mobile app.
+            // Email is derived from phone number (unique) — password is the plain secret code.
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['phone_number'].'@bayal.local',
+                'password' => Hash::make($plainSecretCode),
+            ]);
+
+            Commercial::create([
+                'name' => $validated['name'],
+                'phone_number' => $validated['phone_number'],
+                'gender' => $validated['gender'],
+                'salary' => $validated['salary'],
+                'secret_code' => Hash::make($plainSecretCode),
+                'user_id' => $user->id,
+            ]);
+        });
 
         return redirect()->back()->with('success', 'Commercial ajouté avec succès');
     }
