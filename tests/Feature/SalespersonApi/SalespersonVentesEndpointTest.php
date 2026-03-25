@@ -478,6 +478,59 @@ class SalespersonVentesEndpointTest extends TestCase
         $this->assertNull($invoiceData['payment_method']);
     }
 
+    public function test_invoices_from_other_commercials_are_not_returned(): void
+    {
+        Carbon::setTestNow($this->workDay.' 10:00:00');
+
+        $otherUser = User::factory()->create();
+
+        $otherTeam = Team::create([
+            'name' => 'Autre Équipe',
+            'user_id' => $otherUser->id,
+        ]);
+
+        $otherCommercial = Commercial::create([
+            'name' => 'Autre Commercial',
+            'phone_number' => '221700000099',
+            'gender' => 'male',
+            'user_id' => $otherUser->id,
+            'team_id' => $otherTeam->id,
+        ]);
+
+        $otherCustomer = Customer::create([
+            'name' => 'Autre Client',
+            'phone_number' => '221700000098',
+            'owner_number' => '221700000098',
+            'gps_coordinates' => '14.6928,17.4467',
+            'commercial_id' => $otherCommercial->id,
+        ]);
+
+        $myInvoice = SalesInvoice::create([
+            'customer_id' => $this->customer->id,
+            'commercial_id' => $this->commercial->id,
+            'user_id' => $this->user->id,
+            'status' => SalesInvoiceStatus::Draft,
+        ]);
+
+        $otherInvoice = SalesInvoice::create([
+            'customer_id' => $otherCustomer->id,
+            'commercial_id' => $otherCommercial->id,
+            'user_id' => $otherUser->id,
+            'status' => SalesInvoiceStatus::Draft,
+        ]);
+
+        Sanctum::actingAs($this->user);
+
+        $response = $this->getJson(self::ENDPOINT.'?date='.$this->workDay)
+            ->assertStatus(200);
+
+        $invoiceIds = collect($response->json('invoices'))->pluck('id');
+        $this->assertCount(1, $invoiceIds);
+        $this->assertTrue($invoiceIds->contains($myInvoice->id));
+        $this->assertFalse($invoiceIds->contains($otherInvoice->id),
+            'Invoices from other commercials must not be returned');
+    }
+
     public function test_payments_for_same_day_invoices_are_excluded_from_payments_list(): void
     {
         // Invoice created on a PREVIOUS day — payments against it should appear

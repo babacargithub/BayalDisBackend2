@@ -19,3 +19,4 @@ yarn-error.log
 /.vscode
 reset-local-db.sh
 simulate-second-vehicle.php
+simulate-vehicle2-via-http.php

@@ -19,6 +19,7 @@ class Product extends Model
         'product_category_id',
         'description',
         'price',
+        'credit_price',
         'cost_price',
         'packaging_cost',
         'weight_kg',
@@ -29,6 +30,7 @@ class Product extends Model
 
     protected $casts = [
         'price' => 'integer',
+        'credit_price' => 'integer',
         'cost_price' => 'integer',
         'packaging_cost' => 'integer',
         'weight_kg' => 'decimal:3',
@@ -154,10 +156,7 @@ class Product extends Model
         });
     }
 
-    /**
-     * @return BelongsTo
-     */
-    public function productCategory() : BelongsTo
+    public function productCategory(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class);
     }

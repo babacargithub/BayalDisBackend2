@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $total_estimated_profit Stored: sum of profit on all invoice items (full potential profit).
  * @property int $total_realized_profit Stored: sum of profit on payments (proportional earned profit).
  * @property int $estimated_commercial_commission Stored: estimated commission owed to the commercial (rate × subtotal per item).
+ * @property int $credit_price_difference Stored: sum of (credit_price − normal_price) × quantity for all items when credit pricing was applied. Zero otherwise.
  * @property SalesInvoiceStatus $status Stored: DRAFT | ISSUED | PARTIALLY_PAID | FULLY_PAID.
  *
  * Backward-compat aliases (delegate to stored columns — no DB query):
@@ -40,6 +41,7 @@ class SalesInvoice extends Model
         // For back-office invoices (no car_load_id), delivery_cost may be set manually.
         // For car-load invoices, it is managed automatically by RecalculateInvoicesDeliveryCostJob.
         'delivery_cost',
+        'credit_price_difference',
     ];
 
     protected function casts(): array
@@ -52,6 +54,7 @@ class SalesInvoice extends Model
             'total_estimated_profit' => 'integer',
             'total_realized_profit' => 'integer',
             'estimated_commercial_commission' => 'integer',
+            'credit_price_difference' => 'integer',
             'delivery_cost' => 'integer',
             'status' => SalesInvoiceStatus::class,
         ];

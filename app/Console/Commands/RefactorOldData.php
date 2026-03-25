@@ -246,6 +246,14 @@ class RefactorOldData extends Command
         $this->info('───────────────────────────────────────────────────────────');
         $this->normalizePaymentMethodsToUppercase($isDryRun);
 
+        // Step 0.7: backfill credit_price = round(price × 1.20) on products that have no
+        // credit_price set. Products with an explicitly configured credit_price are skipped.
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 0.7 — Backfill credit_price (+20%) on products');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->backfillProductCreditPrices($isDryRun);
+
         foreach (self::PIPELINE as $step) {
             $this->newLine();
             $this->info('───────────────────────────────────────────────────────────');
@@ -984,6 +992,54 @@ class RefactorOldData extends Command
         }
 
         $this->info("  Done — {$totalInvoicesUpdated} invoice(s) updated across {$carLoadIdsWithInvoices->count()} car load(s).");
+    }
+
+    /**
+     * Sets credit_price = round(price × 1.20) on every product that does not yet have a
+     * credit_price configured.
+     *
+     * Products that already have a credit_price set are left untouched — this allows
+     * manually configured credit prices to be preserved across re-runs.
+     *
+     * Idempotent: safe to re-run.
+     */
+    private function backfillProductCreditPrices(bool $isDryRun): void
+    {
+        $productsWithoutCreditPrice = DB::table('products')
+            ->whereNull('credit_price')
+            ->orderBy('id')
+            ->get(['id', 'name', 'price']);
+
+        if ($productsWithoutCreditPrice->isEmpty()) {
+            $this->info('  All products already have a credit_price set. Nothing to do.');
+
+            return;
+        }
+
+        $this->line("  {$productsWithoutCreditPrice->count()} product(s) have no credit_price — will set to price × 1.20.");
+
+        $updatedCount = 0;
+
+        foreach ($productsWithoutCreditPrice as $product) {
+            $creditPrice = (int) round($product->price * 1.20);
+            $this->line("  Product #{$product->id} «{$product->name}»: price {$product->price} F → credit_price {$creditPrice} F (+20%).");
+
+            if (! $isDryRun) {
+                DB::table('products')
+                    ->where('id', $product->id)
+                    ->update(['credit_price' => $creditPrice]);
+            }
+
+            $updatedCount++;
+        }
+
+        if ($isDryRun) {
+            $this->warn("  [DRY RUN] Would set credit_price on {$updatedCount} product(s).");
+
+            return;
+        }
+
+        $this->info("  Done — {$updatedCount} product(s) updated with credit_price (+20%).");
     }
 
     /**

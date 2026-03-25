@@ -65,6 +65,7 @@ class ApiSalesInvoiceController extends Controller
 
         $invoices = SalesInvoice::with(['customer', 'items.product', 'payments'])
             ->whereDate('created_at', $date)
+            ->where('commercial_id', $commercial?->id)
             ->get();
 
         $debtCollectionPayments = Payment::with('salesInvoice.customer')
@@ -90,7 +91,7 @@ class ApiSalesInvoiceController extends Controller
                 'items' => [],
                 'total' => $invoice->total_amount,
                 'status' => $invoice->status->value,
-                "commercial_commission"=> $invoice->estimated_commercial_commission,
+                'commercial_commission' => $invoice->estimated_commercial_commission,
                 'payment_method' => $invoice->payments->first()?->payment_method,
                 'should_be_paid_at' => $invoice->should_be_paid_at,
                 'created_at' => $invoice->created_at,
@@ -102,7 +103,7 @@ class ApiSalesInvoiceController extends Controller
                 'created_at' => $payment->created_at,
                 'invoice_date' => $payment->salesInvoice?->created_at,
                 'invoice_number' => $payment->salesInvoice?->invoice_number,
-                "commercial_commission"=> $payment->commercial_commission,
+                'commercial_commission' => $payment->commercial_commission,
                 'label' => 'Paiement : '.$payment->salesInvoice?->customer?->name,
             ]),
             'total' => $dailyCommissionSummary?->mandatoryDailySales ?? 0,

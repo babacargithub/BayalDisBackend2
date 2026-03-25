@@ -30,6 +30,7 @@ class ProductController extends Controller
                         'volume_m3' => $product->volume_m3,
                         'product_category_id' => $product->product_category_id,
                         'price' => $product->price,
+                        'credit_price' => $product->credit_price,
                         'stock_available' => $product->stock_available,
                         'stock_value' => $product->stock_value,
                         'parent_id' => $product->parent_id,
@@ -63,6 +64,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:0',
+            'credit_price' => 'nullable|integer|min:0',
             'cost_price' => 'required|numeric|min:0',
             'product_category_id' => 'nullable|exists:product_categories,id',
             'packaging_cost' => 'nullable|integer|min:0',
@@ -82,6 +84,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:0',
+            'credit_price' => 'nullable|integer|min:0',
             'cost_price' => 'required|numeric|min:0',
             'product_category_id' => 'nullable|exists:product_categories,id',
             'packaging_cost' => 'nullable|integer|min:0',

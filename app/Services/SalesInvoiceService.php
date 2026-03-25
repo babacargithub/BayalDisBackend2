@@ -22,7 +22,8 @@ use Throwable;
 readonly class SalesInvoiceService
 {
     public function __construct(
-        private CarLoadService $carLoadService
+        private CarLoadService $carLoadService,
+        private PricingPolicyService $pricingPolicyService,
     ) {}
 
     // =========================================================================
@@ -46,6 +47,22 @@ readonly class SalesInvoiceService
                 );
             }
 
+            $isPaid = (bool) ($data['paid'] ?? false);
+
+            // Step 1: Replace normal prices with credit_price for each product when the active
+            // policy has apply_credit_price enabled and the invoice is unpaid.
+            $creditPricedItems = $this->pricingPolicyService->applyCreditPricingToItems(
+                items: $data['items'],
+                isPaid: $isPaid,
+            );
+
+            // Compute the credit price difference before the surcharge is applied so we capture
+            // only the delta caused by credit pricing, not the subsequent percent surcharge.
+            $creditPriceDifference = 0;
+            foreach ($data['items'] as $itemIndex => $originalItem) {
+                $creditPriceDifference += ($creditPricedItems[$itemIndex]['price'] - $originalItem['price']) * $originalItem['quantity'];
+            }
+
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
                 'invoice_number' => 'F'.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
@@ -54,11 +71,20 @@ readonly class SalesInvoiceService
                 'commercial_id' => $user->commercial->id,
                 'status' => SalesInvoiceStatus::Issued,
                 'car_load_id' => $currentCarLoad->id,
+                'credit_price_difference' => $creditPriceDifference,
             ]);
             $salesInvoice->refresh();
 
+            // Step 2: Apply surcharge policy (e.g., percent increase for deferred payments) on top
+            // of the already credit-priced items.
+            $adjustedItems = $this->pricingPolicyService->applyPolicyToItems(
+                items: $creditPricedItems,
+                shouldBePaidAt: isset($data['should_be_paid_at']) ? \Carbon\Carbon::parse($data['should_be_paid_at']) : null,
+                isPaid: $isPaid,
+            );
+
             $itemsToSave = [];
-            foreach ($data['items'] as $item) {
+            foreach ($adjustedItems as $item) {
                 $salesInvoiceItem = new Vente([
                     'sales_invoice_id' => $salesInvoice->id,
                     'product_id' => $item['product_id'],
@@ -79,7 +105,7 @@ readonly class SalesInvoiceService
                 );
             }
 
-            if ($data['paid']) {
+            if ($isPaid) {
                 // Refresh to get stored total_amount after items were saved and recalculated.
                 $salesInvoice->refresh();
                 $this->paySalesInvoice($salesInvoice, [

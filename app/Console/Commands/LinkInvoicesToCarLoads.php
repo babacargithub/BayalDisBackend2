@@ -34,7 +34,13 @@ use Illuminate\Support\Facades\DB;
  *   kept selling but no new car load record was created. All 695 correctly
  *   belong to car load #8.
  *
- * If neither pass finds a candidate → the invoice keeps car_load_id = NULL
+ * Pass 3 — Earliest car load (pre-history fallback):
+ *   When the invoice predates every car load for the team (sales happened before
+ *   the first car load was ever opened in the system), assign it to the team's
+ *   earliest car load by load_date. This covers the Jan–Feb 2025 period where
+ *   invoices were recorded before car load #1 was created on 2025-02-21.
+ *
+ * If no car load exists at all for that team → the invoice keeps car_load_id = NULL
  * and is logged as unresolvable.
  *
  * Always run with --dry-run first to review changes before committing.
@@ -52,11 +58,16 @@ class LinkInvoicesToCarLoads extends Command
 
     private int $linkedByFallbackCount = 0;
 
+    private int $linkedByEarliestCarLoadCount = 0;
+
     private int $skippedNoMatchCount = 0;
 
     private int $skippedNoCommercialCount = 0;
 
     private array $teamIdCache = [];
+
+    /** @var array<int, int|null> Cache of customer_id → commercial_id lookups. */
+    private array $customerCommercialIdCache = [];
 
     public function handle(): int
     {
@@ -92,11 +103,16 @@ class LinkInvoicesToCarLoads extends Command
 
     private function loadUnlinkedInvoices(): Collection
     {
+        // Include invoices where commercial_id is null but customer_id is set —
+        // the commercial can be resolved via customers.commercial_id.
         return DB::table('sales_invoices')
             ->whereNull('car_load_id')
-            ->whereNotNull('commercial_id')
+            ->where(function ($query): void {
+                $query->whereNotNull('commercial_id')
+                    ->orWhereNotNull('customer_id');
+            })
             ->orderBy('created_at')
-            ->get(['id', 'commercial_id', 'created_at']);
+            ->get(['id', 'commercial_id', 'customer_id', 'created_at']);
     }
 
     /**
@@ -116,7 +132,13 @@ class LinkInvoicesToCarLoads extends Command
 
     private function processInvoice(object $invoice, Collection $carLoadsByTeam): void
     {
-        $teamId = $this->resolveTeamId($invoice->commercial_id);
+        // Prefer the commercial directly on the invoice; fall back to the
+        // customer's commercial for invoices migrated without a commercial_id
+        // (e.g. those created by bayal:migrate-single-ventes-to-invoices).
+        $commercialId = $invoice->commercial_id
+            ?? $this->resolveCommercialIdFromCustomer($invoice->customer_id ?? null);
+
+        $teamId = $commercialId !== null ? $this->resolveTeamId($commercialId) : null;
 
         if ($teamId === null) {
             $this->skippedNoCommercialCount++;
@@ -159,10 +181,24 @@ class LinkInvoicesToCarLoads extends Command
             return;
         }
 
+        // ── Pass 3: earliest car load (pre-history fallback) ──────────────────
+        // Used when the invoice predates all car loads for the team — i.e. sales
+        // happened before the first car load was ever opened in the system.
+        // Assign to the earliest car load by load_date.
+        $earliestCarLoad = $allTeamCarLoads->sortBy('load_date')->first();
+
+        if ($earliestCarLoad !== null) {
+            $daysBeforeStart = (int) $invoiceCreatedAt->diffInDays(Carbon::parse($earliestCarLoad->load_date));
+            $this->applyLink($invoice->id, $earliestCarLoad->id, "pre-history fallback ({$daysBeforeStart}d before CL#{$earliestCarLoad->id})");
+            $this->linkedByEarliestCarLoadCount++;
+
+            return;
+        }
+
         // ── Unresolvable ──────────────────────────────────────────────────────
         $this->skippedNoMatchCount++;
         $this->line(
-            "  <comment>Unresolvable</comment> — invoice #{$invoice->id} created {$invoiceCreatedAt->toDateString()} predates all car loads for team #{$teamId}"
+            "  <comment>Unresolvable</comment> — invoice #{$invoice->id} created {$invoiceCreatedAt->toDateString()}: team #{$teamId} has no car loads at all"
         );
     }
 
@@ -177,6 +213,25 @@ class LinkInvoicesToCarLoads extends Command
         }
 
         return $this->teamIdCache[$commercialId];
+    }
+
+    /**
+     * Looks up the commercial_id for a customer, with per-request caching.
+     * Returns null if the customer has no commercial or the customer does not exist.
+     */
+    private function resolveCommercialIdFromCustomer(?int $customerId): ?int
+    {
+        if ($customerId === null) {
+            return null;
+        }
+
+        if (! isset($this->customerCommercialIdCache[$customerId])) {
+            $this->customerCommercialIdCache[$customerId] = DB::table('customers')
+                ->where('id', $customerId)
+                ->value('commercial_id');
+        }
+
+        return $this->customerCommercialIdCache[$customerId];
     }
 
     // ─── Write ────────────────────────────────────────────────────────────────
@@ -199,14 +254,15 @@ class LinkInvoicesToCarLoads extends Command
     private function printSummary(): void
     {
         $verb = $this->isDryRun ? 'Would link' : 'Linked';
-        $total = $this->linkedByWindowCount + $this->linkedByFallbackCount;
+        $total = $this->linkedByWindowCount + $this->linkedByFallbackCount + $this->linkedByEarliestCarLoadCount;
 
         $this->info("{$verb}: {$total} invoice(s) total.");
         $this->line("  • {$this->linkedByWindowCount} via exact date window match.");
         $this->line("  • {$this->linkedByFallbackCount} via closest preceding car load (gap fallback).");
+        $this->line("  • {$this->linkedByEarliestCarLoadCount} via earliest car load (pre-history fallback).");
 
         if ($this->skippedNoMatchCount > 0) {
-            $this->warn("Unresolvable: {$this->skippedNoMatchCount} invoice(s) predate all car loads — car_load_id stays NULL.");
+            $this->warn("Unresolvable: {$this->skippedNoMatchCount} invoice(s) — team has no car loads at all, car_load_id stays NULL.");
         }
 
         if ($this->skippedNoCommercialCount > 0) {

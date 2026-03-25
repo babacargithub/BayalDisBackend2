@@ -14,6 +14,7 @@ const props = defineProps({
 const form = useForm({
     name: '',
     price: '',
+    credit_price: null,
     cost_price: '',
     packaging_cost: 0,
     weight_kg: null,
@@ -98,11 +99,19 @@ const margin = computed(() => {
     return ((price - costPrice) / costPrice * 100).toFixed(2);
 });
 
+const creditPriceIncreasePercent = computed(() => {
+    const price = Number(form.price) || 0;
+    const creditPrice = Number(form.credit_price) || 0;
+    if (!price || !creditPrice) return null;
+    return ((creditPrice - price) / price * 100).toFixed(2);
+});
+
 const openDialog = (item = null) => {
     editedItem.value = item;
     if (item) {
         form.name = item.name;
         form.price = item.price;
+        form.credit_price = item.credit_price ?? null;
         form.cost_price = item.cost_price;
         form.packaging_cost = item.packaging_cost ?? 0;
         form.weight_kg = item.weight_kg ?? null;
@@ -392,6 +401,16 @@ const calculateMargin = (price, costPrice) => {
                         <div v-if="form.price && form.cost_price" class="text-subtitle-1 mb-4">
                             Marge: {{ margin }}%
                         </div>
+                        <v-text-field
+                            v-model.number="form.credit_price"
+                            label="Prix Crédit (vente à terme)"
+                            type="number"
+                            min="0"
+                            clearable
+                            :error-messages="form.errors.credit_price"
+                            :hint="creditPriceIncreasePercent !== null ? `+${creditPriceIncreasePercent}% par rapport au prix de vente` : 'Laisser vide pour ne pas définir de prix crédit'"
+                            persistent-hint
+                        />
                         <v-row>
                             <v-col cols="6">
                                 <v-text-field

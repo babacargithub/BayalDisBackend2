@@ -118,6 +118,12 @@ class MigrateSingleVentesToInvoices extends Command
         $this->invoiceSequence++;
         $invoiceNumber = 'HIST-'.$saleDate->format('Ymd').'-'.str_pad($this->invoiceSequence, 4, '0', STR_PAD_LEFT);
 
+        // Resolve the commercial who owns this customer so the invoice can be
+        // linked to a car load in the subsequent bayal:link-invoices-to-car-loads step.
+        $commercialId = DB::table('customers')
+            ->where('id', $customerId)
+            ->value('commercial_id');
+
         $this->line("  Creating invoice {$invoiceNumber} for customer #{$customerId} on {$saleDate->toDateString()}");
 
         if ($this->isDryRun) {
@@ -129,7 +135,7 @@ class MigrateSingleVentesToInvoices extends Command
         return DB::table('sales_invoices')->insertGetId([
             'invoice_number' => $invoiceNumber,
             'customer_id' => $customerId,
-            'commercial_id' => null,
+            'commercial_id' => $commercialId,
             'car_load_id' => null,
             'status' => SalesInvoiceStatus::Draft->value,
             'paid' => false,
