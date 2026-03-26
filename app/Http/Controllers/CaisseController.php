@@ -2,19 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\DayAlreadyClosedException;
 use App\Models\Caisse;
 use App\Models\CaisseTransaction;
+use App\Models\Commercial;
+use App\Services\CloseDayService;
+use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class CaisseController extends Controller
 {
     public function index()
     {
         return Inertia::render('Caisse/Index', [
-            'caisses' => Caisse::all()
+            'caisses' => Caisse::all(),
         ]);
     }
 
@@ -23,7 +28,7 @@ class CaisseController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'balance' => 'required|integer|min:0',
-            'closed' => 'boolean'
+            'closed' => 'boolean',
         ]);
 
         Caisse::create($validated);
@@ -36,31 +41,31 @@ class CaisseController extends Controller
         try {
             Log::info('Updating caisse', [
                 'caisse_id' => $caisse->id,
-                'request_data' => $request->all()
+                'request_data' => $request->all(),
             ]);
 
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'balance' => 'required|integer|min:0',
-                'closed' => 'boolean'
+                'closed' => 'boolean',
             ]);
 
             $caisse->update($validated);
 
             Log::info('Caisse updated successfully', [
                 'caisse_id' => $caisse->id,
-                'updated_data' => $validated
+                'updated_data' => $validated,
             ]);
 
             return redirect()->route('caisses.index')->with('success', 'Caisse mise à jour avec succès');
         } catch (\Exception $e) {
             Log::error('Error updating caisse', [
                 'caisse_id' => $caisse->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return redirect()->back()
-                ->withErrors(['error' => 'Erreur lors de la mise à jour de la caisse: ' . $e->getMessage()])
+                ->withErrors(['error' => 'Erreur lors de la mise à jour de la caisse: '.$e->getMessage()])
                 ->withInput();
         }
     }
@@ -69,6 +74,7 @@ class CaisseController extends Controller
     {
         try {
             $caisse->delete();
+
             return redirect()->route('caisses.index')->with('success', 'Caisse supprimée avec succès');
         } catch (\Exception $e) {
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la suppression de la caisse']);
@@ -81,7 +87,7 @@ class CaisseController extends Controller
             'from_caisse_id' => 'required|exists:caisses,id',
             'to_caisse_id' => 'required|exists:caisses,id|different:from_caisse_id',
             'amount' => 'required|integer|min:1',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
         ], [
             'from_caisse_id.required' => 'La caisse source est obligatoire',
             'to_caisse_id.required' => 'La caisse destination est obligatoire',
@@ -104,16 +110,16 @@ class CaisseController extends Controller
                 // Create withdrawal transaction for source caisse
                 $fromCaisse->transactions()->create([
                     'amount' => -$validated['amount'],
-                    'label' => "Transfert vers " . $toCaisse->name . ($validated['description'] ? " - " . $validated['description'] : ""),
-                    'transaction_type' => 'WITHDRAW'
+                    'label' => 'Transfert vers '.$toCaisse->name.($validated['description'] ? ' - '.$validated['description'] : ''),
+                    'transaction_type' => 'WITHDRAW',
                 ]);
                 $fromCaisse->decrement('balance', $validated['amount']);
 
                 // Create deposit transaction for destination caisse
                 $toCaisse->transactions()->create([
                     'amount' => $validated['amount'],
-                    'label' => "Transfert depuis " . $fromCaisse->name . ($validated['description'] ? " - " . $validated['description'] : ""),
-                    'transaction_type' => 'DEPOSIT'
+                    'label' => 'Transfert depuis '.$fromCaisse->name.($validated['description'] ? ' - '.$validated['description'] : ''),
+                    'transaction_type' => 'DEPOSIT',
                 ]);
                 $toCaisse->increment('balance', $validated['amount']);
             });
@@ -136,19 +142,19 @@ class CaisseController extends Controller
                     'effective_amount' => $transaction->effective_amount,
                     'label' => $transaction->label,
                     'transaction_type' => $transaction->transaction_type,
-                    'created_at' => $transaction->created_at
+                    'created_at' => $transaction->created_at,
                 ];
             });
 
         if (request()->wantsJson()) {
             return response()->json([
-                'transactions' => $transactions
+                'transactions' => $transactions,
             ]);
         }
 
         return Inertia::render('Caisse/Transactions', [
             'caisse' => $caisse,
-            'transactions' => $transactions
+            'transactions' => $transactions,
         ]);
     }
 
@@ -159,11 +165,11 @@ class CaisseController extends Controller
 
             $validated = $request->validate([
                 'amount' => 'required|integer|not_in:0',
-                'label' => 'required|string|max:255'
+                'label' => 'required|string|max:255',
             ]);
 
             $transaction = $caisse->transactions()->create($validated);
-            
+
             // Update caisse balance using effective amount
             $caisse->balance += $transaction->effective_amount;
             $caisse->save();
@@ -173,8 +179,37 @@ class CaisseController extends Controller
             return redirect()->back()->with('success', 'Transaction enregistrée avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->back()->withErrors(['error' => 'Erreur lors de l\'enregistrement de la transaction']);
         }
+    }
+
+    /**
+     * Close the day for the commercial that owns the given caisse.
+     *
+     * POST /caisses/{caisse}/close-day
+     */
+    public function closeDay(Caisse $caisse, CloseDayService $closeDayService): JsonResponse
+    {
+        $commercial = $caisse->commercial;
+
+        if ($commercial === null) {
+            return response()->json([
+                'message' => 'Cette caisse n\'est pas associée à un commercial.',
+            ], 422);
+        }
+
+        try {
+            $closeDayService->closeDay($commercial, Carbon::today());
+        } catch (DayAlreadyClosedException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 409);
+        } catch (\RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => "La journée a été clôturée pour «{$commercial->name}».",
+        ]);
     }
 
     public function destroyTransaction(Caisse $caisse, CaisseTransaction $transaction)
@@ -193,7 +228,8 @@ class CaisseController extends Controller
             return redirect()->back()->with('success', 'Transaction supprimée avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la suppression de la transaction']);
         }
     }
-} 
+}

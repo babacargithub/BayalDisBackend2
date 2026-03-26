@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\AccountType;
+use App\Enums\CaisseType;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,6 +14,9 @@ use Illuminate\Support\Facades\Hash;
 
 class Commercial extends Model
 {
+    /** @use HasFactory<\Database\Factories\CommercialFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'name',
         'phone_number',
@@ -29,6 +35,51 @@ class Commercial extends Model
         return [
             'salary' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // When a new commercial is created, automatically provision:
+        //   1. A personal caisse (COMMERCIAL type) to hold collected customer payments.
+        //   2. A COMMERCIAL_COLLECTED account tracking the same balance.
+        //   3. A COMMERCIAL_COMMISSION account tracking commissions owed.
+        static::created(function (Commercial $commercial): void {
+            $caisse = Caisse::create([
+                'name' => "Caisse — {$commercial->name}",
+                'caisse_type' => CaisseType::Commercial,
+                'commercial_id' => $commercial->id,
+                'balance' => 0,
+                'closed' => false,
+            ]);
+
+            Account::create([
+                'name' => "Encaissements — {$commercial->name}",
+                'account_type' => AccountType::CommercialCollected,
+                'commercial_id' => $commercial->id,
+                'balance' => 0,
+                'is_active' => true,
+            ]);
+
+            Account::create([
+                'name' => "Commission — {$commercial->name}",
+                'account_type' => AccountType::CommercialCommission,
+                'commercial_id' => $commercial->id,
+                'balance' => 0,
+                'is_active' => true,
+            ]);
+        });
+    }
+
+    // ── Relationships ───────────────────────────────────────────────────────
+
+    public function caisse(): HasOne
+    {
+        return $this->hasOne(Caisse::class)->where('caisse_type', CaisseType::Commercial->value);
+    }
+
+    public function versements(): HasMany
+    {
+        return $this->hasMany(CommercialVersement::class);
     }
 
     public function user(): BelongsTo
@@ -95,6 +146,8 @@ class Commercial extends Model
     {
         return $this->hasOne(CommercialNewCustomerCommissionSetting::class);
     }
+
+    // ── Auth ────────────────────────────────────────────────────────────────
 
     public function verifySecretCode(string $secretCode): bool
     {

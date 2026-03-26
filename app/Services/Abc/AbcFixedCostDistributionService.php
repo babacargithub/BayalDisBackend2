@@ -112,8 +112,9 @@ class AbcFixedCostDistributionService
     /**
      * Compute the allocation for one cost pool for one CarLoad.
      *
-     * Uses finalized per_vehicle_amount if available, otherwise falls back
-     * to the previous month's finalized amount as an estimate.
+     * Priority:
+     *   1. Current month's finalized per_vehicle_amount (when the month has been finalized).
+     *   2. Most recent past month that has finalized per_vehicle_amount (fallback estimate).
      */
     private function computePoolAllocationForCarLoad(
         MonthlyFixedCostPool $costPool,
@@ -124,7 +125,7 @@ class AbcFixedCostDistributionService
         $perVehicleTotal = $this->getPerVehicleTotalForPool($costPool, $year, $month);
 
         if ($perVehicleTotal === 0) {
-            $perVehicleTotal = $this->getFallbackPerVehicleTotalFromPreviousMonth($costPool, $year, $month);
+            $perVehicleTotal = $this->getFallbackPerVehicleTotalFromLatestFinalizedMonth($costPool, $year, $month);
         }
 
         if ($vehicleCarLoadCountThisMonth === 0) {
@@ -151,20 +152,37 @@ class AbcFixedCostDistributionService
     }
 
     /**
-     * Fallback: use the previous month's finalized per_vehicle_amount when
-     * the current month has not yet been finalized.
+     * Fallback: find the most recent past month (before the requested year/month)
+     * that has finalized per_vehicle_amount data for the given pool, and use its total.
+     * This covers gaps when the current month has not yet been finalized.
      */
-    private function getFallbackPerVehicleTotalFromPreviousMonth(
+    private function getFallbackPerVehicleTotalFromLatestFinalizedMonth(
         MonthlyFixedCostPool $costPool,
         int $year,
         int $month,
     ): int {
-        $previousMonth = \Carbon\Carbon::create($year, $month)->subMonth();
+        $latestFinalizedEntry = MonthlyFixedCost::query()
+            ->where('cost_pool', $costPool)
+            ->whereNotNull('per_vehicle_amount')
+            ->where(function ($query) use ($year, $month): void {
+                $query->where('period_year', '<', $year)
+                    ->orWhere(function ($query) use ($year, $month): void {
+                        $query->where('period_year', $year)
+                            ->where('period_month', '<', $month);
+                    });
+            })
+            ->orderByDesc('period_year')
+            ->orderByDesc('period_month')
+            ->first(['period_year', 'period_month']);
+
+        if ($latestFinalizedEntry === null) {
+            return 0;
+        }
 
         return (int) MonthlyFixedCost::query()
             ->where('cost_pool', $costPool)
-            ->where('period_year', $previousMonth->year)
-            ->where('period_month', $previousMonth->month)
+            ->where('period_year', $latestFinalizedEntry->period_year)
+            ->where('period_month', $latestFinalizedEntry->period_month)
             ->whereNotNull('per_vehicle_amount')
             ->sum('per_vehicle_amount');
     }

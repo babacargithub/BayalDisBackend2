@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CaisseController;
 use App\Http\Controllers\CarLoadController;
@@ -192,6 +193,10 @@ Route::middleware('auth')->group(function () {
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
     Route::post('products/{product}/transform', [ProductController::class, 'transformToVariants'])->name('products.transform');
 
+    Route::get('accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
+    Route::resource('accounts', AccountController::class)->only(['index', 'store', 'update', 'destroy']);
+
+    Route::post('caisses/{caisse}/close-day', [CaisseController::class, 'closeDay'])->name('caisses.close-day');
     Route::get('caisses/{caisse}/transactions', [CaisseController::class, 'transactions'])->name('caisses.transactions');
     Route::post('caisses/{caisse}/transactions', [CaisseController::class, 'storeTransaction'])->name('caisses.transactions.store');
     Route::delete('caisses/{caisse}/transactions/{transaction}', [CaisseController::class, 'destroyTransaction'])->name('caisses.transactions.destroy');

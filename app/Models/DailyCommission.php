@@ -47,6 +47,8 @@ class DailyCommission extends Model
         'basket_achieved',
         'basket_multiplier_applied',
         'achieved_tier_level',
+        'versement_id',
+        'finalized_at',
     ];
 
     protected function casts(): array
@@ -66,6 +68,7 @@ class DailyCommission extends Model
             'basket_achieved' => 'boolean',
             'basket_multiplier_applied' => 'decimal:2',
             'achieved_tier_level' => 'integer',
+            'finalized_at' => 'datetime',
         ];
     }
 

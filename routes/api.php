@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ApiCommissionController;
 use App\Http\Controllers\Api\ApiCustomerController;
 use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiSalesInvoiceController;
+use App\Http\Controllers\Api\ApiVersementController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomerVisitController as ApiCustomerVisitController;
 use App\Http\Controllers\CustomerVisitController;
@@ -96,5 +97,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('commission-overview', [ApiCommissionController::class, 'getCommissionOverview'])->name('salesperson.commission-overview');
         Route::get('commission-detail', [ApiCommissionController::class, 'getCommissionDetail'])->name('salesperson.commission-detail');
         Route::get('commission-structure', [ApiCommissionController::class, 'getCommissionStructure'])->name('salesperson.commission-structure');
+
+        // Versement (commercial sweeps caisse to main caisse + commissions credited to account)
+        Route::post('versement', [ApiVersementController::class, 'store'])->name('salesperson.versement.store');
+        Route::get('versements', [ApiVersementController::class, 'index'])->name('salesperson.versements.index');
     });
 });

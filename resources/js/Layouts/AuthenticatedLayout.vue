@@ -66,7 +66,16 @@ const menuItems = [
             { name: 'Commissions', route: 'commissions.index', icon: 'mdi-cash-check' },
         ]
     },
-    { name: 'Caisses', route: 'caisses.index', icon: 'mdi-cash-register' },
+    {
+        name: 'Caisses',
+        icon: 'mdi-cash-register',
+        isDropdown: true,
+        ref: ref(false),
+        items: [
+            { name: 'Caisses', route: 'caisses.index', icon: 'mdi-cash-register' },
+            { name: 'Comptes', route: 'accounts.index', icon: 'mdi-bank-outline' },
+        ]
+    },
     // {
     //     name: 'Commandes & Livraisons',
     //     icon: 'mdi-truck-delivery',

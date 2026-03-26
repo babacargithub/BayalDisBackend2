@@ -61,33 +61,42 @@
 
                         <template v-slot:item.actions="{ item }">
                             <div class="flex gap-2">
-                                <v-btn 
-                                    icon="mdi-pencil" 
-                                    variant="text" 
+                                <v-btn
+                                    icon="mdi-pencil"
+                                    variant="text"
                                     color="primary"
                                     @click="openDialog(item)"
                                     title="Modifier"
                                 />
-                                <v-btn 
-                                    icon="mdi-delete" 
-                                    variant="text" 
+                                <v-btn
+                                    icon="mdi-delete"
+                                    variant="text"
                                     color="error"
                                     @click="openDeleteDialog(item)"
                                     title="Supprimer"
                                 />
-                                <v-btn 
-                                    icon="mdi-cash-multiple" 
-                                    variant="text" 
+                                <v-btn
+                                    icon="mdi-cash-multiple"
+                                    variant="text"
                                     color="info"
                                     @click="openTransactionsDialog(item)"
                                     title="Voir les transactions"
                                 />
-                                <v-btn 
-                                    icon="mdi-plus" 
-                                    variant="text" 
+                                <v-btn
+                                    icon="mdi-plus"
+                                    variant="text"
                                     color="success"
                                     @click="openNewTransactionDialog(item)"
                                     title="Nouvelle transaction"
+                                />
+                                <v-btn
+                                    v-if="item.caisse_type === 'COMMERCIAL'"
+                                    icon="mdi-lock-clock"
+                                    variant="text"
+                                    :color="isCaisseLockedToday(item) ? 'grey' : 'warning'"
+                                    :disabled="isCaisseLockedToday(item)"
+                                    :title="isCaisseLockedToday(item) ? 'Journée déjà clôturée' : 'Clôturer Journée'"
+                                    @click="openCloseDayDialog(item)"
                                 />
                             </div>
                         </template>
@@ -316,6 +325,51 @@
             </v-card>
         </v-dialog>
 
+        <!-- Close Day Confirmation Dialog -->
+        <v-dialog v-model="closeDayDialog" max-width="460px">
+            <v-card v-if="closeDayCaisse">
+                <v-card-title class="text-h6 pt-5 px-6">Clôturer la journée</v-card-title>
+                <v-card-text class="px-6">
+                    <p>
+                        Êtes-vous sûr de vouloir clôturer la journée pour la caisse
+                        <strong>{{ closeDayCaisse.name }}</strong> ?
+                    </p>
+                    <p class="mt-3 text-medium-emphasis text-sm">
+                        Cette action :
+                    </p>
+                    <ul class="mt-1 text-sm text-medium-emphasis list-disc pl-5">
+                        <li>Transfère la commission journalière gagnée vers le compte commission du commercial.</li>
+                        <li>Bloque tout nouveau paiement sur cette caisse jusqu'à demain.</li>
+                    </ul>
+                    <v-alert
+                        v-if="closeDayError"
+                        type="error"
+                        variant="tonal"
+                        class="mt-4"
+                        :text="closeDayError"
+                    />
+                </v-card-text>
+                <v-card-actions class="px-6 pb-5">
+                    <v-spacer />
+                    <v-btn
+                        variant="text"
+                        @click="closeDayDialog = false"
+                        :disabled="closeDayLoading"
+                    >
+                        Annuler
+                    </v-btn>
+                    <v-btn
+                        color="warning"
+                        variant="flat"
+                        :loading="closeDayLoading"
+                        @click="confirmCloseDay"
+                    >
+                        Confirmer la clôture
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <!-- Types Dialog -->
         <v-dialog v-model="typeDialog" max-width="500px">
             <v-card>
@@ -436,6 +490,12 @@ import axios from 'axios';
 const props = defineProps({
     caisses: Array
 });
+
+// Close-day state
+const closeDayDialog = ref(false);
+const closeDayCaisse = ref(null);
+const closeDayLoading = ref(false);
+const closeDayError = ref(null);
 
 const flash = computed(() => usePage().props.flash || {});
 const flashMessage = computed(() => flash.value.success || '');
@@ -624,5 +684,41 @@ const submitTransfer = () => {
             transferForm.reset();
         }
     });
+};
+
+const todayDateString = new Date().toISOString().slice(0, 10);
+
+const isCaisseLockedToday = (caisse) => {
+    if (!caisse.locked_until) {
+        return false;
+    }
+    return caisse.locked_until.slice(0, 10) === todayDateString;
+};
+
+const openCloseDayDialog = (caisse) => {
+    closeDayCaisse.value = caisse;
+    closeDayError.value = null;
+    closeDayDialog.value = true;
+};
+
+const confirmCloseDay = async () => {
+    closeDayLoading.value = true;
+    closeDayError.value = null;
+
+    try {
+        await axios.post(route('caisses.close-day', closeDayCaisse.value.id));
+
+        // Optimistically mark the caisse as locked in the local list.
+        const matchingCaisse = props.caisses.find((c) => c.id === closeDayCaisse.value.id);
+        if (matchingCaisse) {
+            matchingCaisse.locked_until = todayDateString;
+        }
+
+        closeDayDialog.value = false;
+    } catch (error) {
+        closeDayError.value = error.response?.data?.message ?? 'Une erreur inattendue est survenue.';
+    } finally {
+        closeDayLoading.value = false;
+    }
 };
 </script>

@@ -2,14 +2,21 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\AccountType;
+use App\Enums\CaisseType;
 use App\Enums\CarLoadExpenseType;
 use App\Enums\CarLoadStatus;
 use App\Enums\MonthlyFixedCostPool;
 use App\Enums\MonthlyFixedCostSubCategory;
+use App\Models\Account;
+use App\Models\AccountTransaction;
+use App\Models\Caisse;
 use App\Models\CarLoad;
+use App\Models\Commercial;
 use App\Models\MonthlyFixedCost;
 use App\Models\ProductCategory;
 use App\Models\Vehicle;
+use App\Services\AccountService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -296,9 +303,25 @@ class RefactorOldData extends Command
         // Must run last: depends on car_load_id being set (Step 3) and expenses existing (Step 0.3).
         $this->newLine();
         $this->info('───────────────────────────────────────────────────────────');
-        $this->info('  Step 7/7 — Backfill delivery costs on historical invoices');
+        $this->info('  Step 7/8 — Backfill delivery costs on historical invoices');
         $this->info('───────────────────────────────────────────────────────────');
         $this->backfillInvoiceDeliveryCosts($isDryRun);
+
+        // Step 8 runs inline (no sub-command)
+        // Must run last so existing caisse balances are stable.
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 8/9 — Provision commercial caisses and seed accounts');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->provisionCommercialCaissesAndSeedAccounts($isDryRun);
+
+        // Step 9 runs inline (no sub-command)
+        // Must run after step 0 (fleet vehicles seeded) and step 0.5 (fixed costs seeded).
+        $this->newLine();
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->info('  Step 9/9 — Seed vehicle cost accounts and fixed cost accounts');
+        $this->info('───────────────────────────────────────────────────────────');
+        $this->seedVehicleAndFixedCostAccounts($isDryRun);
 
         $this->newLine();
         $this->info('═══════════════════════════════════════════════════════════');
@@ -1099,6 +1122,257 @@ class RefactorOldData extends Command
         }
 
         $this->info("  Done — {$totalUpdated} row(s) normalised across ".count($tables).' tables.');
+    }
+
+    /**
+     * Provisions a personal caisse + two accounts (COMMERCIAL_COLLECTED and COMMERCIAL_COMMISSION)
+     * for every commercial that does not already have one.
+     *
+     * Then seeds the global MERCHANDISE_SALES account and initialises it with the sum of all
+     * existing main-caisse balances so the company-wide invariant holds from day one:
+     *
+     *   SUM(account.balance) == SUM(caisse.balance)
+     *
+     * Idempotent: re-running is safe — already-provisioned commercials and the existing
+     * MERCHANDISE_SALES account balance are left untouched.
+     */
+    private function provisionCommercialCaissesAndSeedAccounts(bool $isDryRun): void
+    {
+        // ── 1. Provision personal caisses + accounts for each commercial ──────
+
+        $allCommercials = Commercial::orderBy('id')->get();
+
+        if ($allCommercials->isEmpty()) {
+            $this->info('  No commercials found. Nothing to provision.');
+        } else {
+            $this->line("  {$allCommercials->count()} commercial(s) found.");
+            $provisioned = 0;
+
+            foreach ($allCommercials as $commercial) {
+                $existingCaisse = Caisse::where('commercial_id', $commercial->id)
+                    ->where('caisse_type', CaisseType::Commercial->value)
+                    ->first();
+
+                if ($existingCaisse !== null) {
+                    $this->line("  Commercial «{$commercial->name}»: caisse already exists (id #{$existingCaisse->id}). Skipping.");
+
+                    continue;
+                }
+
+                if ($isDryRun) {
+                    $this->warn("  [DRY RUN] Would provision caisse + accounts for «{$commercial->name}».");
+
+                    continue;
+                }
+
+                Caisse::create([
+                    'name' => "Caisse — {$commercial->name}",
+                    'caisse_type' => CaisseType::Commercial,
+                    'commercial_id' => $commercial->id,
+                    'balance' => 0,
+                    'closed' => false,
+                ]);
+
+                Account::firstOrCreate(
+                    ['account_type' => AccountType::CommercialCollected->value, 'commercial_id' => $commercial->id],
+                    ['name' => "Encaissements — {$commercial->name}", 'balance' => 0, 'is_active' => true]
+                );
+
+                Account::firstOrCreate(
+                    ['account_type' => AccountType::CommercialCommission->value, 'commercial_id' => $commercial->id],
+                    ['name' => "Commission — {$commercial->name}", 'balance' => 0, 'is_active' => true]
+                );
+
+                $this->info("  Provisioned caisse + accounts for «{$commercial->name}».");
+                $provisioned++;
+            }
+
+            if ($provisioned > 0) {
+                $this->info("  Done — {$provisioned} commercial(s) provisioned.");
+            }
+        }
+
+        // ── 2. Seed the MERCHANDISE_SALES account ─────────────────────────────
+
+        $merchandiseSalesAccount = Account::where('account_type', AccountType::MerchandiseSales->value)->first();
+
+        $totalMainCaisseBalance = Caisse::where('caisse_type', CaisseType::Main->value)->sum('balance');
+        $totalAccountBalance = Account::sum('balance');
+
+        // The invariant requires: SUM(accounts) == SUM(caisses).
+        // After provisioning commercial accounts (all at 0), the deficit is:
+        //   totalCaisseBalance - totalAccountBalance
+        // which corresponds to the existing main caisse balances not yet attributed to any account.
+        $totalCaisseBalance = Caisse::sum('balance');
+        $deficit = $totalCaisseBalance - $totalAccountBalance;
+
+        if ($merchandiseSalesAccount === null) {
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would create MERCHANDISE_SALES account and seed it with {$deficit} F.");
+
+                return;
+            }
+
+            $merchandiseSalesAccount = Account::create([
+                'name' => 'Vente marchandises',
+                'account_type' => AccountType::MerchandiseSales,
+                'balance' => 0,
+                'is_active' => true,
+            ]);
+
+            $this->info("  Created MERCHANDISE_SALES account (id #{$merchandiseSalesAccount->id}).");
+        } else {
+            $this->line("  MERCHANDISE_SALES account already exists (id #{$merchandiseSalesAccount->id}, balance: {$merchandiseSalesAccount->balance} F).");
+        }
+
+        if ($deficit <= 0) {
+            $this->info('  Invariant already satisfied. No initial seeding needed.');
+
+            return;
+        }
+
+        if ($isDryRun) {
+            $this->warn("  [DRY RUN] Would credit MERCHANDISE_SALES with {$deficit} F to satisfy the invariant.");
+
+            return;
+        }
+
+        // Credit the deficit to MERCHANDISE_SALES to initialise the invariant.
+        AccountTransaction::create([
+            'account_id' => $merchandiseSalesAccount->id,
+            'amount' => $deficit,
+            'transaction_type' => 'CREDIT',
+            'label' => 'Solde initial — attribution des encaisses existantes',
+            'reference_type' => 'INITIAL',
+            'reference_id' => null,
+        ]);
+
+        $merchandiseSalesAccount->increment('balance', $deficit);
+
+        $this->info("  Credited MERCHANDISE_SALES with {$deficit} F (initial balance attribution). Invariant satisfied.");
+    }
+
+    /**
+     * Creates the five vehicle cost accounts for each fleet vehicle in the database,
+     * and one FixedCost account for each distinct label found in the monthly_fixed_costs table.
+     *
+     * Vehicle accounts created per vehicle:
+     *   VEHICLE_DEPRECIATION, VEHICLE_INSURANCE, VEHICLE_REPAIR_RESERVE,
+     *   VEHICLE_MAINTENANCE, VEHICLE_FUEL
+     *
+     * Fixed cost accounts are keyed by the label column of monthly_fixed_costs.
+     * Each unique label gets exactly one account, regardless of how many periods
+     * share that label.
+     *
+     * Idempotent: existing accounts are skipped — safe to re-run.
+     */
+    private function seedVehicleAndFixedCostAccounts(bool $isDryRun): void
+    {
+        $accountService = app(AccountService::class);
+
+        $vehicleAccountTypes = [
+            AccountType::VehicleDepreciation,
+            AccountType::VehicleInsurance,
+            AccountType::VehicleRepairReserve,
+            AccountType::VehicleMaintenance,
+            AccountType::VehicleFuel,
+        ];
+
+        // ── Vehicle cost accounts (5 per vehicle) ────────────────────────────
+
+        $vehicles = Vehicle::orderBy('id')->get();
+
+        if ($vehicles->isEmpty()) {
+            $this->info('  No vehicles found — run Step 0 first to seed the fleet. Skipping vehicle accounts.');
+        } else {
+            $vehicleAccountsCreated = 0;
+
+            foreach ($vehicles as $vehicle) {
+                $this->line("  Vehicle «{$vehicle->name}» (id #{$vehicle->id}):");
+
+                foreach ($vehicleAccountTypes as $accountType) {
+                    $existingAccount = Account::where('account_type', $accountType->value)
+                        ->where('vehicle_id', $vehicle->id)
+                        ->first();
+
+                    $accountName = "{$accountType->label()} — {$vehicle->name}";
+
+                    if ($existingAccount !== null) {
+                        $this->line("    ✓ {$accountName} already exists (id #{$existingAccount->id}).");
+
+                        continue;
+                    }
+
+                    if ($isDryRun) {
+                        $this->warn("    [DRY RUN] Would create account «{$accountName}».");
+
+                        continue;
+                    }
+
+                    $created = $accountService->getOrCreateVehicleAccount($vehicle, $accountType);
+                    $this->info("    + Created «{$accountName}» (id #{$created->id}).");
+                    $vehicleAccountsCreated++;
+                }
+            }
+
+            if (! $isDryRun) {
+                $this->info("  Done — {$vehicleAccountsCreated} vehicle account(s) created across {$vehicles->count()} vehicle(s).");
+            }
+        }
+
+        // ── Fixed cost accounts (one per distinct label) ──────────────────────
+
+        $this->newLine();
+
+        $distinctFixedCostLabels = MonthlyFixedCost::query()
+            ->whereNotNull('label')
+            ->distinct()
+            ->orderBy('label')
+            ->pluck('label');
+
+        // Also collect labels derived from sub_category for fixed costs without a label.
+        $subCategoryDerivedLabels = MonthlyFixedCost::query()
+            ->whereNull('label')
+            ->distinct()
+            ->orderBy('sub_category')
+            ->pluck('sub_category')
+            ->map(fn ($subCategory) => is_string($subCategory) ? $subCategory : $subCategory->value);
+
+        $allFixedCostLabels = $distinctFixedCostLabels->merge($subCategoryDerivedLabels)->unique()->sort()->values();
+
+        if ($allFixedCostLabels->isEmpty()) {
+            $this->info('  No monthly fixed costs found — run Step 0.5 first to seed fixed costs. Skipping fixed cost accounts.');
+
+            return;
+        }
+
+        $fixedCostAccountsCreated = 0;
+
+        foreach ($allFixedCostLabels as $label) {
+            $existingAccount = Account::where('account_type', AccountType::FixedCost->value)
+                ->where('name', $label)
+                ->first();
+
+            if ($existingAccount !== null) {
+                $this->line("  ✓ Fixed cost account «{$label}» already exists (id #{$existingAccount->id}).");
+
+                continue;
+            }
+
+            if ($isDryRun) {
+                $this->warn("  [DRY RUN] Would create fixed cost account «{$label}».");
+
+                continue;
+            }
+
+            $created = $accountService->getOrCreateFixedCostAccount($label);
+            $this->info("  + Created fixed cost account «{$label}» (id #{$created->id}).");
+            $fixedCostAccountsCreated++;
+        }
+
+        if (! $isDryRun) {
+            $this->info("  Done — {$fixedCostAccountsCreated} fixed cost account(s) created.");
+        }
     }
 
     private function allMigrationsHaveBeenRun(): bool
