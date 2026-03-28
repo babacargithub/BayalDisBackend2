@@ -1238,18 +1238,18 @@ class RefactorOldData extends Command
         }
 
         // Credit the deficit to MERCHANDISE_SALES to initialise the invariant.
-        AccountTransaction::create([
-            'account_id' => $merchandiseSalesAccount->id,
-            'amount' => $deficit,
-            'transaction_type' => 'CREDIT',
-            'label' => 'Solde initial — attribution des encaisses existantes',
-            'reference_type' => 'INITIAL',
-            'reference_id' => null,
-        ]);
-
-        $merchandiseSalesAccount->increment('balance', $deficit);
-
-        $this->info("  Credited MERCHANDISE_SALES with {$deficit} F (initial balance attribution). Invariant satisfied.");
+        //        AccountTransaction::create([
+        //            'account_id' => $merchandiseSalesAccount->id,
+        //            'amount' => $deficit,
+        //            'transaction_type' => 'CREDIT',
+        //            'label' => 'Solde initial — attribution des encaisses existantes',
+        //            'reference_type' => 'INITIAL',
+        //            'reference_id' => null,
+        //        ]);
+        //
+        //        $merchandiseSalesAccount->increment('balance', $deficit);
+        //
+        //        $this->info("  Credited MERCHANDISE_SALES with {$deficit} F (initial balance attribution). Invariant satisfied.");
     }
 
     /**

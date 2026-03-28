@@ -33,7 +33,7 @@ readonly class AbcCarLoadProfitabilityService
         $totalRevenue = $this->computeTotalRevenueForCarLoad($carLoad);
         $totalGrossProfit = $this->computeTotalGrossProfitForCarLoad($carLoad);
 
-        $vehicleFixedCost = $this->abcVehicleCostService->computeFixedCostForCarLoad($carLoad);
+        $vehicleFixedCost = $this->abcVehicleCostService->computeOverallVehicleRunningCostForCarLoad($carLoad);
         $vehicleExpensesCost = $this->abcVehicleCostService->computeVariableExpensesForCarLoad($carLoad);
 
         $fixedCostAllocation = $this->abcFixedCostDistributionService->computeAllocatedFixedCostsForCarLoad($carLoad);

@@ -105,6 +105,7 @@ readonly class VersementService
                 'transaction_type' => Caisse::TRANSACTION_TYPE_DEPOSIT,
                 'label' => "Versement de {$commercial->name}",
             ]);
+            // TODO this is not safe, must use updateBalance
             $mainCaisse->increment('balance', $amountToVerse);
 
             // ── Step 2: Reallocate between accounts ───────────────────────────

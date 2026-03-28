@@ -383,7 +383,7 @@ readonly class DailyCommissionService
             return ['threshold' => 0, 'margin_rate' => null];
         }
 
-        $dailyTotalCost = $this->abcVehicleCostService->computeDailyTotalCostForCarLoad($activeCarLoad);
+        $dailyTotalCost = $this->abcVehicleCostService->computeDailyFixedAndVariableVehicleCostForCarLoad($activeCarLoad);
 
         if ($dailyTotalCost === 0) {
             return ['threshold' => 0, 'margin_rate' => null];
@@ -647,9 +647,8 @@ readonly class DailyCommissionService
         $daysWithNonZeroThreshold = $dailyCommissionsInPeriod
             ->filter(fn (DailyCommission $dc) => ($dc->mandatory_daily_threshold ?? 0) > 0);
 
-        $allDaysWithThresholdReachedIt = $daysWithNonZeroThreshold->isNotEmpty()
-            ? $daysWithNonZeroThreshold->every(fn (DailyCommission $dc) => (bool) $dc->mandatory_threshold_reached)
-            : true;
+        $allDaysWithThresholdReachedIt =
+            ! $daysWithNonZeroThreshold->isNotEmpty() || $daysWithNonZeroThreshold->every(fn (DailyCommission $dc) => (bool) $dc->mandatory_threshold_reached);
 
         $summary = [
             'base_commission' => (int) $dailyCommissionsInPeriod->sum('base_commission'),

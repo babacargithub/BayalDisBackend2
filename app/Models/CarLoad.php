@@ -46,7 +46,7 @@ class CarLoad extends Model
                 $vehicle = Vehicle::find($carLoad->vehicle_id);
                 if ($vehicle !== null) {
                     $carLoad->fixed_daily_cost = app(AbcVehicleCostService::class)
-                        ->computeDailyFixedCost($vehicle);
+                        ->computeDailyRunningCostForVehicle($vehicle);
                 }
             }
         });

@@ -62,4 +62,13 @@ class Account extends Model
 
         return $credit - $debit;
     }
+
+    public function updateBalanceFromLedger(): self
+    {
+        $this->balance = $this->computeBalanceFromLedger();
+        $this->save();
+
+        return $this;
+
+    }
 }

@@ -1,26 +1,21 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 
 const drawer = ref(true);
 const rail = ref(false);
-const clientsDropdownOpen = ref(false);
-const ordersDropdownOpen = ref(false);
-const ventesDropdownOpen = ref(false);
-const adminDropdownOpen = ref(false);
-
-// Add mobile detection
 const isMobile = ref(false);
 
-// Watch for screen size changes
 onMounted(() => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
+    routerCleanup = router.on('navigate', ensureActiveGroupIsOpen);
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', checkMobile);
+    routerCleanup?.();
 });
 
 const checkMobile = () => {
@@ -30,36 +25,32 @@ const checkMobile = () => {
 
 const menuItems = [
     { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
-    { 
+    {
         name: 'Ventes',
         icon: 'mdi-cash-register',
         isDropdown: true,
-        ref: ventesDropdownOpen,
         items: [
-            { name: 'Ventes', route: 'ventes.index', icon: 'mdi-cash-register' },
-            { name: 'Factures', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
-            { name: 'Dépenses', route: 'depenses.index', icon: 'mdi-cash-minus' },
+            { name: 'Ventes du jour', route: 'ventes.index', icon: 'mdi-cash-register' },
+            { name: 'Factures clients', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
         ]
     },
-    { 
+    {
         name: 'Clients',
         icon: 'mdi-account-group',
         isDropdown: true,
-        ref: clientsDropdownOpen,
         items: [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
-            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' }, 
+            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' },
             { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
             { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
             { name: 'Catégories client', route: 'customer-categories.index', icon: 'mdi-folder-account' },
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
         ]
     },
-    { 
+    {
         name: 'Commerciaux',
         icon: 'mdi-account-tie',
         isDropdown: true,
-        ref: ref(false),
         items: [
             { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
             { name: 'Équipes', route: 'teams.index', icon: 'mdi-account-group' },
@@ -70,30 +61,20 @@ const menuItems = [
         name: 'Caisses',
         icon: 'mdi-cash-register',
         isDropdown: true,
-        ref: ref(false),
         items: [
             { name: 'Caisses', route: 'caisses.index', icon: 'mdi-cash-register' },
             { name: 'Comptes', route: 'accounts.index', icon: 'mdi-bank-outline' },
+            { name: 'Dépenses', route: 'depenses.index', icon: 'mdi-cash-minus' },
         ]
     },
-    // {
-    //     name: 'Commandes & Livraisons',
-    //     icon: 'mdi-truck-delivery',
-    //     isDropdown: true,
-    //     ref: ordersDropdownOpen,
-    //     items: [
-    //
-    //     ]
-    // },
     {
         name: 'Stock',
         icon: 'mdi-warehouse',
         isDropdown: true,
-        ref: ordersDropdownOpen,
         items: [
-          { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
+            { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
             { name: 'Catégories', route: 'product-categories.index', icon: 'mdi-tag-multiple' },
-          { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
+            { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
             { name: 'Chargements Véhicule', route: 'car-loads.index', icon: 'mdi-car' },
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
             { name: 'Véhicules', route: 'vehicles.index', icon: 'mdi-truck' },
@@ -103,7 +84,6 @@ const menuItems = [
         name: 'Admin',
         icon: 'mdi-shield-account',
         isDropdown: true,
-        ref: adminDropdownOpen,
         items: [
             { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
             { name: 'Statistiques', route: 'admin.statistiques', icon: 'mdi-chart-line' },
@@ -111,10 +91,27 @@ const menuItems = [
             { name: 'Utilisateurs', route: 'users.index', icon: 'mdi-account-multiple' },
             { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
             { name: 'Coûts d\'exploitation', route: 'monthly-fixed-costs.index', icon: 'mdi-office-building-cog' },
-
         ]
     },
 ];
+
+const getGroupsContainingActiveRoute = () =>
+    menuItems
+        .filter(item => item.isDropdown && item.items?.some(sub => route().current(sub.route)))
+        .map(item => item.name);
+
+const openedGroups = ref(getGroupsContainingActiveRoute());
+
+let routerCleanup;
+
+const ensureActiveGroupIsOpen = () => {
+    const activeGroups = getGroupsContainingActiveRoute();
+    activeGroups.forEach(groupName => {
+        if (!openedGroups.value.includes(groupName)) {
+            openedGroups.value = [...openedGroups.value, groupName];
+        }
+    });
+};
 </script>
 
 <template>
@@ -149,7 +146,7 @@ const menuItems = [
             </div>
 
             <!-- Navigation List -->
-            <v-list nav>
+            <v-list nav v-model:opened="openedGroups">
                 <template v-for="item in menuItems" :key="item.name">
                     <!-- Regular menu item -->
                     <v-list-item
@@ -158,16 +155,13 @@ const menuItems = [
                         :active="route().current(item.route)"
                         :prepend-icon="item.icon"
                         :title="item.name"
-                        class=""
                     />
 
                     <!-- Dropdown menu item -->
                     <v-list-group
                         v-else
                         fluid
-                        active-class="bg-red text-white"
-
-
+                        :value="item.name"
                     >
                         <template v-slot:activator="{ props }">
                             <v-list-item
@@ -184,7 +178,7 @@ const menuItems = [
                             :active="route().current(subItem.route)"
                             :prepend-icon="subItem.icon"
                             :title="subItem.name"
-                            class=""
+                            class="sub-menu-item"
                         />
                     </v-list-group>
                 </template>
@@ -215,11 +209,12 @@ const menuItems = [
 </template>
 
 <style scoped>
-.v-list-item--active {
-    background-color: rgba(255, 255, 255, 0.1) !important;
+:deep(.v-list-group__items .v-list-item--active) {
+    background-color: red !important;
+    color: white !important;
 }
 
-.v-list-group__items .v-list-item {
-    padding-left: 16px;
+:deep(.v-list-group__items .v-list-item) {
+    padding-left: 28px !important;
 }
 </style>

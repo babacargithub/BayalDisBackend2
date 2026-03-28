@@ -7,6 +7,7 @@ use App\Data\Statistics\MonthlyActivitySummaryDTO;
 use App\Data\Statistics\MonthlyTotalsDTO;
 use App\Data\Statistics\YearlyActivitySummaryDTO;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -259,9 +260,9 @@ class StatisticsService
      *   invoices_count, total_sales, total_estimated_profit,
      *   total_commissions, total_delivery_cost.
      *
-     * @return \Illuminate\Support\Collection<string, object>
+     * @return Collection<string, object>
      */
-    private function fetchInvoiceAggregatesByDay(Carbon $periodStart, Carbon $periodEnd): \Illuminate\Support\Collection
+    private function fetchInvoiceAggregatesByDay(Carbon $periodStart, Carbon $periodEnd): Collection
     {
         return DB::table('sales_invoices')
             ->select([
@@ -286,9 +287,9 @@ class StatisticsService
      * Returns a Collection keyed by "Y-m-d" date strings. Each item contains:
      *   total_realized_profit.
      *
-     * @return \Illuminate\Support\Collection<string, object>
+     * @return Collection<string, object>
      */
-    private function fetchPaymentAggregatesByDay(Carbon $periodStart, Carbon $periodEnd): \Illuminate\Support\Collection
+    private function fetchPaymentAggregatesByDay(Carbon $periodStart, Carbon $periodEnd): Collection
     {
         return DB::table('payments')
             ->select([

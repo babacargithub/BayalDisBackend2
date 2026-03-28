@@ -3,16 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\CaisseType;
+use App\Exceptions\DayAlreadyClosedException;
 use App\Http\Controllers\Controller;
 use App\Models\Caisse;
 use App\Models\Commercial;
+use App\Services\CaisseService;
 use App\Services\VersementService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ApiVersementController extends Controller
 {
-    public function __construct(private readonly VersementService $versementService) {}
+    public function __construct(
+        private readonly VersementService $versementService,
+        private readonly CaisseService $closeDayService,
+    ) {}
 
     /**
      * Perform a versement: sweep the commercial's caisse balance to the main caisse
@@ -64,6 +70,16 @@ class ApiVersementController extends Controller
             }
         }
 
+        // Close the day before performing the versement so that commissions are
+        // finalized, costs distributed, and net profit recorded. If the day was
+        // already closed earlier (e.g., the commercial closed it manually first),
+        // proceed directly to the versement.
+        try {
+            $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
+        } catch (DayAlreadyClosedException) {
+            // Day was already closed — proceed to versement.
+        }
+
         $versement = $this->versementService->performVersement($commercial, $mainCaisse);
 
         return response()->json([
@@ -76,6 +92,26 @@ class ApiVersementController extends Controller
                 'merchandise_credited' => $versement->merchandise_credited,
             ],
         ], 201);
+    }
+
+    /**
+     * Return the authenticated commercial's caisse balance.
+     *
+     * GET /api/salesperson/caisse
+     */
+    public function balance(Request $request): JsonResponse
+    {
+        $commercial = Commercial::where('user_id', $request->user()->id)->first();
+
+        if ($commercial === null) {
+            return response()->json(['balance' => 0]);
+        }
+
+        $caisse = $commercial->caisse;
+
+        return response()->json([
+            'balance' => $caisse?->balance ?? 0,
+        ]);
     }
 
     /**

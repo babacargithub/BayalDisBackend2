@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Account;
 
+use App\Enums\AccountTransactionType;
 use App\Enums\AccountType;
 use App\Enums\CaisseType;
 use App\Enums\CarLoadStatus;
@@ -21,7 +22,7 @@ use App\Models\Payment;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vehicle;
-use App\Services\CloseDayService;
+use App\Services\CaisseService;
 use App\Services\VersementService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,12 +32,12 @@ class CloseDayTest extends TestCase
 {
     use RefreshDatabase;
 
-    private CloseDayService $closeDayService;
+    private CaisseService $closeDayService;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->closeDayService = app(CloseDayService::class);
+        $this->closeDayService = app(CaisseService::class);
     }
 
     private function assertGlobalInvariantHolds(): void
@@ -56,9 +57,9 @@ class CloseDayTest extends TestCase
         $commercial = Commercial::factory()->create();
         $commercial->caisse->update(['balance' => $caisseBalance]);
 
-        Account::where('account_type', AccountType::CommercialCollected->value)
-            ->where('commercial_id', $commercial->id)
-            ->update(['balance' => $caisseBalance]);
+        if ($caisseBalance > 0) {
+            $this->addCreditToCollectedAccount($commercial, $caisseBalance);
+        }
 
         return $commercial;
     }
@@ -96,6 +97,52 @@ class CloseDayTest extends TestCase
         ]);
     }
 
+    /**
+     * Add a credit AccountTransaction to the COMMERCIAL_COLLECTED account and sync its
+     * cached balance. Required whenever test setup directly assigns a non-zero balance,
+     * because AccountService::debit() calls updateBalanceFromLedger() which recomputes
+     * from transactions — a direct DB update without a matching transaction results in a
+     * negative balance after the debit.
+     */
+    private function addCreditToCollectedAccount(Commercial $commercial, int $amount): void
+    {
+        $collectedAccount = Account::where('account_type', AccountType::CommercialCollected->value)
+            ->where('commercial_id', $commercial->id)
+            ->firstOrFail();
+
+        AccountTransaction::create([
+            'account_id' => $collectedAccount->id,
+            'amount' => $amount,
+            'transaction_type' => AccountTransactionType::Credit,
+            'label' => 'Solde initial (test setup)',
+            'reference_type' => 'TEST_SETUP',
+        ]);
+
+        $collectedAccount->updateBalanceFromLedger();
+    }
+
+    /**
+     * Insert a payment record for the given commercial on the given date with a specific
+     * gross profit value. Uses DB insert (bypassing model events) so the caisse balance
+     * is not affected — tests that need both caisse balance AND gross profit must set them
+     * up independently.
+     */
+    private function insertPaymentWithGrossProfit(
+        Commercial $commercial,
+        int $grossProfit,
+        Carbon $date,
+    ): void {
+        \Illuminate\Support\Facades\DB::table('payments')->insert([
+            'amount' => $grossProfit * 4, // plausible revenue — not used in profit calculation
+            'profit' => $grossProfit,
+            'commercial_commission' => 0,
+            'payment_method' => 'CASH',
+            'user_id' => $commercial->user_id,
+            'created_at' => $date->toDateTimeString(),
+            'updated_at' => $date->toDateTimeString(),
+        ]);
+    }
+
     // ── Step 1: COMMERCIAL_COLLECTED → MERCHANDISE_SALES ─────────────────────
 
     public function test_close_day_transfers_caisse_balance_from_collected_to_merchandise_sales(): void
@@ -103,7 +150,7 @@ class CloseDayTest extends TestCase
         $commercial = $this->createCommercialWithCaisse(80_000);
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $merchandiseSalesAccount->refresh();
         $this->assertSame(80_000, $merchandiseSalesAccount->balance);
@@ -114,7 +161,7 @@ class CloseDayTest extends TestCase
         $commercial = $this->createCommercialWithCaisse(80_000);
         $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $collectedAccount = Account::where('account_type', AccountType::CommercialCollected->value)
             ->where('commercial_id', $commercial->id)
@@ -128,7 +175,7 @@ class CloseDayTest extends TestCase
         $commercial = $this->createCommercialWithCaisse(0);
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(20_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $collectedAccount = Account::where('account_type', AccountType::CommercialCollected->value)
             ->where('commercial_id', $commercial->id)
@@ -148,7 +195,7 @@ class CloseDayTest extends TestCase
         $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 12_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commissionAccount = Account::where('account_type', AccountType::CommercialCommission->value)
             ->where('commercial_id', $commercial->id)
@@ -164,7 +211,7 @@ class CloseDayTest extends TestCase
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 12_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $merchandiseSalesAccount->refresh();
         $this->assertSame(68_000, $merchandiseSalesAccount->balance);
@@ -182,7 +229,7 @@ class CloseDayTest extends TestCase
             ->firstOrFail();
         $this->assertSame(0, $commissionAccount->balance);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commissionAccount->refresh();
         $this->assertSame(5_000, $commissionAccount->balance);
@@ -198,7 +245,7 @@ class CloseDayTest extends TestCase
 
         $this->assertNull($dailyCommission->finalized_at);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $dailyCommission->refresh();
         $this->assertNotNull($dailyCommission->finalized_at);
@@ -228,7 +275,7 @@ class CloseDayTest extends TestCase
             'basket_achieved' => false,
         ]);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $yesterdayCommission->refresh();
         $this->assertNull($yesterdayCommission->finalized_at);
@@ -243,7 +290,7 @@ class CloseDayTest extends TestCase
 
         $this->assertNull($commercial->caisse->locked_until);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commercial->caisse->refresh();
         $this->assertTrue($commercial->caisse->locked_until->isToday());
@@ -254,7 +301,7 @@ class CloseDayTest extends TestCase
         $commercial = $this->createCommercialWithCaisse();
         $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commercial->caisse->refresh();
         $this->assertTrue($commercial->caisse->isLockedForToday());
@@ -268,7 +315,7 @@ class CloseDayTest extends TestCase
         $commercial = $this->createCommercialWithCaisse();
         $commercial->update(['user_id' => $user->id]);
         $this->createMerchandiseSalesAccount(0);
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $this->expectException(DayCaisseClosedException::class);
 
@@ -287,10 +334,10 @@ class CloseDayTest extends TestCase
         $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 5_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $this->expectException(DayAlreadyClosedException::class);
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
     }
 
     public function test_close_day_does_not_double_credit_commission_when_called_twice(): void
@@ -299,10 +346,10 @@ class CloseDayTest extends TestCase
         $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 5_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         try {
-            $this->closeDayService->closeDay($commercial, Carbon::today());
+            $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
         } catch (DayAlreadyClosedException) {
             // Expected.
         }
@@ -322,7 +369,7 @@ class CloseDayTest extends TestCase
         $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commercial->caisse->refresh();
         $this->assertTrue($commercial->caisse->isLockedForToday());
@@ -335,7 +382,7 @@ class CloseDayTest extends TestCase
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(20_000);
         $this->createTodayDailyCommission($commercial, 0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $merchandiseSalesAccount->refresh();
         $this->assertSame(20_000, $merchandiseSalesAccount->balance);
@@ -346,7 +393,7 @@ class CloseDayTest extends TestCase
         $commercial = $this->createCommercialWithCaisse();
         $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commercial->caisse->refresh();
         $this->assertTrue($commercial->caisse->isLockedForToday());
@@ -373,7 +420,7 @@ class CloseDayTest extends TestCase
 
         $this->assertGlobalInvariantHolds();
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $this->assertGlobalInvariantHolds();
     }
@@ -387,7 +434,7 @@ class CloseDayTest extends TestCase
         $commercial->unsetRelation('caisse');
 
         $this->expectException(\RuntimeException::class);
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
     }
 
     // ── VersementService integration: accounts settled at close-day ───────────
@@ -399,7 +446,7 @@ class CloseDayTest extends TestCase
         $this->createTodayDailyCommission($commercial, 10_000);
 
         // Close day: COLLECTED (80_000) → MERCHANDISE_SALES, MERCHANDISE_SALES → COMMISSION (10_000).
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         // After close-day: COLLECTED = 0, MERCHANDISE_SALES = 70_000, COMMISSION = 10_000.
         $collectedAccount = Account::where('account_type', AccountType::CommercialCollected->value)
@@ -430,7 +477,7 @@ class CloseDayTest extends TestCase
         $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 10_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commissionAccount = Account::where('account_type', AccountType::CommercialCommission->value)
             ->where('commercial_id', $commercial->id)
@@ -458,7 +505,7 @@ class CloseDayTest extends TestCase
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 10_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         // After close-day: MERCHANDISE_SALES = 80_000 - 10_000 = 70_000.
         $merchandiseSalesAccount->refresh();
@@ -485,7 +532,7 @@ class CloseDayTest extends TestCase
         $this->createMerchandiseSalesAccount(0);
         $dailyCommission = $this->createTodayDailyCommission($commercial, 8_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
         $commercial->caisse->update(['locked_until' => null]);
 
         $mainCaisse = Caisse::create([
@@ -521,18 +568,20 @@ class CloseDayTest extends TestCase
             'insurance_monthly' => 52_000,     // 2_000 / day
             'repair_reserve_monthly' => 26_000, // 1_000 / day
             'maintenance_monthly' => 26_000,    // 1_000 / day
+            'driver_salary_monthly' => 0,       // excluded to keep totals deterministic
             'estimated_daily_fuel_consumption' => 5_000,
             'working_days_per_month' => 26,
         ]);
-        // total daily vehicle cost = 1_000 + 2_000 + 1_000 + 1_000 + 5_000 = 10_000
+        // total daily vehicle cost = 1_000 + 2_000 + 1_000 + 1_000 + 0 + 5_000 = 10_000
 
         $team = $this->createTeam();
 
         $commercial = Commercial::factory()->create(['team_id' => $team->id]);
         $commercial->caisse->update(['balance' => $caisseBalance]);
-        Account::where('account_type', AccountType::CommercialCollected->value)
-            ->where('commercial_id', $commercial->id)
-            ->update(['balance' => $caisseBalance]);
+
+        if ($caisseBalance > 0) {
+            $this->addCreditToCollectedAccount($commercial, $caisseBalance);
+        }
 
         CarLoad::create([
             'name' => 'Chargement test',
@@ -550,7 +599,7 @@ class CloseDayTest extends TestCase
         [$commercial, $vehicle] = $this->createCommercialWithActiveCarLoadAndVehicle(200_000);
         $this->createMerchandiseSalesAccount(200_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $depreciationAccount = Account::where('account_type', AccountType::VehicleDepreciation->value)
             ->where('vehicle_id', $vehicle->id)
@@ -563,7 +612,7 @@ class CloseDayTest extends TestCase
         [$commercial, $vehicle] = $this->createCommercialWithActiveCarLoadAndVehicle(200_000);
         $this->createMerchandiseSalesAccount(200_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $insuranceAccount = Account::where('account_type', AccountType::VehicleInsurance->value)
             ->where('vehicle_id', $vehicle->id)
@@ -571,12 +620,32 @@ class CloseDayTest extends TestCase
         $this->assertSame(2_000, $insuranceAccount->balance);
     }
 
-    public function test_close_day_credits_vehicle_fuel_account_with_daily_consumption(): void
+    public function test_close_day_credits_vehicle_fuel_account_with_daily_consumption_estimate(): void
     {
+        // Fuel is distributed as a reserve equal to estimated_daily_fuel_consumption regardless
+        // of any CarLoadExpense records. The VehicleFuel account absorbs any rounding surplus/deficit
+        // from the other fixed cost accounts.
+        // vehicle.daily_fixed_cost = 10_000, sum of non-fuel = 5_000 → fuel = 5_000.
         [$commercial, $vehicle] = $this->createCommercialWithActiveCarLoadAndVehicle(200_000);
         $this->createMerchandiseSalesAccount(200_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
+
+        $fuelAccount = Account::where('account_type', AccountType::VehicleFuel->value)
+            ->where('vehicle_id', $vehicle->id)
+            ->firstOrFail();
+        $this->assertSame(5_000, $fuelAccount->balance);
+    }
+
+    public function test_close_day_fuel_account_absorbs_rounding_surplus_from_non_fuel_costs(): void
+    {
+        // When non-fuel fixed costs don't divide evenly, VehicleFuel absorbs the rounding gap
+        // so that SUM(all vehicle account credits) == vehicle.daily_fixed_cost exactly.
+        // Here daily_fixed_cost = 10_000, non-fuel rounded sum = 5_000 → fuel = 5_000.
+        [$commercial, $vehicle] = $this->createCommercialWithActiveCarLoadAndVehicle(200_000);
+        $this->createMerchandiseSalesAccount(200_000);
+
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $fuelAccount = Account::where('account_type', AccountType::VehicleFuel->value)
             ->where('vehicle_id', $vehicle->id)
@@ -587,12 +656,13 @@ class CloseDayTest extends TestCase
     public function test_close_day_debits_total_vehicle_cost_from_merchandise_sales(): void
     {
         // MERCHANDISE_SALES is funded by step 1 (COLLECTED → MERCHANDISE_SALES).
-        // Then step 3 debits the vehicle costs from it.
-        // caisse = 200_000 → MERCHANDISE_SALES grows by 200_000, then vehicle cost (10_000) is drawn.
-        [$commercial, $vehicle] = $this->createCommercialWithActiveCarLoadAndVehicle(200_000);
+        // Then step 3 debits the full daily vehicle cost (fixed + fuel reserve) from it.
+        // vehicle.daily_fixed_cost = 10_000 (5_000 non-fuel + 5_000 fuel).
+        // caisse = 200_000 → MERCHANDISE_SALES +200_000, then -10_000 vehicle.
+        [$commercial] = $this->createCommercialWithActiveCarLoadAndVehicle(200_000);
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $merchandiseSalesAccount->refresh();
         // 0 + 200_000 (step 1) - 10_000 (vehicle costs step 3) = 190_000
@@ -606,7 +676,7 @@ class CloseDayTest extends TestCase
         $commercial->update(['team_id' => null]);
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         // MERCHANDISE_SALES only received step 1 (50_000) — no vehicle cost deduction.
         $merchandiseSalesAccount->refresh();
@@ -624,7 +694,7 @@ class CloseDayTest extends TestCase
 
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         // No active car load — vehicle costs skipped. MERCHANDISE_SALES = 50_000 from step 1 only.
         $merchandiseSalesAccount->refresh();
@@ -638,24 +708,21 @@ class CloseDayTest extends TestCase
             'insurance_monthly' => 52_000,
             'repair_reserve_monthly' => 26_000,
             'maintenance_monthly' => 26_000,
+            'driver_salary_monthly' => 0,
             'estimated_daily_fuel_consumption' => 5_000,
             'working_days_per_month' => 26,
         ]);
-        // total = 10_000 / day
+        // total daily = 1_000 + 2_000 + 1_000 + 1_000 + 0 + 5_000 (fuel) = 10_000
 
         $team = $this->createTeam('Équipe partagée');
 
         $firstCommercial = Commercial::factory()->create(['team_id' => $team->id]);
         $firstCommercial->caisse->update(['balance' => 100_000]);
-        Account::where('account_type', AccountType::CommercialCollected->value)
-            ->where('commercial_id', $firstCommercial->id)
-            ->update(['balance' => 100_000]);
+        $this->addCreditToCollectedAccount($firstCommercial, 100_000);
 
         $secondCommercial = Commercial::factory()->create(['team_id' => $team->id]);
         $secondCommercial->caisse->update(['balance' => 80_000]);
-        Account::where('account_type', AccountType::CommercialCollected->value)
-            ->where('commercial_id', $secondCommercial->id)
-            ->update(['balance' => 80_000]);
+        $this->addCreditToCollectedAccount($secondCommercial, 80_000);
 
         CarLoad::create([
             'name' => 'Chargement partagé',
@@ -665,14 +732,14 @@ class CloseDayTest extends TestCase
             'status' => CarLoadStatus::Selling,
         ]);
 
-        // Fund MERCHANDISE_SALES enough for both close-days and both vehicle cost distributions.
-        $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
+        // Fund MERCHANDISE_SALES enough for both close-days.
+        $this->createMerchandiseSalesAccount(0);
 
-        // First commercial closes their day — vehicle costs distributed (10_000).
-        $this->closeDayService->closeDay($firstCommercial, Carbon::today());
+        // First commercial closes their day — vehicle costs distributed (10_000, including fuel).
+        $this->closeDayService->closeCaisseForDay($firstCommercial, Carbon::today());
 
         // Second commercial closes their day — vehicle costs must be skipped (already done).
-        $this->closeDayService->closeDay($secondCommercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($secondCommercial, Carbon::today());
 
         // Vehicle cost accounts must total 10_000 (one distribution, not two).
         $totalVehicleCostAccountBalance = Account::whereIn('account_type', [
@@ -711,7 +778,7 @@ class CloseDayTest extends TestCase
 
         $this->assertGlobalInvariantHolds();
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $this->assertGlobalInvariantHolds();
     }
@@ -746,7 +813,7 @@ class CloseDayTest extends TestCase
         $this->createMonthlyFixedCost(MonthlyFixedCostPool::Storage, 260_000, perVehicleAmount: 260_000);
         $this->createMerchandiseSalesAccount(200_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $storageAccount = Account::where('account_type', AccountType::FixedCost->value)
             ->where('name', MonthlyFixedCostPool::Storage->label())
@@ -761,7 +828,7 @@ class CloseDayTest extends TestCase
         $this->createMonthlyFixedCost(MonthlyFixedCostPool::Overhead, 52_000, perVehicleAmount: 52_000);
         $this->createMerchandiseSalesAccount(200_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $overheadAccount = Account::where('account_type', AccountType::FixedCost->value)
             ->where('name', MonthlyFixedCostPool::Overhead->label())
@@ -778,10 +845,10 @@ class CloseDayTest extends TestCase
         // Pre-fund MERCHANDISE_SALES — step 1 will also add the 50_000 caisse balance.
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $merchandiseSalesAccount->refresh();
-        // step 1: +50_000 from COLLECTED; step 3: -10_000 vehicle; step 4: -3_000 fixed → net 37_000
+        // step 1: +50_000 from COLLECTED; step 3: -10_000 vehicle (incl. fuel); step 4: -3_000 fixed → net 37_000
         $this->assertSame(37_000, $merchandiseSalesAccount->balance);
     }
 
@@ -820,8 +887,8 @@ class CloseDayTest extends TestCase
         $this->createMonthlyFixedCost(MonthlyFixedCostPool::Overhead, 260_000, perVehicleAmount: 260_000);
         $this->createMerchandiseSalesAccount(200_000);
 
-        $this->closeDayService->closeDay($firstCommercial, Carbon::today());
-        $this->closeDayService->closeDay($secondCommercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($firstCommercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($secondCommercial, Carbon::today());
 
         $overheadAccount = Account::where('account_type', AccountType::FixedCost->value)
             ->where('name', MonthlyFixedCostPool::Overhead->label())
@@ -838,11 +905,66 @@ class CloseDayTest extends TestCase
         $this->createMonthlyFixedCost(MonthlyFixedCostPool::Storage, 260_000, perVehicleAmount: 260_000);
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $merchandiseSalesAccount->refresh();
         // Only step 1: +50_000 from COLLECTED. No fixed cost deduction.
         $this->assertSame(50_000, $merchandiseSalesAccount->balance);
+    }
+
+    // ── Net daily profit extraction ───────────────────────────────────────────
+
+    public function test_close_day_credits_profit_account_with_net_daily_profit(): void
+    {
+        // gross_profit (from payments) = 25_000, commission = 8_000
+        // vehicle daily = 10_000 (5_000 non-fuel + 5_000 fuel reserve)
+        // net_daily_profit = 25_000 − 8_000 − 10_000 = 7_000
+        [$commercial] = $this->createCommercialWithActiveCarLoadAndVehicle(100_000);
+        $commercial->update(['user_id' => User::factory()->create()->id]);
+        $this->createMerchandiseSalesAccount(0);
+        $this->createTodayDailyCommission($commercial, 8_000);
+        $this->insertPaymentWithGrossProfit($commercial, grossProfit: 25_000, date: Carbon::today());
+
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
+
+        $profitAccount = Account::where('account_type', AccountType::Profit->value)->firstOrFail();
+        $this->assertSame(7_000, $profitAccount->balance);
+    }
+
+    public function test_close_day_does_not_credit_profit_when_gross_profit_is_zero(): void
+    {
+        // No payment records → gross_daily_profit = 0 → net_daily_profit ≤ 0 → profit step is skipped.
+        $commercial = $this->createCommercialWithCaisse(50_000);
+        $this->createMerchandiseSalesAccount(0);
+
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
+
+        $profitAccount = Account::where('account_type', AccountType::Profit->value)->first();
+        $this->assertNull($profitAccount, 'PROFIT account must not be created when gross profit is zero');
+    }
+
+    public function test_close_day_profit_accumulates_across_multiple_close_days(): void
+    {
+        $commercial = $this->createCommercialWithCaisse(60_000);
+        $commercial->update(['user_id' => User::factory()->create()->id]);
+        $this->createMerchandiseSalesAccount(0);
+
+        // Day 1: gross profit = 15_000, no other costs → net profit = 15_000
+        $this->insertPaymentWithGrossProfit($commercial, grossProfit: 15_000, date: Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
+
+        // Reset caisse for day 2.
+        $commercial->caisse->update(['balance' => 40_000, 'locked_until' => null]);
+        Account::where('account_type', AccountType::CommercialCollected->value)
+            ->where('commercial_id', $commercial->id)
+            ->update(['balance' => 40_000]);
+
+        // Day 2: gross profit = 10_000 → net profit = 10_000
+        $this->insertPaymentWithGrossProfit($commercial, grossProfit: 10_000, date: Carbon::today()->addDay());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today()->addDay());
+
+        $profitAccount = Account::where('account_type', AccountType::Profit->value)->firstOrFail();
+        $this->assertSame(25_000, $profitAccount->balance);
     }
 
     public function test_global_invariant_is_preserved_after_close_day_with_vehicle_and_fixed_costs(): void
@@ -864,7 +986,7 @@ class CloseDayTest extends TestCase
 
         $this->assertGlobalInvariantHolds();
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $this->assertGlobalInvariantHolds();
     }
@@ -881,7 +1003,7 @@ class CloseDayTest extends TestCase
         $commercial = $this->createCommercialWithCaisse(0);
         $yesterday = Carbon::yesterday();
 
-        $this->closeDayService->closeDay($commercial, $yesterday);
+        $this->closeDayService->closeCaisseForDay($commercial, $yesterday);
 
         $commercial->caisse->refresh();
         $this->assertTrue(
@@ -904,7 +1026,7 @@ class CloseDayTest extends TestCase
         $dailyCommission = $this->createTodayDailyCommission($commercial, 5_000);
 
         // Must not throw.
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         // Commission account receives nothing (no funds available).
         $commissionAccount = Account::where('account_type', AccountType::CommercialCommission->value)
@@ -932,7 +1054,7 @@ class CloseDayTest extends TestCase
         $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
         $this->createTodayDailyCommission($commercial, 5_000);
 
-        $this->closeDayService->closeDay($commercial, Carbon::today());
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
 
         $commissionAccount = Account::where('account_type', AccountType::CommercialCommission->value)
             ->where('commercial_id', $commercial->id)

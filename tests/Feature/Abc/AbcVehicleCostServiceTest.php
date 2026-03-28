@@ -66,14 +66,14 @@ class AbcVehicleCostServiceTest extends TestCase
         // total monthly = 209,000 / 26 = 8,038.46... → 8,038 after round
         $expectedDailyFixedCost = (int) round(209_000 / 26);
 
-        $this->assertEquals($expectedDailyFixedCost, $this->service->computeDailyFixedCost($vehicle));
+        $this->assertEquals($expectedDailyFixedCost, $this->service->computeDailyRunningCostForVehicle($vehicle));
     }
 
     public function test_daily_fixed_cost_returns_zero_when_working_days_is_zero(): void
     {
         $vehicle = $this->makeVehicle(['working_days_per_month' => 0]);
 
-        $this->assertEquals(0, $this->service->computeDailyFixedCost($vehicle));
+        $this->assertEquals(0, $this->service->computeDailyRunningCostForVehicle($vehicle));
     }
 
     public function test_fixed_cost_for_carload_returns_zero_when_no_vehicle_assigned(): void
@@ -87,7 +87,7 @@ class AbcVehicleCostServiceTest extends TestCase
             'status' => 'SELLING',
         ]);
 
-        $this->assertEquals(0, $this->service->computeFixedCostForCarLoad($carLoad));
+        $this->assertEquals(0, $this->service->computeOverallVehicleRunningCostForCarLoad($carLoad));
     }
 
     public function test_fixed_cost_for_carload_uses_minimum_one_day_when_same_day_trip(): void
@@ -98,9 +98,9 @@ class AbcVehicleCostServiceTest extends TestCase
             'return_date' => Carbon::today(),
         ]);
 
-        $expectedCost = $this->service->computeDailyFixedCost($vehicle) * 1;
+        $expectedCost = $this->service->computeDailyRunningCostForVehicle($vehicle) * 1;
 
-        $this->assertEquals($expectedCost, $this->service->computeFixedCostForCarLoad($carLoad));
+        $this->assertEquals($expectedCost, $this->service->computeOverallVehicleRunningCostForCarLoad($carLoad));
     }
 
     public function test_fixed_cost_for_carload_is_prorated_over_trip_duration(): void
@@ -112,9 +112,9 @@ class AbcVehicleCostServiceTest extends TestCase
             'return_date' => Carbon::today(),
         ]);
 
-        $expectedCost = $this->service->computeDailyFixedCost($vehicle) * 3;
+        $expectedCost = $this->service->computeDailyRunningCostForVehicle($vehicle) * 3;
 
-        $this->assertEquals($expectedCost, $this->service->computeFixedCostForCarLoad($carLoad));
+        $this->assertEquals($expectedCost, $this->service->computeOverallVehicleRunningCostForCarLoad($carLoad));
     }
 
     public function test_fixed_cost_for_active_carload_with_future_return_date_uses_elapsed_days_not_planned_days(): void
@@ -128,9 +128,9 @@ class AbcVehicleCostServiceTest extends TestCase
         ]);
 
         // End date is capped at today → 2 elapsed days
-        $expectedCost = $this->service->computeDailyFixedCost($vehicle) * 2;
+        $expectedCost = $this->service->computeDailyRunningCostForVehicle($vehicle) * 2;
 
-        $this->assertEquals($expectedCost, $this->service->computeFixedCostForCarLoad($carLoad));
+        $this->assertEquals($expectedCost, $this->service->computeOverallVehicleRunningCostForCarLoad($carLoad));
     }
 
     public function test_variable_expenses_for_carload_sums_all_expenses(): void
@@ -175,10 +175,10 @@ class AbcVehicleCostServiceTest extends TestCase
 
         CarLoadExpense::create(['car_load_id' => $carLoad->id, 'amount' => 30_000, 'type' => CarLoadExpenseType::Fuel]);
 
-        $expectedFixedCost = $this->service->computeDailyFixedCost($vehicle) * 2;
+        $expectedFixedCost = $this->service->computeDailyRunningCostForVehicle($vehicle) * 2;
         $expectedTotal = $expectedFixedCost + 30_000;
 
-        $this->assertEquals($expectedTotal, $this->service->computeTotalVehicleCostForCarLoad($carLoad));
+        $this->assertEquals($expectedTotal, $this->service->computeTotalFixedAndVariableVehicleCostForCarLoad($carLoad));
     }
 
     public function test_car_load_snapshots_fixed_daily_cost_when_vehicle_is_assigned(): void
@@ -227,7 +227,7 @@ class AbcVehicleCostServiceTest extends TestCase
 
         // The service must use the snapshot, not the new live rate
         $expectedTripCost = $originalDailyRate * 3;
-        $this->assertEquals($expectedTripCost, $this->service->computeFixedCostForCarLoad($carLoad));
+        $this->assertEquals($expectedTripCost, $this->service->computeOverallVehicleRunningCostForCarLoad($carLoad));
     }
 
     public function test_snapshot_is_cleared_when_vehicle_is_unassigned(): void

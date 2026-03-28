@@ -122,7 +122,7 @@ class AccountService
             'reference_id' => $referenceId,
         ]);
 
-        $account->increment('balance', $amount);
+        $account->updateBalanceFromLedger();
 
         return $accountTransaction;
     }
@@ -168,7 +168,7 @@ class AccountService
             'reference_id' => $referenceId,
         ]);
 
-        $account->decrement('balance', $amount);
+        $account->updateBalanceFromLedger();
 
         return $accountTransaction;
     }
@@ -403,6 +403,24 @@ class AccountService
                 'name' => $label,
             ],
             [
+                'balance' => 0,
+                'is_active' => true,
+            ]
+        );
+    }
+
+    /**
+     * Get or create the single company-wide PROFIT account.
+     *
+     * This account accumulates the net daily profit credited by CloseDayService
+     * at each day-close: revenue collected minus commissions and all operating costs.
+     */
+    public function getOrCreateProfitAccount(): Account
+    {
+        return Account::firstOrCreate(
+            ['account_type' => AccountType::Profit->value],
+            [
+                'name' => AccountType::Profit->label(),
                 'balance' => 0,
                 'is_active' => true,
             ]

@@ -13,6 +13,8 @@ use App\Models\Commercial;
 use App\Models\CommercialWorkPeriod;
 use App\Models\DailyCommission;
 use App\Models\MonthlyFixedCost;
+use App\Models\Payment;
+use App\Services\Abc\AbcVehicleCostService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -48,9 +50,12 @@ use Throwable;
  * the account settlement (which was already done here). Finalized DailyCommissions are
  * also excluded from the commissionToCredit sum to prevent double-credit.
  */
-readonly class CloseDayService
+readonly class CaisseService
 {
-    public function __construct(private AccountService $accountService) {}
+    public function __construct(
+        private AccountService $accountService,
+        private AbcVehicleCostService $vehicleCostService,
+    ) {}
 
     /**
      * Close the day for the given commercial.
@@ -61,7 +66,7 @@ readonly class CloseDayService
      * @throws RuntimeException if the commercial has no caisse or no MERCHANDISE_SALES account
      * @throws Throwable
      */
-    public function closeDay(Commercial $commercial, Carbon $date): void
+    public function closeCaisseForDay(Commercial $commercial, Carbon $date): void
     {
         $caisse = $commercial->caisse;
 
@@ -117,6 +122,7 @@ readonly class CloseDayService
             // (possible on credit-heavy days where invoices were issued but cash not yet
             // collected), only transfer what is available. The remainder will be credited
             // on the next versement once more cash is collected.
+            $commissionTransferredAmount = 0;
             if ($todayDailyCommission !== null && $todayDailyCommission->net_commission > 0) {
                 $merchandiseSalesAccount ??= $this->accountService->getMerchandiseSalesAccount();
                 $commissionAccount = $this->accountService->getOrCreateCommercialCommissionAccount($commercial);
@@ -136,6 +142,7 @@ readonly class CloseDayService
                         referenceType: 'CLOSE_DAY',
                         referenceId: $todayDailyCommission->id,
                     );
+                    $commissionTransferredAmount = $transferableCommissionAmount;
                 }
 
                 // Mark as finalized so VersementService does not double-credit it later.
@@ -149,15 +156,37 @@ readonly class CloseDayService
             // Finds the vehicle from the commercial's currently active car load, then
             // transfers each daily cost amount from MERCHANDISE_SALES to the vehicle's
             // dedicated cost accounts.
-            $this->distributeVehicleDailyCostsIfApplicable($activeCarLoad, $date, $merchandiseSalesAccount);
+            $vehicleCostsDistributed = $this->distributeVehicleDailyCostsIfApplicable($activeCarLoad, $date, $merchandiseSalesAccount);
 
             // ── Step 4: Distribute car load's daily share of company fixed costs ──────
             // Uses AbcFixedCostDistributionService to determine this car load's
             // proportional share of fixed costs (storage + overhead pools), then
             // transfers the daily portion from MERCHANDISE_SALES → pool accounts.
-            $this->distributeCarLoadFixedCostsDailyShareIfApplicable($activeCarLoad, $date, $merchandiseSalesAccount);
+            $fixedCostsDistributed = $this->distributeCarLoadFixedCostsDailyShareIfApplicable($activeCarLoad, $date, $merchandiseSalesAccount);
 
-            // ── Step 5: Lock the caisse ────────────────────────────────────────────────
+            // ── Step 5: Record net daily profit ───────────────────────────────────────
+            // Net profit = gross daily profit (realized payment profits) − commission − vehicle costs − fixed costs.
+            // This follows the same formula as StatisticsService: totalRealizedProfit − totalCommissions − totalCosts.
+            // The positive remainder is transferred from MERCHANDISE_SALES → PROFIT.
+            // When costs exceed gross profit (net profit ≤ 0), this step is skipped.
+            $grossDailyProfit = $this->computeGrossDailyProfit($commercial, $date);
+            $netDailyProfit = $grossDailyProfit - $commissionTransferredAmount - $vehicleCostsDistributed - $fixedCostsDistributed;
+
+            if ($netDailyProfit > 0) {
+                $merchandiseSalesAccount ??= $this->accountService->getMerchandiseSalesAccount();
+                $profitAccount = $this->accountService->getOrCreateProfitAccount();
+
+                $this->accountService->transferBetweenAccounts(
+                    fromAccount: $merchandiseSalesAccount,
+                    toAccount: $profitAccount,
+                    amount: $netDailyProfit,
+                    label: "Bénéfice net journée {$dateString} — {$commercial->name}",
+                    referenceType: 'CLOSE_DAY_PROFIT',
+                    referenceId: $todayDailyCommission?->id,
+                );
+            }
+
+            // ── Step 6: Lock the caisse ────────────────────────────────────────────────
             $caisse->update(['locked_until' => $date->copy()->setTime(23, 59, 59, 999999)]);
         });
     }
@@ -172,15 +201,18 @@ readonly class CloseDayService
      *   - the active car load has no vehicle attached
      *   - the vehicle's costs have already been distributed for this date (idempotent)
      */
+    /**
+     * @return int The total vehicle operating cost distributed (0 if skipped).
+     */
     private function distributeVehicleDailyCostsIfApplicable(
         ?CarLoad $activeCarLoad,
         Carbon $date,
         ?Account $merchandiseSalesAccount,
-    ): void {
+    ): int {
         $activeVehicle = $activeCarLoad?->vehicle;
 
         if ($activeVehicle === null) {
-            return;
+            return 0;
         }
 
         // Idempotency guard: skip if this vehicle's costs were already distributed today
@@ -190,22 +222,15 @@ readonly class CloseDayService
             ->where('reference_id', $activeVehicle->id)
             ->whereDate('created_at', $date->toDateString())
             ->exists()) {
-            return;
+            return 0;
         }
 
-        $workingDaysPerMonth = max(1, $activeVehicle->working_days_per_month);
-        $dailyCostBreakdown = [
-            AccountType::VehicleDepreciation->value => (int) round($activeVehicle->depreciation_monthly / $workingDaysPerMonth),
-            AccountType::VehicleInsurance->value => (int) round($activeVehicle->insurance_monthly / $workingDaysPerMonth),
-            AccountType::VehicleRepairReserve->value => (int) round($activeVehicle->repair_reserve_monthly / $workingDaysPerMonth),
-            AccountType::VehicleMaintenance->value => (int) round($activeVehicle->maintenance_monthly / $workingDaysPerMonth),
-            AccountType::VehicleFuel->value => $activeVehicle->estimated_daily_fuel_consumption,
-        ];
-
-        $totalVehicleCost = array_sum($dailyCostBreakdown);
+        /** @var array<int, array{0: AccountType, 1: int}> $allCostEntries */
+        $allCostEntries = $this->vehicleCostService->computeDailyFixedCostBreakdownForVehicle($activeVehicle);
+        $totalVehicleCost = (int) array_sum(array_column($allCostEntries, 1));
 
         if ($totalVehicleCost <= 0) {
-            return;
+            return 0;
         }
 
         $merchandiseSalesAccount ??= $this->accountService->getMerchandiseSalesAccount();
@@ -221,14 +246,14 @@ readonly class CloseDayService
         );
 
         // Credit each vehicle cost account with its daily share.
-        foreach ($dailyCostBreakdown as $accountTypeName => $dailyAmount) {
+        foreach ($allCostEntries as [$accountType, $dailyAmount]) {
             if ($dailyAmount <= 0) {
                 continue;
             }
 
             $vehicleCostAccount = $this->accountService->getOrCreateVehicleAccount(
                 $activeVehicle,
-                AccountType::from($accountTypeName),
+                $accountType,
             );
 
             $this->accountService->credit(
@@ -239,6 +264,8 @@ readonly class CloseDayService
                 referenceId: $activeVehicle->id,
             );
         }
+
+        return $totalVehicleCost;
     }
 
     /**
@@ -253,14 +280,16 @@ readonly class CloseDayService
      *   - there is no active car load
      *   - the allocated monthly amounts are both zero
      *   - this car load's fixed costs have already been distributed today (idempotent per car load)
+     *
+     * @return int The total fixed cost distributed (0 if skipped).
      */
     private function distributeCarLoadFixedCostsDailyShareIfApplicable(
         ?CarLoad $activeCarLoad,
         Carbon $date,
         ?Account $merchandiseSalesAccount,
-    ): void {
+    ): int {
         if ($activeCarLoad === null) {
-            return;
+            return 0;
         }
 
         // Idempotency guard: skip if this car load's fixed costs were already distributed today.
@@ -269,7 +298,7 @@ readonly class CloseDayService
             ->where('reference_id', $activeCarLoad->id)
             ->whereDate('created_at', $date->toDateString())
             ->exists()) {
-            return;
+            return 0;
         }
 
         $defaultWorkingDaysPerMonth = 26;
@@ -283,7 +312,7 @@ readonly class CloseDayService
         $totalDailyFixedCost = $dailyStorageAmount + $dailyOverheadAmount;
 
         if ($totalDailyFixedCost <= 0) {
-            return;
+            return 0;
         }
 
         $merchandiseSalesAccount ??= $this->accountService->getMerchandiseSalesAccount();
@@ -328,6 +357,8 @@ readonly class CloseDayService
                 referenceId: $activeCarLoad->id,
             );
         }
+
+        return $totalDailyFixedCost;
     }
 
     /**
@@ -376,6 +407,26 @@ readonly class CloseDayService
             ->count());
 
         return (int) round($poolTotal / $activeVehicleCount / $carloadsForThisVehicleThisMonth);
+    }
+
+    /**
+     * Sum of Payment.profit for all payments received by this commercial on the given date.
+     *
+     * This is the "gross daily profit" — the realized margin on goods sold and paid for today.
+     * Formula mirrors StatisticsService: totalRealizedProfit = SUM(payments.profit).
+     *
+     * Returns 0 when the commercial has no user account (factory default) or when no
+     * payments were received today.
+     */
+    private function computeGrossDailyProfit(Commercial $commercial, Carbon $date): int
+    {
+        if ($commercial->user_id === null) {
+            return 0;
+        }
+
+        return (int) Payment::where('user_id', $commercial->user_id)
+            ->whereDate('created_at', $date->toDateString())
+            ->sum('profit');
     }
 
     /**

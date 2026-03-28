@@ -37,7 +37,7 @@ readonly class InvoiceDeliveryCostService
         CarLoad $carLoad,
         string $workDay,
     ): void {
-        $dailyCost = $this->vehicleCostService->computeDailyTotalCostForCarLoad($carLoad);
+        $dailyCost = $this->vehicleCostService->computeDailyFixedAndVariableVehicleCostForCarLoad($carLoad);
 
         $invoiceIds = SalesInvoice::where('car_load_id', $carLoad->id)
             ->whereDate('created_at', $workDay)

@@ -108,7 +108,7 @@ fi
 
 # ── Step 4: Create team "Equipe 2" (idempotent) ───────────────────────────────
 info "Creating team Equipe 2..."
-EQUIPE2_ID=$(${MYSQL} --batch --silent --execute="SELECT id FROM teams WHERE name = 'Equipe 2' LIMIT 1;" | tail -1)
+EQUIPE2_ID=$(${MYSQL} --batch --silent --execute="SELECT id FROM teams WHERE name LIKE 'Equipe 2' LIMIT 1;" | tail -1)
 
 if [[ -n "${EQUIPE2_ID}" ]]; then
     skip "Team Equipe 2 already exists (id=${EQUIPE2_ID})."

@@ -206,8 +206,19 @@ class DashboardStatsTest extends TestCase
     }
 
     /**
-     * Directly overwrite the stored commission and delivery cost columns on a SalesInvoice,
+     * Directly overwrite the stored delivery cost column on a SalesInvoice,
      * bypassing model events so we can set precise values without triggering recalculation.
+     */
+    private function setInvoiceStoredDeliveryCost(SalesInvoice $invoice, int $deliveryCost): void
+    {
+        SalesInvoice::where('id', $invoice->id)->update([
+            'delivery_cost' => $deliveryCost,
+        ]);
+    }
+
+    /**
+     * Directly overwrite both the estimated_commercial_commission and delivery_cost
+     * stored columns on a SalesInvoice, bypassing model events to set precise values.
      */
     private function setInvoiceStoredCommissionAndDeliveryCost(
         SalesInvoice $invoice,
@@ -217,6 +228,17 @@ class DashboardStatsTest extends TestCase
         SalesInvoice::where('id', $invoice->id)->update([
             'estimated_commercial_commission' => $estimatedCommission,
             'delivery_cost' => $deliveryCost,
+        ]);
+    }
+
+    /**
+     * Directly overwrite the stored commercial_commission column on a Payment,
+     * bypassing model events so we can set precise values without triggering recalculation.
+     */
+    private function setPaymentStoredCommission(Payment $payment, int $commission): void
+    {
+        Payment::where('id', $payment->id)->update([
+            'commercial_commission' => $commission,
         ]);
     }
 
@@ -753,7 +775,7 @@ class DashboardStatsTest extends TestCase
     // totalCommissions
     // =========================================================================
 
-    public function test_total_commissions_equals_sum_of_stored_commission_columns_on_invoices(): void
+    public function test_total_commissions_equals_sum_of_estimated_commission_on_invoices(): void
     {
         $invoiceA = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
         $invoiceB = $this->makeInvoiceWithOneItem(price: 2000, quantity: 1, profit: 400);

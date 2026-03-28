@@ -2,6 +2,7 @@
 
 namespace App\Services\Abc;
 
+use App\Enums\AccountType;
 use App\Models\CarLoad;
 use App\Models\Vehicle;
 
@@ -17,22 +18,69 @@ use App\Models\Vehicle;
 class AbcVehicleCostService
 {
     /**
+     * Maps vehicle field names to their corresponding AccountType.
+     * This is the single source of truth for both cost calculation and account mapping.
+     * Any change here (add/remove a cost component) is automatically reflected in CaisseService.
+     *
+     * @var array<string, AccountType>
+     */
+    const VARIABLES_USED_IN_COMPUTE_DAILY_FIXED_COST_FOR_VEHICLE = [
+        'insurance_monthly' => AccountType::VehicleInsurance,
+        'maintenance_monthly' => AccountType::VehicleMaintenance,
+        'depreciation_monthly' => AccountType::VehicleDepreciation,
+        'repair_reserve_monthly' => AccountType::VehicleRepairReserve,
+        'driver_salary_monthly' => AccountType::VehicleDriverSalary,
+    ];
+
+    /**
      * Daily fixed cost for a vehicle, excluding fuel.
      * Variable expenses are tracked per trip via CarLoadExpense.
      */
-    public function computeDailyFixedCost(Vehicle $vehicle): int
+    public function computeDailyRunningCostForVehicle(Vehicle $vehicle): int
     {
         if ($vehicle->working_days_per_month === 0) {
             return 0;
         }
 
-        $totalMonthlyFixedCost = $vehicle->insurance_monthly
-            + $vehicle->maintenance_monthly
-            + $vehicle->repair_reserve_monthly
-            + $vehicle->depreciation_monthly
-            + $vehicle->driver_salary_monthly;
+        $totalMonthlyFixedCost = 0;
+        foreach (array_keys(self::VARIABLES_USED_IN_COMPUTE_DAILY_FIXED_COST_FOR_VEHICLE) as $fieldName) {
+            $totalMonthlyFixedCost += $vehicle->{$fieldName} ?? 0;
+        }
 
         return (int) round($totalMonthlyFixedCost / $vehicle->working_days_per_month);
+    }
+
+    /**
+     * Daily cost breakdown for a vehicle, one entry per cost component.
+     *
+     * Returns an indexed array of [AccountType, dailyAmount] pairs — one for each non-fuel
+     * component in VARIABLES_USED_IN_COMPUTE_DAILY_FIXED_COST_FOR_VEHICLE, plus a final
+     * fuel entry. The fuel entry absorbs any integer-rounding surplus or deficit so that
+     * SUM(all dailyAmounts) == vehicle->daily_fixed_cost exactly.
+     *
+     * Using this method in CaisseService ensures that adding or removing a cost component
+     * from the constant above automatically updates the accounting distribution with no
+     * changes required elsewhere.
+     *
+     * @return array<int, array{0: AccountType, 1: int}>
+     */
+    public function computeDailyFixedCostBreakdownForVehicle(Vehicle $vehicle): array
+    {
+        $workingDaysPerMonth = max(1, $vehicle->working_days_per_month);
+
+        $nonFuelEntries = [];
+        $sumOfNonFuelDailyCosts = 0;
+
+        foreach (self::VARIABLES_USED_IN_COMPUTE_DAILY_FIXED_COST_FOR_VEHICLE as $fieldName => $accountType) {
+            $dailyAmount = (int) round(($vehicle->{$fieldName} ?? 0) / $workingDaysPerMonth);
+            $nonFuelEntries[] = [$accountType, $dailyAmount];
+            $sumOfNonFuelDailyCosts += $dailyAmount;
+        }
+
+        $totalDailyVehicleCost = $vehicle->daily_fixed_cost ?? 0;
+        $dailyFuelCost = max(0, $totalDailyVehicleCost - $sumOfNonFuelDailyCosts);
+
+        return array_merge($nonFuelEntries, [[AccountType::VehicleFuel, $dailyFuelCost]]);
     }
 
     /**
@@ -43,7 +91,7 @@ class AbcVehicleCostService
      * over a live computation, so historical trip costs remain accurate even if the vehicle's
      * monthly rates are updated later.
      */
-    public function computeFixedCostForCarLoad(CarLoad $carLoad): int
+    public function computeOverallVehicleRunningCostForCarLoad(CarLoad $carLoad): int
     {
         if ($carLoad->vehicle_id === null) {
             return 0;
@@ -58,7 +106,7 @@ class AbcVehicleCostService
                 return 0;
             }
 
-            $dailyRate = $this->computeDailyFixedCost($vehicle);
+            $dailyRate = $this->computeDailyRunningCostForVehicle($vehicle);
         }
 
         return $dailyRate * $this->computeTripDurationDays($carLoad);
@@ -75,9 +123,9 @@ class AbcVehicleCostService
     /**
      * Total vehicle running cost for a CarLoad: fixed (prorated) + variable expenses (actual).
      */
-    public function computeTotalVehicleCostForCarLoad(CarLoad $carLoad): int
+    public function computeTotalFixedAndVariableVehicleCostForCarLoad(CarLoad $carLoad): int
     {
-        return $this->computeFixedCostForCarLoad($carLoad)
+        return $this->computeOverallVehicleRunningCostForCarLoad($carLoad)
             + $this->computeVariableExpensesForCarLoad($carLoad);
     }
 
@@ -85,11 +133,11 @@ class AbcVehicleCostService
      * Daily total vehicle cost for a CarLoad: (fixed prorated + fuel actual) ÷ trip duration.
      * Minimum of 1 day to avoid division by zero.
      */
-    public function computeDailyTotalCostForCarLoad(CarLoad $carLoad): int
+    public function computeDailyFixedAndVariableVehicleCostForCarLoad(CarLoad $carLoad): int
     {
         $tripDurationDays = $this->computeTripDurationDays($carLoad);
 
-        return (int) round($this->computeTotalVehicleCostForCarLoad($carLoad) / $tripDurationDays);
+        return (int) round($this->computeTotalFixedAndVariableVehicleCostForCarLoad($carLoad) / $tripDurationDays);
     }
 
     /**

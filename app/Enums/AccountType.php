@@ -41,6 +41,12 @@ enum AccountType: string
     case VehicleFuel = 'VEHICLE_FUEL';
 
     /**
+     * Driver salary reserve for a specific vehicle.
+     * One instance per vehicle.
+     */
+    case VehicleDriverSalary = 'VEHICLE_DRIVER_SALARY';
+
+    /**
      * Accumulated commissions owed to a specific commercial.
      * One instance per commercial.
      */
@@ -58,6 +64,13 @@ enum AccountType: string
      */
     case FixedCost = 'FIXED_COST';
 
+    /**
+     * Accumulated net daily profits (revenue minus commissions and all operating costs).
+     * Credited at each day-close with the net profit for that day.
+     * Exactly one instance exists company-wide.
+     */
+    case Profit = 'PROFIT';
+
     public function label(): string
     {
         return match ($this) {
@@ -67,9 +80,11 @@ enum AccountType: string
             self::VehicleRepairReserve => 'Réserve réparation',
             self::VehicleMaintenance => 'Entretien véhicule',
             self::VehicleFuel => 'Carburant',
+            self::VehicleDriverSalary => 'Salaire chauffeur',
             self::CommercialCommission => 'Commission commercial',
             self::CommercialCollected => 'Encaissements en attente',
             self::FixedCost => 'Charge fixe',
+            self::Profit => 'Bénéfice net',
         };
     }
 
@@ -81,6 +96,7 @@ enum AccountType: string
             self::VehicleRepairReserve,
             self::VehicleMaintenance,
             self::VehicleFuel,
+            self::VehicleDriverSalary,
         ], strict: true);
     }
 

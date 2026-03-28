@@ -99,6 +99,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('commission-structure', [ApiCommissionController::class, 'getCommissionStructure'])->name('salesperson.commission-structure');
 
         // Versement (commercial sweeps caisse to main caisse + commissions credited to account)
+        Route::get('caisse', [ApiVersementController::class, 'balance'])->name('salesperson.caisse.balance');
         Route::post('versement', [ApiVersementController::class, 'store'])->name('salesperson.versement.store');
         Route::get('versements', [ApiVersementController::class, 'index'])->name('salesperson.versements.index');
     });

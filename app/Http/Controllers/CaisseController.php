@@ -6,7 +6,7 @@ use App\Exceptions\DayAlreadyClosedException;
 use App\Models\Caisse;
 use App\Models\CaisseTransaction;
 use App\Models\Commercial;
-use App\Services\CloseDayService;
+use App\Services\CaisseService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -189,7 +189,7 @@ class CaisseController extends Controller
      *
      * POST /caisses/{caisse}/close-day
      */
-    public function closeDay(Caisse $caisse, CloseDayService $closeDayService): JsonResponse
+    public function closeDay(Caisse $caisse, CaisseService $closeDayService): JsonResponse
     {
         $commercial = $caisse->commercial;
 
@@ -200,7 +200,7 @@ class CaisseController extends Controller
         }
 
         try {
-            $closeDayService->closeDay($commercial, Carbon::today());
+            $closeDayService->closeCaisseForDay($commercial, Carbon::today());
         } catch (DayAlreadyClosedException $exception) {
             return response()->json(['message' => $exception->getMessage()], 409);
         } catch (\RuntimeException $exception) {

@@ -7,6 +7,7 @@ use App\Data\Dashboard\DashboardStats;
 use App\Data\Vente\PaidStatus;
 use App\Data\Vente\VenteStatsFilter;
 use App\Enums\SalesInvoiceStatus;
+use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -30,10 +31,10 @@ use Illuminate\Support\Facades\DB;
  * Also used by SalesInvoice::recalculateStoredTotals() to refresh per-invoice
  * stored financial columns (total_amount, total_payments, etc.).
  */
-class SalesInvoiceStatsService
+readonly class SalesInvoiceStatsService
 {
     public function __construct(
-        private readonly CommissionRateResolverService $commissionRateResolverService,
+        private CommissionRateResolverService $commissionRateResolverService,
     ) {}
 
     // =========================================================================
@@ -117,6 +118,7 @@ class SalesInvoiceStatsService
         $totalCommission = 0;
 
         foreach ($invoiceItems as $invoiceItem) {
+            /** @var $invoiceItem Vente */
             if ($invoiceItem->product === null) {
                 continue;
             }
@@ -317,8 +319,11 @@ class SalesInvoiceStatsService
      *
      * Reads from sales_invoices.estimated_commercial_commission (denormalized, kept in sync by
      * SalesInvoice::recalculateStoredTotals()). Scoped to invoices created within the date range.
+     *
+     * Uses invoice-based commissions (not payments) to stay consistent with StatisticsService
+     * and ensure netProfit in Dashboard equals netProfit credited to the PROFIT account.
      */
-    public function totalCommissions(?Carbon $startDate, ?Carbon $endDate): int
+    public function totalCommercialCommissions(?Carbon $startDate, ?Carbon $endDate): int
     {
         return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
             ->sum('estimated_commercial_commission');
@@ -330,10 +335,14 @@ class SalesInvoiceStatsService
      * Reads from sales_invoices.delivery_cost (denormalized, kept in sync by
      * InvoiceDeliveryCostService). Scoped to invoices created within the date range.
      */
-    public function totalDeliveryCost(?Carbon $startDate, ?Carbon $endDate): int
+    public function totalDeliveryCost(?Carbon $startDate, ?Carbon $endDate, ?CarLoad $carLoad = null): int
     {
-        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
-            ->sum('delivery_cost');
+        $baseQuery = $this->buildBaseSalesInvoiceQuery($startDate, $endDate);
+        if ($carLoad !== null) {
+            $baseQuery->where('car_load_id', $carLoad->id);
+        }
+
+        return (int) $baseQuery->sum('delivery_cost');
     }
 
     /**
@@ -512,7 +521,7 @@ class SalesInvoiceStatsService
             $depenseQuery->where('created_at', '<=', $endDate);
         }
 
-        $totalCommissions = $this->totalCommissions($startDate, $endDate);
+        $totalCommissions = $this->totalCommercialCommissions($startDate, $endDate);
         $totalDeliveryCost = $this->totalDeliveryCost($startDate, $endDate);
         $totalRealizedProfit = $this->totalRealizedProfits($startDate, $endDate, $allFilter);
 

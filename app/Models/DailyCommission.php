@@ -81,4 +81,9 @@ class DailyCommission extends Model
     {
         return $this->hasMany(CommissionPaymentLine::class);
     }
+
+    public function commercialWorkPeriod()
+    {
+        return $this->belongsTo(CommercialWorkPeriod::class);
+    }
 }
