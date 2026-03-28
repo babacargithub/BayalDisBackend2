@@ -91,6 +91,7 @@ const menuItems = [
             { name: 'Utilisateurs', route: 'users.index', icon: 'mdi-account-multiple' },
             { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
             { name: 'Coûts d\'exploitation', route: 'monthly-fixed-costs.index', icon: 'mdi-office-building-cog' },
+            { name: 'Politique de prix', route: 'pricing-policies.index', icon: 'mdi-tag-text' },
         ]
     },
 ];

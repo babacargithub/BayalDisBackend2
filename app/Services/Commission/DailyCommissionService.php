@@ -132,6 +132,8 @@ readonly class DailyCommissionService
                     'basket_achieved' => false,
                     'basket_multiplier_applied' => null,
                     'achieved_tier_level' => null,
+                    'new_confirmed_customers_bonus' => 0,
+                    'new_prospect_customers_bonus' => 0,
                 ]);
             }
 
@@ -224,9 +226,7 @@ readonly class DailyCommissionService
             $thresholdData = $this->computeMandatoryDailyThresholdForWorkDay($commercial, $workDay);
             $mandatoryDailyThreshold = $thresholdData['threshold'];
             $cachedAverageMarginRate = $thresholdData['margin_rate'];
-            $mandatoryThresholdReached = $mandatoryDailyThreshold > 0
-                ? $mandatoryDailySales >= $mandatoryDailyThreshold
-                : true;
+            $mandatoryThresholdReached = !($mandatoryDailyThreshold > 0) || $mandatoryDailySales >= $mandatoryDailyThreshold;
 
             $netCommission = max(
                 0,

@@ -19,6 +19,7 @@ use App\Http\Controllers\LigneController;
 use App\Http\Controllers\MonthlyFixedCostController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PricingPolicyController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
@@ -142,6 +143,14 @@ Route::middleware('auth')->group(function () {
         Route::put('/{monthlyFixedCost}', [MonthlyFixedCostController::class, 'update'])->name('update');
         Route::delete('/{monthlyFixedCost}', [MonthlyFixedCostController::class, 'destroy'])->name('destroy');
         Route::post('/finalize-month', [MonthlyFixedCostController::class, 'finalizeMonth'])->name('finalize-month');
+    });
+
+    // Pricing Policy Management Routes
+    Route::prefix('pricing-policies')->name('pricing-policies.')->group(function () {
+        Route::get('/', [PricingPolicyController::class, 'index'])->name('index');
+        Route::post('/', [PricingPolicyController::class, 'store'])->name('store');
+        Route::put('/{pricingPolicy}', [PricingPolicyController::class, 'update'])->name('update');
+        Route::post('/{pricingPolicy}/activate', [PricingPolicyController::class, 'activate'])->name('activate');
     });
 
     // Investment Management Routes

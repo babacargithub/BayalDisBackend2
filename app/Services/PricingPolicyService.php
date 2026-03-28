@@ -5,9 +5,56 @@ namespace App\Services;
 use App\Models\PricingPolicy;
 use App\Models\Product;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
 
 class PricingPolicyService
 {
+    /**
+     * Activate a pricing policy and deactivate all others.
+     * Enforces the invariant that at most one policy is active at any time.
+     */
+    public function activate(PricingPolicy $pricingPolicy): void
+    {
+        DB::transaction(function () use ($pricingPolicy) {
+            PricingPolicy::query()->update(['active' => false]);
+            $pricingPolicy->update(['active' => true]);
+        });
+    }
+
+    /**
+     * Create a new pricing policy (inactive by default).
+     *
+     * @param  array{name: string, surcharge_percent: int, grace_days: int, apply_to_deferred_only: bool, apply_credit_price: bool}  $data
+     */
+    public function create(array $data): PricingPolicy
+    {
+        return PricingPolicy::create([
+            'name' => $data['name'],
+            'surcharge_percent' => $data['surcharge_percent'],
+            'grace_days' => $data['grace_days'],
+            'apply_to_deferred_only' => $data['apply_to_deferred_only'],
+            'apply_credit_price' => $data['apply_credit_price'],
+            'active' => false,
+        ]);
+    }
+
+    /**
+     * Update a pricing policy's properties.
+     * Does not change the active status — use activate() for that.
+     *
+     * @param  array{name: string, surcharge_percent: int, grace_days: int, apply_to_deferred_only: bool, apply_credit_price: bool}  $data
+     */
+    public function update(PricingPolicy $pricingPolicy, array $data): void
+    {
+        $pricingPolicy->update([
+            'name' => $data['name'],
+            'surcharge_percent' => $data['surcharge_percent'],
+            'grace_days' => $data['grace_days'],
+            'apply_to_deferred_only' => $data['apply_to_deferred_only'],
+            'apply_credit_price' => $data['apply_credit_price'],
+        ]);
+    }
+
     public function getActivePolicy(): ?PricingPolicy
     {
         return PricingPolicy::query()->where('active', true)->orderByDesc('id')->first();
