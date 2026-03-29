@@ -178,6 +178,9 @@ Route::middleware('auth')->group(function () {
     Route::prefix('clients')->name('clients.')->group(function () {
         Route::get('/', [CustomerController::class, 'index'])->name('index');
         Route::get('/map', [CustomerController::class, 'map'])->name('map');
+        Route::get('/search', [CustomerController::class, 'search'])->name('search');
+        Route::get('/top-customers', [CustomerController::class, 'topCustomers'])->name('top-customers');
+        Route::get('/top-customers/export-pdf', [CustomerController::class, 'exportTopCustomersPdf'])->name('top-customers.export-pdf');
         Route::post('/', [CustomerController::class, 'store'])->name('store');
         Route::get('/{client}', [CustomerController::class, 'show'])->name('show');
         Route::put('/{client}', [CustomerController::class, 'update'])->name('update');
@@ -214,6 +217,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
 
     // Sector routes
+    Route::get('/sectors', [SectorController::class, 'index'])->name('sectors.index');
     Route::post('/sectors', [SectorController::class, 'store'])->name('sectors.store');
     Route::put('/sectors/{sector}', [SectorController::class, 'update'])->name('sectors.update');
     Route::delete('/sectors/{sector}', [SectorController::class, 'destroy'])->name('sectors.destroy');

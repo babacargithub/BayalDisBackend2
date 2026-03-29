@@ -23,7 +23,7 @@ use Throwable;
 
 class CarLoadController extends Controller
 {
-    protected $carLoadService;
+    protected CarLoadService $carLoadService;
 
     public function __construct(
         CarLoadService $carLoadService,

@@ -2,22 +2,33 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CustomerVisit;
-use App\Models\Sector;
 use App\Models\Customer;
+use App\Models\CustomerVisit;
+use App\Models\Ligne;
+use App\Models\Sector;
 use App\Models\VisitBatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 
 class SectorController extends Controller
 {
+    public function index(): \Inertia\Response
+    {
+        return Inertia::render('Clients/Sectors', [
+            'sectors' => Sector::with(['ligne', 'customers:id,name,phone_number,sector_id'])->get(),
+            'lignes' => Ligne::select('id', 'name')->get(),
+            'customers' => Customer::select('id', 'name', 'phone_number')->orderBy('name')->get(),
+        ]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'boundaries' => 'nullable|string',
             'ligne_id' => 'required|exists:lignes,id',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
         ]);
 
         Sector::create($validated);
@@ -31,7 +42,7 @@ class SectorController extends Controller
             'name' => 'required|string|max:255',
             'boundaries' => 'nullable|string',
             'ligne_id' => 'required|exists:lignes,id',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
         ]);
 
         $sector->update($validated);
@@ -42,6 +53,7 @@ class SectorController extends Controller
     public function destroy(Sector $sector)
     {
         $sector->delete();
+
         return redirect()->back()->with('success', 'Secteur supprimé avec succès');
     }
 
@@ -49,19 +61,21 @@ class SectorController extends Controller
     {
         $validated = $request->validate([
             'customer_ids' => 'required|array',
-            'customer_ids.*' => 'exists:customers,id'
+            'customer_ids.*' => 'exists:customers,id',
         ]);
 
         try {
             DB::beginTransaction();
-            
+
             // Update customers to belong to this sector
             Customer::whereIn('id', $validated['customer_ids'])->update(['sector_id' => $sector->id]);
-            
+
             DB::commit();
+
             return redirect()->back()->with('success', 'Clients ajoutés au secteur avec succès');
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->back()->with('error', 'Erreur lors de l\'ajout des clients au secteur');
         }
     }
@@ -69,6 +83,7 @@ class SectorController extends Controller
     public function removeCustomer(Sector $sector, Customer $customer)
     {
         $customer->update(['sector_id' => null]);
+
         return redirect()->back()->with('success', 'Client retiré du secteur avec succès');
     }
 
@@ -83,9 +98,9 @@ class SectorController extends Controller
                 $completedVisits = $batch->visits->where('status', CustomerVisit::STATUS_COMPLETED)->count();
                 $cancelledVisits = $batch->visits->where('status', CustomerVisit::STATUS_PLANNED)->count();
                 $pendingVisits = $totalVisits - $completedVisits - $cancelledVisits;
-                
-                $progressPercentage = $totalVisits > 0 
-                    ? round(($completedVisits / $totalVisits) * 100) 
+
+                $progressPercentage = $totalVisits > 0
+                    ? round(($completedVisits / $totalVisits) * 100)
                     : 0;
 
                 return [
@@ -110,7 +125,7 @@ class SectorController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'visit_date' => 'required|date',
-            'commercial_id' => 'required|exists:commercials,id'
+            'commercial_id' => 'required|exists:commercials,id',
         ], [
             'name.required' => 'Le nom du lot est obligatoire',
             'name.max' => 'Le nom ne doit pas dépasser 255 caractères',
@@ -120,48 +135,48 @@ class SectorController extends Controller
             'commercial_id.exists' => 'Le commercial sélectionné n\'existe pas',
         ]);
 
-            DB::beginTransaction();
+        DB::beginTransaction();
 
-            // Create the visit batch
-            $visitBatch = VisitBatch::create([
-                'name' => $validated['name'],
-                'visit_date' => $validated['visit_date'],
-                'commercial_id' => $validated['commercial_id'],
-                'sector_id' => $sector->id
-            ]);
+        // Create the visit batch
+        $visitBatch = VisitBatch::create([
+            'name' => $validated['name'],
+            'visit_date' => $validated['visit_date'],
+            'commercial_id' => $validated['commercial_id'],
+            'sector_id' => $sector->id,
+        ]);
 
-            // Add all customers from the sector to the visit batch
+        // Add all customers from the sector to the visit batch
         // TODO remove this condition later to include all customers
-            $customerIds = $sector->customers()->where("is_prospect", false)->pluck('customers.id');
-            foreach ($customerIds as $customerId) {
-                $visitBatch->visits()->create([
-                    'customer_id' => $customerId,
-                    'visit_planned_at' => $validated['visit_date'],
-                    'status' => CustomerVisit::STATUS_PLANNED
-                ]);
-            }
-
-            DB::commit();
-            
-            // Return the newly created batch with its details
-            $batch = $visitBatch->load(['commercial:id,name', 'visits']);
-            $totalVisits = $batch->visits->count();
-            
-            return response()->json([
-                'message' => 'Visites créées avec succès !',
-                'data' => [
-                    'id' => $batch->id,
-                    'name' => $batch->name,
-                    'visit_date' => $batch->visit_date,
-                    'commercial' => $batch->commercial,
-                    'total_visits' => $totalVisits,
-                    'completed_visits' => 0,
-                    'cancelled_visits' => 0,
-                    'pending_visits' => $totalVisits,
-                    'progress_percentage' => 0,
-                    'created_at' => $batch->created_at->format('Y-m-d H:i:s'),
-                ]
+        $customerIds = $sector->customers()->where('is_prospect', false)->pluck('customers.id');
+        foreach ($customerIds as $customerId) {
+            $visitBatch->visits()->create([
+                'customer_id' => $customerId,
+                'visit_planned_at' => $validated['visit_date'],
+                'status' => CustomerVisit::STATUS_PLANNED,
             ]);
+        }
+
+        DB::commit();
+
+        // Return the newly created batch with its details
+        $batch = $visitBatch->load(['commercial:id,name', 'visits']);
+        $totalVisits = $batch->visits->count();
+
+        return response()->json([
+            'message' => 'Visites créées avec succès !',
+            'data' => [
+                'id' => $batch->id,
+                'name' => $batch->name,
+                'visit_date' => $batch->visit_date,
+                'commercial' => $batch->commercial,
+                'total_visits' => $totalVisits,
+                'completed_visits' => 0,
+                'cancelled_visits' => 0,
+                'pending_visits' => $totalVisits,
+                'progress_percentage' => 0,
+                'created_at' => $batch->created_at->format('Y-m-d H:i:s'),
+            ],
+        ]);
 
     }
 
@@ -173,7 +188,7 @@ class SectorController extends Controller
             ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
             ->map(function ($customer) {
                 return array_merge($customer->toArray(), [
-                    'can_be_added' => true
+                    'can_be_added' => true,
                 ]);
             });
 
@@ -184,28 +199,28 @@ class SectorController extends Controller
             ->get(['id', 'name', 'phone_number', 'gps_coordinates', 'address', 'description', 'is_prospect'])
             ->map(function ($customer) {
                 return array_merge($customer->toArray(), [
-                    'can_be_added' => false
+                    'can_be_added' => false,
                 ]);
             });
 
         return response()->json([
             'sector' => $sector->load('ligne'),
             'customers' => $customers,
-            'sector_customers' => $sectorCustomers
+            'sector_customers' => $sectorCustomers,
         ]);
     }
 
     public function map(Sector $sector)
     {
         $googleMapsApiKey = config('services.google.maps_api_key');
-        
-        if (!$googleMapsApiKey) {
+
+        if (! $googleMapsApiKey) {
             return redirect()->back()->with('error', 'La clé API Google Maps n\'est pas configurée.');
         }
 
         return inertia('Clients/SectorMap', [
             'sector' => $sector->load('ligne'),
-            'googleMapsApiKey' => $googleMapsApiKey
+            'googleMapsApiKey' => $googleMapsApiKey,
         ]);
     }
-} 
+}

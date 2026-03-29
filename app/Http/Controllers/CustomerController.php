@@ -2,25 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Customer;
 use App\Models\Commercial;
-use App\Models\Sector;
-use App\Models\Ligne;
+use App\Models\Customer;
+use App\Services\CustomerService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class CustomerController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request): \Inertia\Response
     {
         $query = Customer::query()
-            ->with(['commercial:id,name', 'ventes' => function($query) {
-                $query->select('id', 'customer_id', 'paid');
-            }])
+            ->with(['commercial:id,name'])
             ->select('id', 'name', 'phone_number', 'owner_number', 'commercial_id', 'description', 'address', 'gps_coordinates', 'is_prospect', 'created_at');
 
-        // Filter by commercial_id if provided
         if ($request->filled('commercial_id')) {
             $query->where('commercial_id', $request->commercial_id);
         }
@@ -35,7 +32,7 @@ class CustomerController extends Controller
 
         return Inertia::render('Clients/Index', [
             'clients' => $query->latest()
-                ->paginate(25)
+                ->paginate(20)
                 ->through(fn ($customer) => [
                     'id' => $customer->id,
                     'name' => $customer->name,
@@ -50,19 +47,77 @@ class CustomerController extends Controller
                         'id' => $customer->commercial->id,
                         'name' => $customer->commercial->name,
                     ] : null,
-                    'has_unpaid_ventes' => $customer->ventes->contains('paid', false),
-                    'ventes_count' => $customer->ventes->count(),
                 ]),
             'commerciaux' => Commercial::select('id', 'name')->get(),
             'filters' => $request->only(['prospect_status', 'commercial_id']),
-            'sectors' => Sector::with(['ligne', 'customers'])->get(),
-            'lignes' => Ligne::all(),
             'can' => [
                 'create' => Auth::user()->can('create', Customer::class),
                 'edit' => Auth::user()->can('edit', Customer::class),
                 'delete' => Auth::user()->can('delete', Customer::class),
             ],
         ]);
+    }
+
+    public function topCustomers(Request $request, CustomerService $customerService): \Inertia\Response
+    {
+        $sortBy = $request->get('sort', 'volume');
+
+        return Inertia::render('Clients/TopCustomers', [
+            'topCustomers' => $customerService->getTopCustomers($sortBy),
+            'sort' => $sortBy,
+        ]);
+    }
+
+    public function exportTopCustomersPdf(Request $request, CustomerService $customerService): \Illuminate\Http\Response
+    {
+        $sortBy = $request->get('sort', 'volume');
+        $topCustomers = $customerService->getTopCustomers($sortBy);
+
+        $sortLabel = $sortBy === 'frequency' ? 'fréquence des achats' : 'volume d\'achats';
+
+        $pdf = Pdf::loadView('pdf.top-customers', [
+            'topCustomers' => $topCustomers,
+            'sortLabel' => $sortLabel,
+            'date' => now()->format('d/m/Y à H:i'),
+        ]);
+
+        return $pdf->download('top-clients-'.$sortBy.'-'.now()->format('Y-m-d').'.pdf');
+    }
+
+    public function search(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $searchQuery = $request->get('q', '');
+
+        if (strlen($searchQuery) < 2) {
+            return response()->json([]);
+        }
+
+        $customers = Customer::query()
+            ->with('commercial:id,name')
+            ->select('id', 'name', 'phone_number', 'owner_number', 'address', 'gps_coordinates', 'is_prospect', 'commercial_id', 'description')
+            ->where(function ($query) use ($searchQuery) {
+                $query->where('name', 'like', "%{$searchQuery}%")
+                    ->orWhere('phone_number', 'like', "%{$searchQuery}%");
+            })
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(fn ($customer) => [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'phone_number' => $customer->phone_number,
+                'owner_number' => $customer->owner_number,
+                'address' => $customer->address,
+                'gps_coordinates' => $customer->gps_coordinates,
+                'is_prospect' => $customer->is_prospect,
+                'description' => $customer->description,
+                'commercial' => $customer->commercial ? [
+                    'id' => $customer->commercial->id,
+                    'name' => $customer->commercial->name,
+                ] : null,
+            ]);
+
+        return response()->json($customers);
     }
 
     public function store(Request $request)
@@ -89,7 +144,7 @@ class CustomerController extends Controller
         // Debug incoming request data
         \Log::info('Update Client Request:', [
             'request_data' => $request->all(),
-            'client_id' => $customer->id
+            'client_id' => $customer->id,
         ]);
 
         $validated = $request->validate([
@@ -115,6 +170,7 @@ class CustomerController extends Controller
             }
 
             $customer->delete();
+
             return back()->with('success', 'Client supprimé avec succès');
         } catch (\Exception $e) {
             return back()->with('error', 'Erreur lors de la suppression du client');
@@ -132,7 +188,7 @@ class CustomerController extends Controller
         return Inertia::render('Clients/CustomerHistory', [
             'customer' => $client,
             'orders' => $orders,
-            'ventes' => $ventes
+            'ventes' => $ventes,
         ]);
     }
 
@@ -154,21 +210,21 @@ class CustomerController extends Controller
                     'gps_coordinates' => $client->gps_coordinates,
                     'is_prospect' => $client->is_prospect,
                     'description' => $client->description,
-                    "has_debt" => $client->has_debt,
-                    "total_debt" => $client->total_debt,
+                    'has_debt' => $client->has_debt,
+                    'total_debt' => $client->total_debt,
                     'sector' => $client->sector ? [
                         'id' => $client->sector->id,
                         'name' => $client->sector->name,
                     ] : null,
                 ];
             }),
-            'googleMapsApiKey' => config('services.google.maps_api_key')
+            'googleMapsApiKey' => config('services.google.maps_api_key'),
         ]);
     }
 
     public function show(Customer $client)
     {
-        $client->load(['commercial:id,name', 'ventes' => function($query) {
+        $client->load(['commercial:id,name', 'ventes' => function ($query) {
             $query->select('id', 'customer_id', 'paid', 'created_at', 'product_id')
                 ->with('product:id,name');
         }]);
@@ -195,9 +251,9 @@ class CustomerController extends Controller
                     'product' => [
                         'id' => $vente->product->id,
                         'name' => $vente->product->name,
-                    ]
-                ])
-            ]
+                    ],
+                ]),
+            ],
         ]);
     }
-} 
+}

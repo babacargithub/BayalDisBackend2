@@ -1,14 +1,11 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
-import { ref, watch, computed } from 'vue';
+import { ref, watch } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import CustomerHistoryDialog from '@/Pages/Clients/CustomerHistoryDialog.vue';
 import { Link } from '@inertiajs/vue3';
 import axios from 'axios';
-import Swal from 'sweetalert2/dist/sweetalert2.js';
-import 'sweetalert2/dist/sweetalert2.css';
-import VisitBatchesDialog from './VisitBatchesDialog.vue'
 
 const props = defineProps({
     clients: {
@@ -16,14 +13,6 @@ const props = defineProps({
         required: true
     },
     commerciaux: {
-        type: Array,
-        required: true
-    },
-    sectors: {
-        type: Array,
-        required: true
-    },
-    lignes: {
         type: Array,
         required: true
     },
@@ -35,7 +24,11 @@ const props = defineProps({
     }
 });
 
-const form = useForm({
+// ─── Create form ──────────────────────────────────────────────────────────────
+
+const createDialogVisible = ref(false);
+
+const createForm = useForm({
     name: '',
     phone_number: '',
     owner_number: '',
@@ -44,37 +37,19 @@ const form = useForm({
     address: '',
 });
 
-const dialog = ref(false);
-const deleteDialog = ref(false);
-const editDialog = ref(false);
-const clientToDelete = ref(null);
-const editingClient = ref(null);
-const deleteForm = ref(null);
-const snackbar = ref(false);
-const snackbarText = ref('');
-const snackbarColor = ref('');
-
-const filterForm = useForm({
-    prospect_status: props.filters?.prospect_status || '',
-    commercial_id: props.filters?.commercial_id || ''
-});
-
-const applyFilter = (status) => {
-    filterForm.get(route('clients.index'), {
-        preserveState: true,
-        preserveScroll: true,
-        only: ['clients']
+const submitCreate = () => {
+    createForm.post(route('clients.store'), {
+        onSuccess: () => {
+            createDialogVisible.value = false;
+            createForm.reset();
+        },
     });
 };
 
-watch(() => filterForm.prospect_status, (newValue) => {
-    applyFilter();
-});
+// ─── Edit form ────────────────────────────────────────────────────────────────
 
-const openGoogleMaps = (coordinates) => {
-    const url = `https://www.google.com/maps?q=${coordinates}`;
-    window.open(url, '_blank');
-};
+const editDialogVisible = ref(false);
+const editingClient = ref(null);
 
 const editForm = useForm({
     name: '',
@@ -95,26 +70,28 @@ const openEditDialog = (client) => {
     editForm.commercial_id = client.commercial_id;
     editForm.description = client.description || '';
     editForm.address = client.address || '';
-    editDialog.value = true;
+    editDialogVisible.value = true;
 };
 
 const submitEdit = () => {
-    console.log('Submitting edit with data:', editForm.data());
     editForm.patch(route('clients.update', editingClient.value.id), {
         preserveScroll: true,
         onSuccess: () => {
-            editDialog.value = false;
+            editDialogVisible.value = false;
             editingClient.value = null;
         },
-        onError: (errors) => {
-            console.error('Update failed:', errors);
-        }
     });
 };
 
+// ─── Delete ───────────────────────────────────────────────────────────────────
+
+const deleteDialogVisible = ref(false);
+const clientToDelete = ref(null);
+const deleteForm = ref(null);
+
 const confirmDelete = (client) => {
     clientToDelete.value = client;
-    deleteDialog.value = true;
+    deleteDialogVisible.value = true;
 };
 
 const deleteClient = () => {
@@ -122,173 +99,126 @@ const deleteClient = () => {
     deleteForm.value.delete(route('clients.destroy', clientToDelete.value.id), {
         preserveScroll: true,
         onSuccess: () => {
-            deleteDialog.value = false;
+            deleteDialogVisible.value = false;
             clientToDelete.value = null;
             deleteForm.value = null;
             window.location.reload();
         },
         onError: (errors) => {
-            console.error('Delete failed:', errors);
-            snackbarText.value = errors.message || 'Une erreur est survenue lors de la suppression du client';
-            snackbarColor.value = 'error';
-            snackbar.value = true;
+            showSnackbar(errors.message || 'Une erreur est survenue lors de la suppression du client', 'error');
         }
     });
 };
 
-const submit = () => {
-    form.post(route('clients.store'), {
-        onSuccess: () => {
-            dialog.value = false;
-            form.reset();
-        },
-    });
+// ─── Snackbar ─────────────────────────────────────────────────────────────────
+
+const snackbar = ref(false);
+const snackbarText = ref('');
+const snackbarColor = ref('');
+
+const showSnackbar = (text, color = 'success') => {
+    snackbarText.value = text;
+    snackbarColor.value = color;
+    snackbar.value = true;
 };
 
 watch(() => props.flash, (newFlash) => {
     if (!newFlash) return;
-    
-    if (newFlash.success) {
-        snackbarText.value = newFlash.success;
-        snackbarColor.value = 'success';
-        snackbar.value = true;
-    }
-    if (newFlash.error) {
-        snackbarText.value = newFlash.error;
-        snackbarColor.value = 'error';
-        snackbar.value = true;
-    }
+    if (newFlash.success) showSnackbar(newFlash.success, 'success');
+    if (newFlash.error) showSnackbar(newFlash.error, 'error');
 }, { deep: true, immediate: true });
+
+// ─── History dialog ───────────────────────────────────────────────────────────
 
 const showHistory = ref(false);
 const selectedClient = ref(null);
 
-const openHistory = async (client) => {
+const openHistory = (client) => {
     selectedClient.value = client;
     showHistory.value = true;
 };
 
-const searchQuery = ref('');
+// ─── Map ──────────────────────────────────────────────────────────────────────
 
-const filteredClients = computed(() => {
-    if (!searchQuery.value) return props.clients.data;
-    
-    const query = searchQuery.value.toLowerCase();
-    return props.clients.data.filter(client => 
-        client.name.toLowerCase().includes(query) || 
-        (client.phone_number && client.phone_number.toLowerCase().includes(query))
+const openGoogleMaps = (coordinates) => {
+    window.open(`https://www.google.com/maps?q=${coordinates}`, '_blank');
+};
+
+// ─── Filters ──────────────────────────────────────────────────────────────────
+
+const showOnlyProspects = ref(props.filters?.prospect_status === 'prospects');
+const showOnlyConfirmed = ref(props.filters?.prospect_status === 'customers');
+
+const applyProspectFilter = () => {
+    let prospectStatus = '';
+    if (showOnlyProspects.value && !showOnlyConfirmed.value) {
+        prospectStatus = 'prospects';
+    } else if (showOnlyConfirmed.value && !showOnlyProspects.value) {
+        prospectStatus = 'customers';
+    }
+
+    router.get(
+        route('clients.index'),
+        { prospect_status: prospectStatus },
+        { preserveState: true, preserveScroll: true, only: ['clients', 'filters'] }
     );
-});
+};
+
+watch(showOnlyProspects, applyProspectFilter);
+watch(showOnlyConfirmed, applyProspectFilter);
+
+// ─── Backend autocomplete search ──────────────────────────────────────────────
+
+const searchQuery = ref('');
+const searchResults = ref([]);
+const isSearching = ref(false);
+const searchMode = ref(false);
+
+let searchDebounceTimer = null;
+
+const onSearchInput = (value) => {
+    clearTimeout(searchDebounceTimer);
+
+    if (!value || value.length < 2) {
+        searchResults.value = [];
+        searchMode.value = false;
+        isSearching.value = false;
+        return;
+    }
+
+    isSearching.value = true;
+    searchMode.value = true;
+
+    searchDebounceTimer = setTimeout(async () => {
+        try {
+            const response = await axios.get(route('clients.search'), { params: { q: value } });
+            searchResults.value = response.data;
+        } finally {
+            isSearching.value = false;
+        }
+    }, 300);
+};
+
+const clearSearch = () => {
+    searchQuery.value = '';
+    searchResults.value = [];
+    searchMode.value = false;
+};
+
+// The displayed rows: search results when in search mode, paginated clients otherwise
+const displayedClients = () => searchMode.value ? searchResults.value : props.clients.data;
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
 
 const handlePageChange = (page) => {
     router.get(
         route('clients.index', {
             page,
-            commercial_id: filterForm.commercial_id,
-            prospect_status: filterForm.prospect_status,
+            prospect_status: showOnlyProspects.value ? 'prospects' : showOnlyConfirmed.value ? 'customers' : '',
         }),
         {},
         { preserveState: true, preserveScroll: true }
     );
-};
-
-// Add new refs for sectors management
-const activeTab = ref('clients');
-const sectorDialog = ref(false);
-const sectorCustomersDialog = ref(false);
-const selectedSector = ref(null);
-const loadingMapCustomers = ref(false);
-
-const sectorForm = useForm({
-    name: '',
-    boundaries: '',
-    ligne_id: null,
-    description: ''
-});
-
-const assignCustomersForm = useForm({
-    customer_ids: []
-});
-
-// Sector management methods
-const openSectorDialog = (sector = null) => {
-    if (sector) {
-        selectedSector.value = sector;
-        sectorForm.name = sector.name;
-        sectorForm.boundaries = sector.boundaries;
-        sectorForm.ligne_id = sector.ligne_id;
-        sectorForm.description = sector.description;
-    } else {
-        selectedSector.value = null;
-        sectorForm.reset();
-    }
-    sectorDialog.value = true;
-};
-
-const submitSector = () => {
-    if (selectedSector.value) {
-        sectorForm.put(route('sectors.update', selectedSector.value.id), {
-            onSuccess: () => {
-                sectorDialog.value = false;
-                selectedSector.value = null;
-            }
-        });
-    } else {
-        sectorForm.post(route('sectors.store'), {
-            onSuccess: () => {
-                sectorDialog.value = false;
-            }
-        });
-    }
-};
-
-const deleteSector = (sector) => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer ce secteur ?')) {
-        router.delete(route('sectors.destroy', sector.id));
-    }
-};
-
-const openSectorCustomers = (sector) => {
-    selectedSector.value = sector;
-    sectorCustomersDialog.value = true;
-};
-
-const assignCustomers = () => {
-    assignCustomersForm.post(route('sectors.add-customers', selectedSector.value.id), {
-        onSuccess: () => {
-            sectorCustomersDialog.value = false;
-            assignCustomersForm.reset();
-        }
-    });
-};
-
-const removeCustomerFromSector = (sector, customer) => {
-    if (confirm('Êtes-vous sûr de vouloir retirer ce client du secteur ?')) {
-        router.delete(route('sectors.remove-customer', {
-            sector: sector.id,
-            customer: customer.id
-        }));
-    }
-};
-
-const openCustomersMap = async (sector) => {
-    router.get(route('sectors.map', sector.id));
-};
-
-function formatPrice(amount) {
-    return new Intl.NumberFormat('fr-FR', {
-        style: 'currency',
-        currency: 'XOF',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }).format(amount || 0);
-}
-
-const showVisitBatchesDialog = ref(false);
-
-const showVisitBatches = (sector) => {
-    selectedSector.value = sector;
-    showVisitBatchesDialog.value = true;
 };
 </script>
 
@@ -299,62 +229,19 @@ const showVisitBatches = (sector) => {
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Clients</h2>
-                <div class="flex gap-2 items-center">
-                    <v-tabs v-model="activeTab">
-                        <v-tab value="clients">Clients</v-tab>
-                        <v-tab value="sectors">Secteurs</v-tab>
-                    </v-tabs>
-                    <template v-if="activeTab === 'clients'">
-                        <v-btn-group>
-                            <v-btn 
-                                :color="filterForm.prospect_status === '' ? 'primary' : undefined"
-                                @click="filterForm.prospect_status = ''"
-                            >
-                                Tous
-                            </v-btn>
-                            <v-btn 
-                                :color="filterForm.prospect_status === 'prospects' ? 'primary' : undefined"
-                                @click="filterForm.prospect_status = 'prospects'"
-                            >
-                                Prospects
-                            </v-btn>
-                            <v-btn 
-                                :color="filterForm.prospect_status === 'customers' ? 'primary' : undefined"
-                                @click="filterForm.prospect_status = 'customers'"
-                            >
-                                Clients
-                            </v-btn>
-                        </v-btn-group>
-                        <Link
-                            :href="route('clients.map')"
-                            class="v-btn v-btn--variant-elevated v-theme--light v-btn--density-default v-btn--size-default bg-success text-white"
-                        >
-                            <v-icon
-                                icon="mdi-map-marker-multiple"
-                                size="small"
-                                class="mr-2"
-                            />
-                            Voir les adresses
-                        </Link>
-                        <v-btn color="primary" @click="dialog = true">
-                            Ajouter un client
-                        </v-btn>
-                    </template>
-                    <template v-else>
-                        <v-btn color="primary" @click="openSectorDialog()">
-                            <v-icon start>mdi-plus</v-icon>
-                            Nouveau Secteur
-                        </v-btn>
-                    </template>
-                </div>
+                <v-btn color="primary" @click="createDialogVisible = true">
+                    Ajouter un client
+                </v-btn>
             </div>
         </template>
 
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                <v-window v-model="activeTab">
-                    <v-window-item value="clients">
-                        <v-card>
+                <v-card>
+                    <!-- Toolbar: search + filters + map button -->
+                    <v-card-text class="pb-0">
+                        <div class="d-flex flex-wrap align-center gap-4">
+                            <!-- Backend autocomplete search -->
                             <v-text-field
                                 v-model="searchQuery"
                                 prepend-inner-icon="mdi-magnify"
@@ -362,245 +249,201 @@ const showVisitBatches = (sector) => {
                                 single-line
                                 hide-details
                                 density="compact"
-                                class="mr-4"
+                                style="max-width: 320px;"
+                                :loading="isSearching"
+                                clearable
+                                @update:model-value="onSearchInput"
+                                @click:clear="clearSearch"
                             />
-                            <v-table>
-                                <thead>
-                                    <tr>
-                                        <th>Nom</th>
-                                        <th>Téléphone</th>
-                                        <th>Numéro Propriétaire</th>
-                                        <th>Commercial</th>
-                                        <th>Type</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="client in filteredClients" :key="client.id">
-                                        <td>
-                                            <div class="d-flex align-center">
-                                                <div>
-                                                    <div class="font-weight-bold">{{ client.name }}</div>
-                                                    <div class="text-caption text-grey">{{ client.address }}</div>
-                                                </div>
-                                                <v-tooltip v-if="client.description" location="top">
-                                                    <template v-slot:activator="{ props }">
-                                                        <v-icon
-                                                            size="small"
-                                                            color="grey-darken-1"
-                                                            class="ml-2"
-                                                            v-bind="props"
-                                                        >
-                                                            mdi-information
-                                                        </v-icon>
-                                                    </template>
-                                                    {{ client.description }}
-                                                </v-tooltip>
-                                            </div>
-                                        </td>
-                                        <td>{{ client.phone_number }}</td>
-                                        <td>{{ client.owner_number }}</td>
-                                        <td>{{ client.commercial?.name }}</td>
-                                        <td>
-                                            <v-icon
-                                                v-if="client.is_prospect"
-                                                icon="mdi-account-question"
-                                                color="warning"
-                                                title="Prospect"
-                                            />
-                                        </td>
-                                        <td class="d-flex">
-                                            <v-btn 
-                                                icon="mdi-history"
-                                                variant="text"
-                                                color="info"
-                                                class="mr-2"
-                                                @click="openHistory(client)"
-                                                title="Historique des ventes"
-                                            />
-                                            <v-btn 
-                                                icon="mdi-map-marker"
-                                                variant="text"
-                                                color="success"
-                                                class="mr-2"
-                                                @click="openGoogleMaps(client.gps_coordinates)"
-                                                title="Voir sur Google Maps"
-                                            />
-                                            <v-btn 
-                                                icon="mdi-pencil"
-                                                variant="text"
-                                                color="primary"
-                                                class="mr-2"
-                                                @click="openEditDialog(client)"
-                                                title="Modifier"
-                                            />
-                                            <v-btn 
-                                                icon="mdi-delete"
-                                                variant="text"
-                                                color="error"
-                                                @click="confirmDelete(client)"
-                                                title="Supprimer"
-                                            />
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </v-table>
-                            
-                            <!-- Pagination -->
-                            <div class="py-3 px-4 d-flex justify-end">
-                                <v-pagination
-                                    v-if="clients.last_page > 1"
-                                    v-model="clients.current_page"
-                                    :length="clients.last_page"
-                                    :total-visible="7"
-                                    @update:model-value="handlePageChange"
+
+                            <!-- Prospect filters as checkboxes -->
+                            <div class="d-flex align-center gap-2">
+                                <v-checkbox
+                                    v-model="showOnlyConfirmed"
+                                    label="Confirmés"
+                                    hide-details
+                                    density="compact"
+                                    color="primary"
+                                />
+                                <v-checkbox
+                                    v-model="showOnlyProspects"
+                                    label="Prospects"
+                                    hide-details
+                                    density="compact"
+                                    color="warning"
                                 />
                             </div>
-                        </v-card>
-                    </v-window-item>
 
-                    <v-window-item value="sectors">
-                        <v-card>
-                            <v-data-table
-                                :headers="[
-                                    { title: 'Nom', key: 'name', sortable: true },
-                                    { title: 'Description', key: 'description', sortable: true },
-                                    { title: 'Ligne', key: 'ligne.name', sortable: true },
-                                    { title: 'Nombre de clients', key: 'customers_count', sortable: true },
-                                    { title: 'Nombre de ventes', key: 'total_number_of_ventes', sortable: true },
-                                    { title: 'Montant total', key: 'total_amount_of_ventes', sortable: true },
-                                    { title: 'Dette totale', key: 'total_debt', sortable: true },
-                                    { title: 'Actions', key: 'actions', sortable: false },
-                                ]"
-                                :items="sectors"
-                                :loading="false"
-                                class="elevation-1"
+                            <v-spacer />
+
+                            <!-- Cartographie des clients -->
+                            <Link
+                                :href="route('clients.map')"
+                                class="v-btn v-btn--variant-elevated v-theme--light v-btn--density-default v-btn--size-default bg-success text-white"
                             >
-                                <template v-slot:item.customers_count="{ item }">
-                                    {{ item.customers?.length || 0 }}
-                                </template>
+                                <v-icon icon="mdi-map-marker-multiple" size="small" class="mr-2" />
+                                Cartographie des clients
+                            </Link>
+                        </div>
+                    </v-card-text>
 
-                                <template v-slot:item.total_amount_of_ventes="{ item }">
-                                    {{ formatPrice(item.total_amount_of_ventes) }}
-                                </template>
+                    <!-- Search mode banner -->
+                    <v-card-text v-if="searchMode" class="py-2">
+                        <v-chip
+                            color="primary"
+                            variant="tonal"
+                            closable
+                            @click:close="clearSearch"
+                        >
+                            Résultats de recherche pour « {{ searchQuery }} » — {{ searchResults.length }} trouvé(s)
+                        </v-chip>
+                    </v-card-text>
 
-                                <template v-slot:item.total_debt="{ item }">
-                                    <span :class="{ 'text-error': item.total_debt > 0 }">
-                                        {{ formatPrice(item.total_debt) }}
-                                    </span>
-                                </template>
-
-                                <template v-slot:item.actions="{ item }">
-                                    <div class="d-flex gap-2">
-                                        <v-btn
-                                            icon
-                                            variant="text"
-                                            density="comfortable"
-                                            color="primary"
-                                            @click="openSectorDialog(item)"
-                                        >
-                                            <v-icon>mdi-pencil</v-icon>
-                                        </v-btn>
-
-                                        <v-btn
-                                            icon
-                                            variant="text"
-                                            density="comfortable"
-                                            color="error"
-                                            @click="deleteSector(item)"
-                                        >
-                                            <v-icon>mdi-delete</v-icon>
-                                        </v-btn>
-
-                                        <v-btn
-                                            icon
-                                            variant="text"
-                                            density="comfortable"
-                                            color="success"
-                                            @click="openSectorCustomers(item)"
-                                        >
-                                            <v-icon>mdi-account-multiple</v-icon>
-                                        </v-btn>
-
-                                        <v-btn
-                                            icon
-                                            variant="text"
-                                            density="comfortable"
-                                            color="info"
-                                            @click="openCustomersMap(item)"
-                                        >
-                                            <v-icon>mdi-map-marker-multiple</v-icon>
-                                        </v-btn>
-
-                                        <v-tooltip bottom>
-                                            <template v-slot:activator="{ on, attrs }">
-                                                <v-btn
-                                                    icon
-                                                    variant="text"
-                                                    class="mr-2"
-                                                    v-bind="attrs"
-                                                    v-on="on"
-                                                    @click="showVisitBatches(item)"
-                                                    color="primary"
+                    <v-table>
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Téléphone</th>
+                                <th>Numéro Propriétaire</th>
+                                <th>Commercial</th>
+                                <th>Type</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="client in displayedClients()" :key="client.id">
+                                <td>
+                                    <div class="d-flex align-center">
+                                        <div>
+                                            <div class="font-weight-bold">{{ client.name }}</div>
+                                            <div class="text-caption text-grey">{{ client.address }}</div>
+                                        </div>
+                                        <v-tooltip v-if="client.description" location="top">
+                                            <template v-slot:activator="{ props }">
+                                                <v-icon
+                                                    size="small"
+                                                    color="grey-darken-1"
+                                                    class="ml-2"
+                                                    v-bind="props"
                                                 >
-                                                    <v-icon>mdi-calendar-check</v-icon>
-                                                </v-btn>
+                                                    mdi-information
+                                                </v-icon>
                                             </template>
-                                            <span>Visites</span>
+                                            {{ client.description }}
                                         </v-tooltip>
                                     </div>
-                                </template>
-                            </v-data-table>
-                        </v-card>
-                    </v-window-item>
-                </v-window>
+                                </td>
+                                <td>{{ client.phone_number }}</td>
+                                <td>{{ client.owner_number }}</td>
+                                <td>{{ client.commercial?.name }}</td>
+                                <td>
+                                    <v-icon
+                                        v-if="client.is_prospect"
+                                        icon="mdi-account-question"
+                                        color="warning"
+                                        title="Prospect"
+                                    />
+                                </td>
+                                <td class="d-flex">
+                                    <v-btn
+                                        icon="mdi-history"
+                                        variant="text"
+                                        color="info"
+                                        class="mr-2"
+                                        @click="openHistory(client)"
+                                        title="Historique des ventes"
+                                    />
+                                    <v-btn
+                                        icon="mdi-map-marker"
+                                        variant="text"
+                                        color="success"
+                                        class="mr-2"
+                                        @click="openGoogleMaps(client.gps_coordinates)"
+                                        title="Voir sur Google Maps"
+                                    />
+                                    <v-btn
+                                        icon="mdi-pencil"
+                                        variant="text"
+                                        color="primary"
+                                        class="mr-2"
+                                        @click="openEditDialog(client)"
+                                        title="Modifier"
+                                    />
+                                    <v-btn
+                                        icon="mdi-delete"
+                                        variant="text"
+                                        color="error"
+                                        @click="confirmDelete(client)"
+                                        title="Supprimer"
+                                    />
+                                </td>
+                            </tr>
+                            <tr v-if="displayedClients().length === 0">
+                                <td colspan="6" class="text-center text-grey py-6">
+                                    Aucun client trouvé
+                                </td>
+                            </tr>
+                        </tbody>
+                    </v-table>
+
+                    <!-- Pagination (hidden in search mode) -->
+                    <div v-if="!searchMode" class="py-3 px-4 d-flex justify-end">
+                        <v-pagination
+                            v-if="clients.last_page > 1"
+                            v-model="clients.current_page"
+                            :length="clients.last_page"
+                            :total-visible="7"
+                            @update:model-value="handlePageChange"
+                        />
+                    </div>
+                </v-card>
             </div>
         </div>
 
         <!-- Create Dialog -->
-        <v-dialog v-model="dialog" max-width="500px">
+        <v-dialog v-model="createDialogVisible" max-width="500px">
             <v-card>
                 <v-card-title>Nouveau Client</v-card-title>
                 <v-card-text>
-                    <v-form @submit.prevent="submit">
+                    <v-form @submit.prevent="submitCreate">
                         <v-text-field
-                            v-model="form.name"
+                            v-model="createForm.name"
                             label="Nom"
-                            :error-messages="form.errors.name"
+                            :error-messages="createForm.errors.name"
                         />
                         <v-text-field
-                            v-model="form.phone_number"
+                            v-model="createForm.phone_number"
                             label="Téléphone"
-                            :error-messages="form.errors.phone_number"
+                            :error-messages="createForm.errors.phone_number"
                         />
                         <v-text-field
-                            v-model="form.owner_number"
+                            v-model="createForm.owner_number"
                             label="Numéro Propriétaire"
-                            :error-messages="form.errors.owner_number"
+                            :error-messages="createForm.errors.owner_number"
                         />
                         <v-text-field
-                            v-model="form.gps_coordinates"
+                            v-model="createForm.gps_coordinates"
                             label="Coordonnées GPS"
-                            :error-messages="form.errors.gps_coordinates"
+                            :error-messages="createForm.errors.gps_coordinates"
                         />
                         <v-text-field
-                            v-model="form.address"
+                            v-model="createForm.address"
                             label="Adresse"
-                            :error-messages="form.errors.address"
+                            :error-messages="createForm.errors.address"
                             class="mb-4"
                         />
                         <v-select
-                            v-model="form.commercial_id"
+                            v-model="createForm.commercial_id"
                             :items="commerciaux"
                             item-title="name"
                             item-value="id"
                             label="Commercial"
-                            :error-messages="form.errors.commercial_id"
+                            :error-messages="createForm.errors.commercial_id"
                         />
                         <v-card-actions>
                             <v-spacer />
-                            <v-btn color="error" @click="dialog = false">Annuler</v-btn>
-                            <v-btn color="primary" type="submit" :loading="form.processing">
+                            <v-btn color="error" @click="createDialogVisible = false">Annuler</v-btn>
+                            <v-btn color="primary" type="submit" :loading="createForm.processing">
                                 Sauvegarder
                             </v-btn>
                         </v-card-actions>
@@ -610,7 +453,7 @@ const showVisitBatches = (sector) => {
         </v-dialog>
 
         <!-- Edit Dialog -->
-        <v-dialog v-model="editDialog" max-width="500px">
+        <v-dialog v-model="editDialogVisible" max-width="500px">
             <v-card>
                 <v-card-title>Modifier le Client</v-card-title>
                 <v-card-text>
@@ -659,7 +502,7 @@ const showVisitBatches = (sector) => {
                         />
                         <v-card-actions>
                             <v-spacer />
-                            <v-btn color="error" @click="editDialog = false">Annuler</v-btn>
+                            <v-btn color="error" @click="editDialogVisible = false">Annuler</v-btn>
                             <v-btn color="primary" type="submit" :loading="editForm.processing">
                                 Mettre à jour
                             </v-btn>
@@ -670,7 +513,7 @@ const showVisitBatches = (sector) => {
         </v-dialog>
 
         <!-- Delete Dialog -->
-        <v-dialog v-model="deleteDialog" max-width="500px">
+        <v-dialog v-model="deleteDialogVisible" max-width="500px">
             <v-card>
                 <v-card-title>Supprimer le Client</v-card-title>
                 <v-card-text>
@@ -684,10 +527,10 @@ const showVisitBatches = (sector) => {
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer />
-                    <v-btn color="primary" @click="deleteDialog = false" :disabled="deleteForm?.processing">Annuler</v-btn>
-                    <v-btn 
-                        color="error" 
-                        @click="deleteClient" 
+                    <v-btn color="primary" @click="deleteDialogVisible = false" :disabled="deleteForm?.processing">Annuler</v-btn>
+                    <v-btn
+                        color="error"
+                        @click="deleteClient"
                         :loading="deleteForm?.processing"
                         :disabled="deleteForm?.processing"
                     >
@@ -698,19 +541,10 @@ const showVisitBatches = (sector) => {
         </v-dialog>
 
         <!-- Snackbar -->
-        <v-snackbar
-            v-model="snackbar"
-            :color="snackbarColor"
-            :timeout="3000"
-        >
+        <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
             {{ snackbarText }}
             <template v-slot:actions>
-                <v-btn
-                    variant="text"
-                    @click="snackbar = false"
-                >
-                    Fermer
-                </v-btn>
+                <v-btn variant="text" @click="snackbar = false">Fermer</v-btn>
             </template>
         </v-snackbar>
 
@@ -720,128 +554,5 @@ const showVisitBatches = (sector) => {
             :orders="selectedClient?.orders || []"
             :ventes="selectedClient?.ventes || []"
         />
-
-        <!-- Sector Dialog -->
-        <v-dialog v-model="sectorDialog" max-width="500px">
-            <v-card>
-                <v-card-title>
-                    {{ selectedSector ? 'Modifier le Secteur' : 'Nouveau Secteur' }}
-                </v-card-title>
-                <v-card-text>
-                    <v-form @submit.prevent="submitSector">
-                        <v-text-field
-                            v-model="sectorForm.name"
-                            label="Nom"
-                            :error-messages="sectorForm.errors.name"
-                            variant="outlined"
-                            class="mb-4"
-                        />
-
-                        <v-textarea
-                            v-model="sectorForm.description"
-                            label="Description"
-                            :error-messages="sectorForm.errors.description"
-                            variant="outlined"
-                            class="mb-4"
-                        />
-
-                        <v-textarea
-                            v-model="sectorForm.boundaries"
-                            label="Limites"
-                            :error-messages="sectorForm.errors.boundaries"
-                            variant="outlined"
-                            class="mb-4"
-                        />
-
-                        <v-select
-                            v-model="sectorForm.ligne_id"
-                            :items="lignes"
-                            item-title="name"
-                            item-value="id"
-                            label="Ligne"
-                            :error-messages="sectorForm.errors.ligne_id"
-                            variant="outlined"
-                            class="mb-4"
-                        />
-
-                        <v-card-actions>
-                            <v-spacer />
-                            <v-btn @click="sectorDialog = false">Annuler</v-btn>
-                            <v-btn 
-                                color="primary" 
-                                type="submit" 
-                                :loading="sectorForm.processing"
-                            >
-                                {{ selectedSector ? 'Modifier' : 'Créer' }}
-                            </v-btn>
-                        </v-card-actions>
-                    </v-form>
-                </v-card-text>
-            </v-card>
-        </v-dialog>
-
-        <!-- Sector Customers Dialog -->
-        <v-dialog v-model="sectorCustomersDialog" max-width="800px">
-            <v-card>
-                <v-card-title>
-                    Clients du Secteur {{ selectedSector?.name }}
-                </v-card-title>
-                <v-card-text>
-                    <v-form @submit.prevent="assignCustomers" class="mb-4">
-                        <v-autocomplete
-                            v-model="assignCustomersForm.customer_ids"
-                            :items="clients.data"
-                            item-title="name"
-                            item-value="id"
-                            label="Sélectionner les clients"
-                            multiple
-                            chips
-                            :error-messages="assignCustomersForm.errors.customer_ids"
-                            variant="outlined"
-                        />
-                        <div class="text-right mt-2">
-                            <v-btn 
-                                color="primary" 
-                                type="submit" 
-                                :loading="assignCustomersForm.processing"
-                            >
-                                Ajouter les clients
-                            </v-btn>
-                        </div>
-                    </v-form>
-
-                    <v-data-table
-                        :headers="[
-                            { title: 'Nom', key: 'name' },
-                            { title: 'Téléphone', key: 'phone_number' },
-                            { title: 'Actions', key: 'actions', sortable: false },
-                        ]"
-                        :items="selectedSector?.customers || []"
-                        :loading="false"
-                    >
-                        <template v-slot:item.actions="{ item }">
-                            <v-btn
-                                icon
-                                size="small"
-                                color="error"
-                                @click="removeCustomerFromSector(selectedSector, item)"
-                            >
-                                <v-icon>mdi-delete</v-icon>
-                            </v-btn>
-                        </template>
-                    </v-data-table>
-                </v-card-text>
-                <v-card-actions>
-                    <v-spacer />
-                    <v-btn @click="sectorCustomersDialog = false">Fermer</v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
-
-        <visit-batches-dialog
-            v-model="showVisitBatchesDialog"
-            :sector="selectedSector"
-            v-if="selectedSector"
-        />
     </AuthenticatedLayout>
-</template> 
+</template>

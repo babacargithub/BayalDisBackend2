@@ -171,9 +171,17 @@ class ApiSalesInvoiceController extends Controller
 
     public function getCustomersAndProducts(): JsonResponse
     {
+        $activePricingPolicy = \App\Models\PricingPolicy::where('active', true)->first();
+
         return response()->json([
             'customers' => CustomerResource::collection(Customer::latest()->get()),
             'products' => ProductResource::collection(Product::all()),
+            'pricing_policy' => $activePricingPolicy ? [
+                'id' => $activePricingPolicy->id,
+                'name' => $activePricingPolicy->name,
+                'apply_credit_price' => $activePricingPolicy->apply_credit_price,
+                'surcharge_percent' => $activePricingPolicy->surcharge_percent,
+            ] : null,
         ]);
     }
 }

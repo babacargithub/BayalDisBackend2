@@ -40,6 +40,8 @@ const menuItems = [
         isDropdown: true,
         items: [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
+            { name: 'Secteurs', route: 'sectors.index', icon: 'mdi-map-marker-multiple' },
+            { name: 'Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
             { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' },
             { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
             { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },

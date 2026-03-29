@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Commercial;
 use App\Models\Customer;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class CustomerService
 {
@@ -73,6 +74,36 @@ class CustomerService
         $customer->loadMissing('commercial');
 
         return $customer->commercial?->team_id === $commercial->team_id;
+    }
+
+    /**
+     * Return the top 50 customers ranked by the given sort criterion.
+     *
+     * Supported sort values:
+     *   - 'volume'    — ordered by total invoice amount (default)
+     *   - 'frequency' — ordered by number of invoices
+     *
+     * Only customers who have at least one sales invoice are included.
+     * Aggregated totals come from the denormalized stored columns on
+     * sales_invoices to avoid expensive per-row subqueries.
+     *
+     * @return Collection<int, object{id: int, name: string, phone_number: string, address: string|null, invoices_count: int, volume: int, total_payment: int, total_realized_profit: int}>
+     */
+    public function getTopCustomers(string $sortBy = 'volume'): Collection
+    {
+        $orderByColumn = $sortBy === 'frequency' ? 'invoices_count' : 'volume';
+
+        return Customer::query()
+            ->select('customers.id', 'customers.name', 'customers.phone_number', 'customers.address')
+            ->join('sales_invoices', 'sales_invoices.customer_id', '=', 'customers.id')
+            ->selectRaw('COUNT(sales_invoices.id) as invoices_count')
+            ->selectRaw('COALESCE(SUM(sales_invoices.total_amount), 0) as volume')
+            ->selectRaw('COALESCE(SUM(sales_invoices.total_payments), 0) as total_payment')
+            ->selectRaw('COALESCE(SUM(sales_invoices.total_realized_profit), 0) as total_realized_profit')
+            ->groupBy('customers.id', 'customers.name', 'customers.phone_number', 'customers.address')
+            ->orderByDesc($orderByColumn)
+            ->limit(50)
+            ->get();
     }
 
     /**
