@@ -60,4 +60,28 @@ class Caisse extends Model
     {
         return $this->locked_until !== null && $this->locked_until->isToday();
     }
+
+    /**
+     * Recompute the caisse balance from its full transaction ledger and persist it.
+     *
+     * Formula: SUM(amount WHERE type=DEPOSIT) − SUM(amount WHERE type=WITHDRAW)
+     *
+     * Mirrors Account::updateBalanceFromLedger(). Call this after any CaisseTransaction
+     * is created or deleted so the cached balance column stays authoritative.
+     */
+    public function updateBalanceFromLedger(): self
+    {
+        $deposits = $this->transactions()
+            ->where('transaction_type', self::TRANSACTION_TYPE_DEPOSIT)
+            ->sum('amount');
+
+        $withdrawals = $this->transactions()
+            ->where('transaction_type', self::TRANSACTION_TYPE_WITHDRAW)
+            ->sum('amount');
+
+        $this->balance = $deposits - $withdrawals;
+        $this->save();
+
+        return $this;
+    }
 }

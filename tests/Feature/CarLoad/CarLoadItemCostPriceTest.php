@@ -545,13 +545,14 @@ class CarLoadItemCostPriceTest extends TestCase
         $this->assertEquals(20_000, $this->statsService->calculateProfitForVente($vente));
     }
 
-    public function test_profit_uses_weighted_average_of_multiple_car_load_items(): void
+    public function test_profit_uses_fifo_cost_of_oldest_active_batch_when_multiple_car_load_items_exist(): void
     {
         $team = $this->makeTeam();
         $carLoad = $this->makeCarLoad($team);
         $product = $this->makeProduct(costPrice: 1_000);
 
-        // Two batches loaded: 30 at 4000, 20 at 6000 → weighted avg = (30×4000 + 20×6000)/50 = 4800
+        // Two batches loaded: oldest at 4000 (still has stock), newer at 6000.
+        // FIFO picks the oldest batch with quantity_left > 0, i.e. cost = 4000.
         CarLoadItem::create([
             'car_load_id' => $carLoad->id,
             'product_id' => $product->id,
@@ -574,12 +575,132 @@ class CarLoadItemCostPriceTest extends TestCase
 
         $vente = $this->makeVenteLinkedToCarLoad($product, $carLoad, price: 8_000, quantity: 5);
 
-        // weighted avg cost = (30×4000 + 20×6000) / 50 = 240000/50 = 4800
-        // profit = (8000 - 4800) × 5 = 16 000
-        $this->assertEquals(16_000, $this->statsService->calculateProfitForVente($vente));
+        // FIFO cost = 4000 (oldest batch with quantity_left > 0)
+        // profit = (8000 - 4000) × 5 = 20 000
+        $this->assertEquals(20_000, $this->statsService->calculateProfitForVente($vente));
     }
 
-    public function test_profit_falls_back_to_stock_entry_weighted_average_when_car_load_item_has_null_cost(): void
+    public function test_profit_uses_fifo_cost_of_next_batch_when_oldest_batch_is_exhausted(): void
+    {
+        $team = $this->makeTeam();
+        $carLoad = $this->makeCarLoad($team);
+        $product = $this->makeProduct(costPrice: 1_000);
+
+        // Oldest batch fully consumed (quantity_left = 0). FIFO advances to the next one.
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $product->id,
+            'quantity_loaded' => 30,
+            'quantity_left' => 0,
+            'cost_price_per_unit' => 4_000,
+            'loaded_at' => now()->subDay(),
+            'source' => CarLoadItemSource::Warehouse,
+        ]);
+
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $product->id,
+            'quantity_loaded' => 20,
+            'quantity_left' => 20,
+            'cost_price_per_unit' => 6_000,
+            'loaded_at' => now(),
+            'source' => CarLoadItemSource::Warehouse,
+        ]);
+
+        $vente = $this->makeVenteLinkedToCarLoad($product, $carLoad, price: 8_000, quantity: 5);
+
+        // FIFO cost = 6000 (oldest batch is exhausted, next batch has stock)
+        // profit = (8000 - 6000) × 5 = 10 000
+        $this->assertEquals(10_000, $this->statsService->calculateProfitForVente($vente));
+    }
+
+    public function test_profit_uses_latest_batch_cost_when_all_batches_are_exhausted(): void
+    {
+        $team = $this->makeTeam();
+        $carLoad = $this->makeCarLoad($team);
+        $product = $this->makeProduct(costPrice: 1_000);
+
+        // All batches exhausted. Falls back to latest item by id.
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $product->id,
+            'quantity_loaded' => 30,
+            'quantity_left' => 0,
+            'cost_price_per_unit' => 4_000,
+            'loaded_at' => now()->subDay(),
+            'source' => CarLoadItemSource::Warehouse,
+        ]);
+
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $product->id,
+            'quantity_loaded' => 20,
+            'quantity_left' => 0,
+            'cost_price_per_unit' => 6_000,
+            'loaded_at' => now(),
+            'source' => CarLoadItemSource::Warehouse,
+        ]);
+
+        $vente = $this->makeVenteLinkedToCarLoad($product, $carLoad, price: 8_000, quantity: 5);
+
+        // All batches exhausted → falls back to latest item, cost = 6000
+        // profit = (8000 - 6000) × 5 = 10 000
+        $this->assertEquals(10_000, $this->statsService->calculateProfitForVente($vente));
+    }
+
+    public function test_fifo_profit_falls_back_to_product_cost_price_when_car_load_item_has_null_cost(): void
+    {
+        $team = $this->makeTeam();
+        $carLoad = $this->makeCarLoad($team);
+        $product = $this->makeProduct(costPrice: 1_000);
+
+        $this->makeStockEntry($product, 100, unitPrice: 2_000);
+
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $product->id,
+            'quantity_loaded' => 50,
+            'quantity_left' => 50,
+            'cost_price_per_unit' => null, // legacy — no cost recorded
+            'loaded_at' => now(),
+            'source' => CarLoadItemSource::Warehouse,
+        ]);
+
+        $vente = $this->makeVenteLinkedToCarLoad($product, $carLoad, price: 5_000, quantity: 5);
+
+        // No CarLoadItem with cost_price_per_unit → falls back to product.cost_price = 1000
+        // profit = (5000 - 1000) × 5 = 20 000
+        $this->assertEquals(20_000, $this->statsService->calculateProfitForVente($vente));
+    }
+
+    public function test_fifo_profit_falls_back_to_product_cost_price_when_invoice_has_no_car_load(): void
+    {
+        $product = $this->makeProduct(costPrice: 1_000);
+        $this->makeStockEntry($product, 100, unitPrice: 4_000);
+
+        $vente = $this->makeVenteWithoutCarLoad($product, price: 6_000, quantity: 3);
+
+        // No car_load_id → falls back to product.cost_price = 1000
+        // profit = (6000 - 1000) × 3 = 15 000
+        $this->assertEquals(15_000, $this->statsService->calculateProfitForVente($vente));
+    }
+
+    public function test_fifo_profit_falls_back_to_product_cost_price_when_no_stock_entries_exist(): void
+    {
+        $product = $this->makeProduct(costPrice: 500);
+
+        $vente = $this->makeVenteWithoutCarLoad($product, price: 2_000, quantity: 4);
+
+        // No car load, no stock entries → falls back to product.cost_price = 500
+        // profit = (2000 - 500) × 4 = 6 000
+        $this->assertEquals(6_000, $this->statsService->calculateProfitForVente($vente));
+    }
+
+    // =========================================================================
+    // calculateProfitForVenteFromHistoricalAverage — backfill / legacy path
+    // =========================================================================
+
+    public function test_historical_average_profit_uses_stock_entry_weighted_average_when_car_load_item_has_null_cost(): void
     {
         $team = $this->makeTeam();
         $carLoad = $this->makeCarLoad($team);
@@ -599,31 +720,31 @@ class CarLoadItemCostPriceTest extends TestCase
 
         $vente = $this->makeVenteLinkedToCarLoad($product, $carLoad, price: 5_000, quantity: 5);
 
-        // Falls back to StockEntry weighted avg = 2000
+        // Historical average from StockEntry = 2000
         // profit = (5000 - 2000) × 5 = 15 000
-        $this->assertEquals(15_000, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals(15_000, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 
-    public function test_profit_falls_back_to_stock_entry_weighted_average_when_invoice_has_no_car_load(): void
+    public function test_historical_average_profit_uses_stock_entry_weighted_average_when_invoice_has_no_car_load(): void
     {
         $product = $this->makeProduct(costPrice: 1_000);
         $this->makeStockEntry($product, 100, unitPrice: 4_000);
 
         $vente = $this->makeVenteWithoutCarLoad($product, price: 6_000, quantity: 3);
 
+        // Historical average from StockEntry = 4000
         // profit = (6000 - 4000) × 3 = 6 000
-        $this->assertEquals(6_000, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals(6_000, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 
-    public function test_profit_falls_back_to_product_cost_price_when_no_stock_entries_exist(): void
+    public function test_historical_average_profit_falls_back_to_product_cost_price_when_no_stock_entries_exist(): void
     {
         $product = $this->makeProduct(costPrice: 500);
-        // No StockEntry, no CarLoadItem with cost
 
         $vente = $this->makeVenteWithoutCarLoad($product, price: 2_000, quantity: 4);
 
-        // Falls back to product.cost_price = 500
+        // No stock entries → falls back to product.cost_price = 500
         // profit = (2000 - 500) × 4 = 6 000
-        $this->assertEquals(6_000, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals(6_000, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 }

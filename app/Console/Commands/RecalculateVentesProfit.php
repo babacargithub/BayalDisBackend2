@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Vente;
+use App\Services\SalesInvoiceStatsService;
 use Illuminate\Console\Command;
 
 class RecalculateVentesProfit extends Command
@@ -27,16 +28,12 @@ class RecalculateVentesProfit extends Command
      * This command recalculates profit for all existing Ventes using historical cost prices.
      * It uses the weighted average cost price of stock entries that existed at the time of the sale,
      * which provides a more accurate profit calculation than using the current product cost price.
-     *
-     * @return int
      */
-    public function handle()
+    public function handle(SalesInvoiceStatsService $salesInvoiceStatsService): int
     {
         $this->info('Starting profit recalculation for all Ventes using historical cost prices...');
 
-        // Get all Ventes with their related products
-        // We need the product relationship to access product details
-        $ventes = Vente::with('product')->get();
+        $ventes = Vente::with(['product', 'salesInvoice'])->get();
 
         $count = 0;
         $errors = 0;
@@ -44,10 +41,8 @@ class RecalculateVentesProfit extends Command
         foreach ($ventes as $vente) {
             try {
                 if ($vente->product) {
-                    // Use the Vente model's calculateProfit method to ensure consistency
-                    // This will use historical cost prices from StockEntry records
-                    $vente->calculateProfit($vente);
-                    $vente->save();
+                    $vente->profit = $salesInvoiceStatsService->calculateProfitForVenteFromHistoricalAverage($vente);
+                    $vente->saveQuietly();
 
                     $count++;
                 } else {
@@ -60,7 +55,7 @@ class RecalculateVentesProfit extends Command
             }
         }
 
-        $this->info("Profit recalculation completed!");
+        $this->info('Profit recalculation completed!');
         $this->info("Successfully updated: $count Ventes");
 
         if ($errors > 0) {

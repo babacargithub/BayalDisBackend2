@@ -12,6 +12,7 @@ use App\Models\CaisseTransaction;
 use App\Models\Commercial;
 use App\Models\Vehicle;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class AccountService
@@ -230,7 +231,7 @@ class AccountService
             'transaction_type' => Caisse::TRANSACTION_TYPE_DEPOSIT,
             'label' => $caisseLabel,
         ]);
-        $caisse->increment('balance', $amount);
+        $caisse->updateBalanceFromLedger();
 
         $accountTransaction = $this->credit($account, $amount, $accountLabel, $referenceType, $referenceId);
 
@@ -272,12 +273,77 @@ class AccountService
             'transaction_type' => Caisse::TRANSACTION_TYPE_WITHDRAW,
             'label' => $caisseLabel,
         ]);
-        $caisse->decrement('balance', $amount);
+        $caisse->updateBalanceFromLedger();
 
         return [
             'caisse_transaction' => $caisseTransaction,
             'account_transaction' => $accountTransaction,
         ];
+    }
+
+    // ── Sortie de caisse ────────────────────────────────────────────────────
+
+    /**
+     * Process a "sortie de caisse" (cash-out): withdraw from a caisse and debit
+     * a list of accounts sequentially until the full amount is covered.
+     *
+     * Accounts are debited in the given order. Each account is debited up to its
+     * full balance before moving to the next one. The last account in the list
+     * absorbs only the remaining amount (which will always be <= its balance,
+     * because the controller pre-validates that the total selected balance >= amount).
+     *
+     * The company-wide invariant SUM(caisse.balance) == SUM(account.balance) is
+     * preserved: one caisse withdrawal offset by N account debits of the same total.
+     *
+     * @param  int[]  $orderedAccountIds  Account IDs to debit, in the order provided by the user
+     *
+     * @throws InvalidArgumentException if amount is not positive
+     * @throws InsufficientAccountBalanceException|\Throwable if any individual account debit fails
+     */
+    public function processSortieDeCaisse(
+        Caisse $caisse,
+        int $amount,
+        string $label,
+        array $orderedAccountIds,
+    ): void {
+        if ($amount <= 0) {
+            throw new InvalidArgumentException(
+                "Le montant de la sortie de caisse doit être un entier strictement positif. Reçu : {$amount}."
+            );
+        }
+
+        DB::transaction(function () use ($caisse, $amount, $label, $orderedAccountIds) {
+            // 1. Withdraw the full amount from the caisse in a single transaction.
+            $caisse->transactions()->create([
+                'amount' => $amount,
+                'transaction_type' => Caisse::TRANSACTION_TYPE_WITHDRAW,
+                'label' => $label,
+            ]);
+            $caisse->updateBalanceFromLedger();
+
+            // 2. Debit each account sequentially for at most its available balance.
+            $remainingAmount = $amount;
+            $accountsById = Account::whereIn('id', $orderedAccountIds)->get()->keyBy('id');
+
+            foreach ($orderedAccountIds as $accountId) {
+                if ($remainingAmount <= 0) {
+                    break;
+                }
+
+                $account = $accountsById->get($accountId);
+
+                if ($account === null) {
+                    continue;
+                }
+
+                $amountToDebitFromThisAccount = min($account->balance, $remainingAmount);
+
+                if ($amountToDebitFromThisAccount > 0) {
+                    $this->debit($account, $amountToDebitFromThisAccount, $label, 'SORTIE_DE_CAISSE');
+                    $remainingAmount -= $amountToDebitFromThisAccount;
+                }
+            }
+        });
     }
 
     // ── Invariant verification ───────────────────────────────────────────────

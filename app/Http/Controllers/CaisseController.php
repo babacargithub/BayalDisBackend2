@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\DayAlreadyClosedException;
+use App\Models\Account;
 use App\Models\Caisse;
 use App\Models\CaisseTransaction;
 use App\Models\Commercial;
+use App\Services\AccountService;
 use App\Services\CaisseService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +22,12 @@ class CaisseController extends Controller
     {
         return Inertia::render('Caisse/Index', [
             'caisses' => Caisse::all(),
+            'totalCaissesBalance' => (int) Caisse::query()->sum('balance'),
+            'totalAccountsBalance' => (int) Account::query()->sum('balance'),
+            'debitableAccounts' => Account::query()
+                ->where('balance', '>', 0)
+                ->orderBy('name')
+                ->get(['id', 'name', 'balance']),
         ]);
     }
 
@@ -72,6 +80,12 @@ class CaisseController extends Controller
 
     public function destroy(Caisse $caisse)
     {
+        if ($caisse->balance !== 0) {
+            return redirect()->back()->withErrors([
+                'error' => "Impossible de supprimer la caisse «{$caisse->name}» : son solde doit être à zéro avant suppression.",
+            ]);
+        }
+
         try {
             $caisse->delete();
 
@@ -79,6 +93,52 @@ class CaisseController extends Controller
         } catch (\Exception $e) {
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la suppression de la caisse']);
         }
+    }
+
+    public function sortieDeCaisse(Request $request, AccountService $accountService)
+    {
+        $validated = $request->validate([
+            'caisse_id' => ['required', 'integer', 'exists:caisses,id'],
+            'amount' => ['required', 'integer', 'min:1'],
+            'label' => ['required', 'string', 'max:255'],
+            'account_ids' => ['required', 'array', 'min:1'],
+            'account_ids.*' => ['integer', 'exists:accounts,id'],
+        ], [
+            'caisse_id.required' => 'La caisse source est obligatoire.',
+            'caisse_id.exists' => 'La caisse sélectionnée est introuvable.',
+            'amount.required' => 'Le montant est obligatoire.',
+            'amount.min' => 'Le montant doit être supérieur à zéro.',
+            'label.required' => 'Le libellé est obligatoire.',
+            'account_ids.required' => 'Veuillez sélectionner au moins un compte à débiter.',
+            'account_ids.min' => 'Veuillez sélectionner au moins un compte à débiter.',
+        ]);
+
+        $caisse = Caisse::findOrFail($validated['caisse_id']);
+        $orderedAccountIds = $validated['account_ids'];
+
+        if ($caisse->balance < $validated['amount']) {
+            return back()->withErrors([
+                'caisse_id' => "Le solde de la caisse «{$caisse->name}» ({$caisse->balance} F) est insuffisant pour cette sortie de {$validated['amount']} F.",
+            ]);
+        }
+
+        // Validate that the total balance of selected accounts covers the amount.
+        $totalSelectedBalance = Account::whereIn('id', $orderedAccountIds)->sum('balance');
+
+        if ($totalSelectedBalance < $validated['amount']) {
+            return back()->withErrors([
+                'account_ids' => "Le solde total des comptes sélectionnés ({$totalSelectedBalance} F) est insuffisant pour couvrir le montant de la sortie ({$validated['amount']} F).",
+            ]);
+        }
+
+        $accountService->processSortieDeCaisse(
+            caisse: $caisse,
+            amount: $validated['amount'],
+            label: $validated['label'],
+            orderedAccountIds: $orderedAccountIds,
+        );
+
+        return back()->with('success', 'Sortie de caisse enregistrée avec succès.');
     }
 
     public function transfer(Request $request)
@@ -168,11 +228,9 @@ class CaisseController extends Controller
                 'label' => 'required|string|max:255',
             ]);
 
-            $transaction = $caisse->transactions()->create($validated);
+            $caisse->transactions()->create($validated);
 
-            // Update caisse balance using effective amount
-            $caisse->balance += $transaction->effective_amount;
-            $caisse->save();
+            $caisse->updateBalanceFromLedger();
 
             DB::commit();
 
@@ -217,9 +275,7 @@ class CaisseController extends Controller
         try {
             DB::beginTransaction();
 
-            // Update caisse balance using effective amount
-            $caisse->balance -= $transaction->effective_amount;
-            $caisse->save();
+            $caisse->updateBalanceFromLedger();
 
             $transaction->delete();
 

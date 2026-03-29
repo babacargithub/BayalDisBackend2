@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\SalesInvoiceStatsService;
+use Exception;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,6 @@ use Illuminate\Support\Carbon;
 
 class Vente extends Model
 {
-    use HasFactory;
 
     const PAYMENT_METHOD_CASH = 'CASH';
 
@@ -85,8 +85,9 @@ class Vente extends Model
         parent::boot();
 
         static::saving(function (Vente $vente) {
+
             if ($vente->type === 'SINGLE' && ! $vente->customer_id) {
-                throw new \Exception('Customer ID is required for single ventes');
+                throw new Exception('Customer ID is required for single ventes');
             }
         });
 

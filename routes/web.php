@@ -210,6 +210,7 @@ Route::middleware('auth')->group(function () {
     Route::post('caisses/{caisse}/transactions', [CaisseController::class, 'storeTransaction'])->name('caisses.transactions.store');
     Route::delete('caisses/{caisse}/transactions/{transaction}', [CaisseController::class, 'destroyTransaction'])->name('caisses.transactions.destroy');
     Route::post('caisses/transfer', [CaisseController::class, 'transfer'])->name('caisses.transfer');
+    Route::post('caisses/sortie-de-caisse', [CaisseController::class, 'sortieDeCaisse'])->name('caisses.sortie-de-caisse');
     Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
 
     // Sector routes

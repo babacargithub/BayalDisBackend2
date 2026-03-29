@@ -13,8 +13,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Tests that transportation_cost and packaging_cost on StockEntry
- * are correctly included in the historical cost used for profit calculation.
+ * Tests that transportation_cost and packaging_cost on StockEntry are correctly
+ * included in the historical weighted-average cost used for backfill profit calculation.
+ *
+ * All tests use calculateProfitForVenteFromHistoricalAverage() — the backfill path
+ * that reads from StockEntry records. Real-time invoice creation uses
+ * calculateProfitForVente() (FIFO from CarLoadItem) instead.
  *
  * The profit formula is:
  *   profit = (selling_price - effective_unit_cost) * quantity
@@ -98,7 +102,7 @@ class StockEntryTransportPackagingProfitTest extends TestCase
         // profit = (8889 - 6113) * 1 = 2776
         $expectedProfit = (8_889 - 6_113) * 1;
 
-        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 
     public function test_profit_includes_packaging_cost_in_effective_unit_cost(): void
@@ -121,7 +125,7 @@ class StockEntryTransportPackagingProfitTest extends TestCase
         // effective_cost = 6000 + 0 + 15 = 6015
         $expectedProfit = (8_889 - 6_015) * 1;
 
-        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 
     public function test_profit_includes_both_transportation_and_packaging_cost(): void
@@ -145,7 +149,7 @@ class StockEntryTransportPackagingProfitTest extends TestCase
         // profit = (8889 - 6128) * 150 = 414,150
         $expectedProfit = (int) round((8_889 - 6_128) * 150);
 
-        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 
     public function test_profit_uses_weighted_average_when_multiple_stock_entries_exist(): void
@@ -186,7 +190,7 @@ class StockEntryTransportPackagingProfitTest extends TestCase
         $expectedWeightedCost = (100 * 6_126 + 100 * 6_310) / 200;
         $expectedProfit = (int) round((9_000 - $expectedWeightedCost) * 1);
 
-        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 
     public function test_profit_falls_back_to_product_cost_price_when_no_stock_entries(): void
@@ -197,7 +201,7 @@ class StockEntryTransportPackagingProfitTest extends TestCase
         // No stock entries — falls back to product.cost_price (no transport/packaging)
         $expectedProfit = (8_889 - 6_000) * 1;
 
-        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals($expectedProfit, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 
     public function test_profit_is_zero_for_zero_cost_packaging_product(): void
@@ -219,6 +223,6 @@ class StockEntryTransportPackagingProfitTest extends TestCase
         $vente = $this->makeVente($product, price: 6_000, quantity: 5);
 
         // price = cost → profit = 0
-        $this->assertEquals(0, $this->statsService->calculateProfitForVente($vente));
+        $this->assertEquals(0, $this->statsService->calculateProfitForVenteFromHistoricalAverage($vente));
     }
 }
