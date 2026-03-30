@@ -1,4 +1,4 @@
-<?php
+<?php /** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
 
 namespace App\Services\Commission;
 
@@ -21,6 +21,7 @@ use App\Services\Abc\AbcVehicleCostService;
 use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -226,7 +227,7 @@ readonly class DailyCommissionService
             $thresholdData = $this->computeMandatoryDailyThresholdForWorkDay($commercial, $workDay);
             $mandatoryDailyThreshold = $thresholdData['threshold'];
             $cachedAverageMarginRate = $thresholdData['margin_rate'];
-            $mandatoryThresholdReached = !($mandatoryDailyThreshold > 0) || $mandatoryDailySales >= $mandatoryDailyThreshold;
+            $mandatoryThresholdReached = ! ($mandatoryDailyThreshold > 0) || $mandatoryDailySales >= $mandatoryDailyThreshold;
 
             $netCommission = max(
                 0,
@@ -266,6 +267,11 @@ readonly class DailyCommissionService
                     'commission_amount' => $paymentLineData->commissionAmount,
                 ]);
             }
+
+
+            // --- Sync estimated_commercial_commission on every invoice in this period ---
+           $this->updateEstimatedCommercialCommissionForPeriodInvoices($commercial, Carbon::parse($workDay)
+               ->startOfDay());
 
             return $dailyCommission->fresh();
         });
@@ -312,6 +318,32 @@ readonly class DailyCommissionService
             'confirmed' => $newConfirmedCustomersCount * $setting->confirmed_customer_bonus,
             'prospect' => $newProspectCustomersCount * $setting->prospect_customer_bonus,
         ];
+    }
+
+    /**
+     * Updates sales_invoices.estimated_commercial_commission for all invoices created
+     * within the given work period and belonging to the given commercial.
+     *
+     * For each invoice, the new value is the SUM of commission_amount across all
+     * CommissionPaymentLine records whose linked payment belongs to that invoice.
+     * Invoices with no commission payment lines (e.g. unpaid invoices) are set to 0.
+     *
+     * This must be called inside an open DB::transaction().
+     */
+    private function updateEstimatedCommercialCommissionForPeriodInvoices(
+        Commercial $commercial,
+        Carbon $workDay,
+    ): void
+    {
+        $periodStart = $workDay->startOfDay();
+        $periodEnd = $workDay->clone()->endOfDay();
+        $periodInvoices = SalesInvoice::where('commercial_id', $commercial->id)
+            ->whereBetween('created_at', [$periodStart->toDateTime(), $periodEnd->toDateTime()])->get();
+
+        foreach ($periodInvoices as $invoice) {
+            $invoice->estimated_commercial_commission = $this->salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($invoice);
+            $invoice->save();
+        }
     }
 
     /**
@@ -914,7 +946,7 @@ readonly class DailyCommissionService
         // Collect all work-period IDs for this commercial, then load matching DailyCommissions.
         $workPeriodIds = CommercialWorkPeriod::where('commercial_id', $commercial->id)->pluck('id');
 
-        /** @var \Illuminate\Support\Collection<string, DailyCommission> $dailyCommissionsByDate */
+        /** @var Collection<string, DailyCommission> $dailyCommissionsByDate */
         $dailyCommissionsByDate = DailyCommission::whereIn('commercial_work_period_id', $workPeriodIds)
             ->whereDate('work_day', '>=', $startDateString)
             ->whereDate('work_day', '<=', $endDateString)
@@ -931,11 +963,13 @@ readonly class DailyCommissionService
         $totalNewProspectCustomersBonus = (int) $dailyCommissionsByDate->sum('new_prospect_customers_bonus');
 
         // Period-level new customer counts (queried directly for accuracy).
+        /** @noinspection PhpCastIsUnnecessaryInspection */
         $totalNewConfirmedCustomersCount = (int) Customer::where('commercial_id', $commercial->id)
             ->where('is_prospect', false)
             ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
             ->count();
 
+        /** @noinspection PhpCastIsUnnecessaryInspection */
         $totalNewProspectCustomersCount = (int) Customer::where('commercial_id', $commercial->id)
             ->where('is_prospect', true)
             ->whereBetween('created_at', [$startDate->startOfDay(), $endDate->endOfDay()])
@@ -982,9 +1016,7 @@ readonly class DailyCommissionService
             $dailyCommission = $dailyCommissionsByDate->get($dateString);
 
             $dayMandatoryDailyThreshold = $dailyCommission?->mandatory_daily_threshold ?? 0;
-            $dayMandatoryThresholdReached = $dailyCommission !== null
-                ? (bool) $dailyCommission->mandatory_threshold_reached
-                : true;
+            $dayMandatoryThresholdReached = !($dailyCommission !== null) || $dailyCommission->mandatory_threshold_reached;
             $dayCachedAverageMarginRate = $dailyCommission?->cached_average_margin_rate !== null
                 ? (float) $dailyCommission->cached_average_margin_rate
                 : null;

@@ -242,6 +242,7 @@
                                                             <th class="text-right text-error">Pénalités</th>
                                                             <th class="text-right">Seuil</th>
                                                             <th class="text-right font-weight-bold">Net</th>
+                                                            <th v-if="!workPeriod.is_finalized"></th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -299,6 +300,17 @@
                                                             <td class="text-right font-weight-bold text-primary">
                                                                 {{ formatCurrency(dailyCommission.net_commission) }}
                                                             </td>
+                                                            <td v-if="!workPeriod.is_finalized" class="text-right">
+                                                                <v-btn
+                                                                    size="x-small"
+                                                                    color="primary"
+                                                                    variant="tonal"
+                                                                    :loading="recomputingDayKey === `${workPeriod.id}-${dailyCommission.work_day}`"
+                                                                    @click="openRecomputeDayDialog(workPeriod, dailyCommission)"
+                                                                >
+                                                                    Recalculer
+                                                                </v-btn>
+                                                            </td>
                                                         </tr>
                                                     </tbody>
                                                     <tfoot>
@@ -313,6 +325,7 @@
                                                             </td>
                                                             <td></td>
                                                             <td class="text-right text-primary">{{ formatCurrency(periodNetTotal(workPeriod)) }}</td>
+                                                            <td v-if="!workPeriod.is_finalized"></td>
                                                         </tr>
                                                     </tfoot>
                                                 </v-table>
@@ -450,6 +463,29 @@
                 </v-tabs-window>
             </div>
         </div>
+
+        <!-- Dialog: Recompute single work day -->
+        <v-dialog v-model="recomputeDayDialog" max-width="440px" persistent>
+            <v-card>
+                <v-card-title>Recalculer les commissions</v-card-title>
+                <v-card-text>
+                    Recalculer les commissions du
+                    <strong>{{ recomputeDayTarget ? formatDate(recomputeDayTarget.dailyCommission.work_day) : '' }}</strong>
+                    pour <strong>{{ recomputeDayTarget?.workPeriod.commercial_name }}</strong> ?
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" variant="text" @click="recomputeDayDialog = false">Annuler</v-btn>
+                    <v-btn
+                        color="primary"
+                        :loading="recomputeDayForm.processing"
+                        @click="confirmRecomputeDay"
+                    >
+                        Recalculer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <!-- Dialog: New customer commission setting -->
         <v-dialog v-model="newCustomerSettingDialog" max-width="440px" persistent>
@@ -922,6 +958,35 @@ function computeCommission(workPeriod) {
         route('commissions.work-periods.compute', workPeriod.id),
         {},
         { preserveScroll: true, onFinish: () => { computingId.value = null; } },
+    );
+}
+
+// ─── Recompute single work day ────────────────────────────────────────────────
+
+const recomputeDayDialog = ref(false);
+const recomputeDayTarget = ref(null);
+const recomputeDayForm = useForm({});
+const recomputingDayKey = ref(null);
+
+function openRecomputeDayDialog(workPeriod, dailyCommission) {
+    recomputeDayTarget.value = { workPeriod, dailyCommission };
+    recomputeDayDialog.value = true;
+}
+
+function confirmRecomputeDay() {
+    const { workPeriod, dailyCommission } = recomputeDayTarget.value;
+    const dayKey = `${workPeriod.id}-${dailyCommission.work_day}`;
+    recomputingDayKey.value = dayKey;
+    recomputeDayForm.post(
+        route('commissions.work-periods.recompute-commissions-for-work-day', {
+            workPeriod: workPeriod.id,
+            workDay: dailyCommission.work_day,
+        }),
+        {
+            preserveScroll: true,
+            onSuccess: () => { recomputeDayDialog.value = false; },
+            onFinish: () => { recomputingDayKey.value = null; },
+        },
     );
 }
 

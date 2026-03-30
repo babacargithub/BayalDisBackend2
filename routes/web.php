@@ -133,6 +133,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/work-periods/{workPeriod}/penalties', [CommissionController::class, 'storePenalty'])->name('penalties.store');
         Route::delete('/penalties/{penalty}', [CommissionController::class, 'destroyPenalty'])->name('penalties.destroy');
         Route::post('/work-periods/{workPeriod}/compute', [CommissionController::class, 'computeForWorkPeriod'])->name('work-periods.compute');
+        Route::post('/work-periods/{workPeriod}/{workDay}/re-compute', [CommissionController::class, 'recomputeCommissionsForWorkDay'])->name('work-periods.recompute-commissions-for-work-day');
         Route::post('/work-periods/{workPeriod}/finalize', [CommissionController::class, 'finalizeWorkPeriod'])->name('work-periods.finalize');
     });
 

@@ -18,12 +18,16 @@ use App\Models\SalesInvoice;
 use App\Models\User;
 use App\Models\Vente;
 use App\Services\Abc\AbcVehicleCostService;
+use App\Services\CarLoadService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
+use App\Services\PricingPolicyService;
+use App\Services\SalesInvoiceService;
 use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -52,6 +56,7 @@ class DailyCommissionServiceTest extends TestCase
             new CommissionCalculatorService(new CommissionRateResolverService),
             new AbcVehicleCostService,
             new SalesInvoiceStatsService(new CommissionRateResolverService),
+            new SalesInvoiceService(new CarLoadService, new PricingPolicyService),
         );
 
         $this->user = User::factory()->create();
@@ -929,5 +934,109 @@ class DailyCommissionServiceTest extends TestCase
         $this->assertEquals(15_000, $tuesday->objective_bonus);
         $this->assertEquals(1_000, $tuesday->total_penalties);
         $this->assertEquals(16_275, $tuesday->net_commission); // 1_750 + 525 + 15_000 − 1_000
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // estimated_commercial_commission sync after recalculateDailyCommissionForWorkDay
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_commercial_estimated_commissions_are_recalculated_after_work_day_recompute(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0200, // 2 %
+        ]);
+
+        $payment = $this->makePaidInvoiceOnDate($product, 1, 10_000, Carbon::parse('2026-03-03'));
+        $invoiceId = $payment->salesInvoice->id;
+
+        // Corrupt the stored value to simulate stale data.
+        DB::table('sales_invoices')->where('id', $invoiceId)->update(['estimated_commercial_commission' => 99_999]);
+        $this->assertEquals(99_999, SalesInvoice::find($invoiceId)->estimated_commercial_commission);
+
+        $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-03',
+        );
+
+        // 10_000 × 1 × 2 % = 200
+        $this->assertEquals(200, SalesInvoice::find($invoiceId)->estimated_commercial_commission);
+    }
+
+    public function test_multiple_invoices_on_same_day_all_get_updated(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 5_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0500, // 5 %
+        ]);
+
+        $paymentA = $this->makePaidInvoiceOnDate($product, 2, 5_000, Carbon::parse('2026-03-04'));
+        $paymentB = $this->makePaidInvoiceOnDate($product, 3, 5_000, Carbon::parse('2026-03-04'));
+
+        $invoiceAId = $paymentA->salesInvoice->id;
+        $invoiceBId = $paymentB->salesInvoice->id;
+
+        // Corrupt both values.
+        DB::table('sales_invoices')->whereIn('id', [$invoiceAId, $invoiceBId])->update(['estimated_commercial_commission' => 1]);
+
+        $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-04',
+        );
+
+        // Invoice A: 5_000 × 2 × 5 % = 500
+        $this->assertEquals(500, SalesInvoice::find($invoiceAId)->estimated_commercial_commission);
+        // Invoice B: 5_000 × 3 × 5 % = 750
+        $this->assertEquals(750, SalesInvoice::find($invoiceBId)->estimated_commercial_commission);
+    }
+
+    public function test_invoice_on_different_day_is_not_updated(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0200,
+        ]);
+
+        // Invoice created on Tuesday, recalculation runs for Wednesday.
+        $payment = $this->makePaidInvoiceOnDate($product, 1, 10_000, Carbon::parse('2026-03-03'));
+        $invoiceId = $payment->salesInvoice->id;
+
+        DB::table('sales_invoices')->where('id', $invoiceId)->update(['estimated_commercial_commission' => 55_555]);
+
+        $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-04', // different day
+        );
+
+        // The Tuesday invoice must remain untouched.
+        $this->assertEquals(55_555, SalesInvoice::find($invoiceId)->estimated_commercial_commission);
+    }
+
+    public function test_invoice_with_no_commission_rate_gets_zero_after_recompute(): void
+    {
+        // No CommercialProductCommissionRate created — rate resolves to 0.
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        $payment = $this->makePaidInvoiceOnDate($product, 1, 10_000, Carbon::parse('2026-03-03'));
+        $invoiceId = $payment->salesInvoice->id;
+
+        // Force a non-zero stale value.
+        DB::table('sales_invoices')->where('id', $invoiceId)->update(['estimated_commercial_commission' => 12_345]);
+
+        $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-03',
+        );
+
+        $this->assertEquals(0, SalesInvoice::find($invoiceId)->estimated_commercial_commission);
     }
 }

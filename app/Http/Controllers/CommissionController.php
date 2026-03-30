@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
+use Throwable;
 
 class CommissionController extends Controller
 {
@@ -234,6 +235,9 @@ class CommissionController extends Controller
 
     // ─── Penalties ─────────────────────────────────────────────────────────────
 
+    /**
+     * @throws Throwable
+     */
     public function storePenalty(Request $request, CommercialWorkPeriod $workPeriod): RedirectResponse
     {
         if ($workPeriod->is_finalized) {
@@ -288,7 +292,21 @@ class CommissionController extends Controller
     {
         try {
             $this->dailyCommissionService->recomputeAllDaysForWorkPeriod($workPeriod);
-        } catch (RuntimeException $runtimeException) {
+        } catch (RuntimeException|Throwable $runtimeException) {
+            return redirect()->back()->withErrors(['error' => $runtimeException->getMessage()]);
+        }
+
+        return redirect()->back()->with('success', 'Commissions journalières recalculées.');
+    }
+    public function recomputeCommissionsForWorkDay(CommercialWorkPeriod $workPeriod, string $workDay): RedirectResponse
+    {
+        try {
+            $this->dailyCommissionService->recalculateDailyCommissionForWorkDay(
+                $workPeriod->commercial,
+                $workPeriod,
+                $workDay,
+            );
+        } catch (RuntimeException|Throwable $runtimeException) {
             return redirect()->back()->withErrors(['error' => $runtimeException->getMessage()]);
         }
 

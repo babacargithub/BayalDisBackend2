@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Support\Facades\DB;
 
 class CarLoad extends Model
@@ -98,5 +99,17 @@ class CarLoad extends Model
             ->where('car_load_items.car_load_id', $this->id)
             ->where('car_load_items.quantity_left', '>', 0)
             ->sum(DB::raw('car_load_items.quantity_left * products.cost_price'));
+    }
+
+    public function commercial(): HasOneThrough
+    {
+        return $this->hasOneThrough(
+            User::class,
+            Team::class,
+            'id',       // FK on Team matched against CarLoad's local key (team_id)
+            'id',       // PK on User
+            'team_id',  // local key on CarLoad
+            'user_id'   // FK on Team pointing to the manager User
+        );
     }
 }
