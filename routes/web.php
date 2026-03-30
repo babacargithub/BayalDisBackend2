@@ -187,8 +187,6 @@ Route::middleware('auth')->group(function () {
         Route::put('/{client}', [CustomerController::class, 'update'])->name('update');
         Route::delete('/{client}', [CustomerController::class, 'destroy'])->name('destroy');
     });
-    Route::resource('clients', CustomerController::class);
-
     Route::resource('customer-categories', CustomerCategoryController::class);
     Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');
 

@@ -76,7 +76,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Misc
         Route::get('customer-categories', [ApiCustomerController::class, 'getCustomerCategories']);
-        Route::post('orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
+        Route::post('orders/{order}/payments/', [PaymentController::class, 'store'])->name('salesperson.orders.payments.store');
 
         // Car loads
         Route::get('car-loads/current-items', [ApiCarLoadController::class, 'getCurrentItems']);
