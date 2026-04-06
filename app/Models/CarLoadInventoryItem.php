@@ -13,12 +13,12 @@ class CarLoadInventoryItem extends Model
         'total_loaded',
         'total_sold',
         'total_returned',
-        'comment'
+        'comment',
     ];
 
     protected $casts = [
-//        'total_loaded' => 'integer',
-//        'total_returned' => 'integer',
+        //        'total_loaded' => 'integer',
+        //        'total_returned' => 'integer',
     ];
 
     public function carLoadInventory(): BelongsTo
@@ -26,9 +26,9 @@ class CarLoadInventoryItem extends Model
         return $this->belongsTo(CarLoadInventory::class, 'car_load_inventory_id');
     }
 
-  /*  public function getTotalSoldAttribute()
-    {
-        // if product is parent, get all children and sum their sales
+    /*  public function getTotalSoldAttribute()
+      {
+          // if product is parent, get all children and sum their sales
 //        if ($this->product->is_base_product) {
 //            // use joins to get all children sales
 //                            $sqlQuery = '
@@ -68,17 +68,17 @@ class CarLoadInventoryItem extends Model
 //                return $result[0]->total_parent_equivalent_sold;
 //            }
 //        }
-        return Vente::where("product_id", $this->product_id)
-            ->whereBetween("created_at", [
-                $this->carLoadInventory->carLoad->load_date,
-                $this->carLoadInventory->carLoad->return_date
-            ])
-            // TODO filter by team
-            ->sum("quantity");
-    }*/
+          return Vente::where("product_id", $this->product_id)
+              ->whereBetween("created_at", [
+                  $this->carLoadInventory->carLoad->load_date,
+                  $this->carLoadInventory->carLoad->return_date
+              ])
+              // TODO filter by team
+              ->sum("quantity");
+      }*/
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
     }
-} 
+}

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Enums\CarLoadItemSource;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadItem;
@@ -421,8 +422,7 @@ class InventoryPdfViewTest extends TestCase
             'product_id' => $variant->id,
             'quantity_loaded' => 1, // → 1 × (25/50) = 0.5 parent carton added to total_loaded
             'quantity_left' => 1,
-            'from_previous_car_load' => true,
-            'loaded_at' => now()->subDay(),
+            'source' => CarLoadItemSource::FromPreviousCarLoad->value,                                                                                                                                                         'loaded_at' => now()->subDay(),
         ]);
 
         $response = $this->callExportPdf($manager, $carLoad, $inventory);
@@ -438,6 +438,96 @@ class InventoryPdfViewTest extends TestCase
         $response->assertSee('1 paquets');
         $response->assertSee('Eau 1L Demi');
         $response->assertSee('-5 500 F');
+    }
+
+    /**
+     * Regression test for the bug introduced in commit 9c2f2954.
+     *
+     * The refactoring from `from_previous_car_load` boolean to the `source` enum accidentally
+     * changed the children-loaded filter to include Warehouse-sourced items in addition to
+     * FromPreviousCarLoad items. This inflates the parent's total_loaded, making the inventory
+     * appear to show a massive shortage ("Manque") for products that actually balanced.
+     *
+     * Setup (paquetsPerCarton = 50/25 = 2):
+     *   parent:  base_quantity=50, price=10 000 F
+     *   child:   base_quantity=25  → 1 child = 0.5 parent carton
+     *
+     *   CarLoadItems for child:
+     *     10 units  source=Warehouse         → must NOT count toward parent loaded
+     *      6 units  source=FromPreviousCarLoad → MUST add 6×0.5 = 3.0 parent cartons
+     *
+     *   Inventory item for parent: total_loaded=5, total_sold=5, total_returned=0
+     *
+     * Correct PDF output:
+     *   Loaded column : 8 cartons  (5 + 3)
+     *   Sold column   : 5 cartons
+     *   Result        : -3 → Manque 3 cartons
+     *   Price         : 3 × 2 paquets × 5 500 F = -33 000 F
+     *
+     * Buggy PDF output (what the current broken code produces):
+     *   Loaded column : 13 cartons  (5 + (10+6)×0.5)  ← WRONG
+     *   Result        : -8 → Manque 8 cartons          ← WRONG
+     */
+    public function test_warehouse_child_items_do_not_inflate_parent_loaded_column_in_pdf(): void
+    {
+        [$manager, $team] = $this->makeManagerAndTeam();
+        $carLoad = $this->makeCarLoadForTeam($team);
+        $inventory = $this->makeInventory($carLoad, $manager);
+
+        $parent = Product::create(['name' => 'Carton Eau 1L', 'price' => 10000, 'cost_price' => 8000, 'base_quantity' => 50]);
+        $child = Product::create(['name' => 'Paquet 25pcs Eau 1L', 'price' => 5500, 'cost_price' => 4000, 'parent_id' => $parent->id, 'base_quantity' => 25]);
+
+        $inventory->items()->create(['product_id' => $parent->id, 'total_loaded' => 5, 'total_sold' => 5, 'total_returned' => 0]);
+
+        // 10 child units loaded directly from warehouse — must NOT add to parent total_loaded
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $child->id,
+            'quantity_loaded' => 10,
+            'quantity_left' => 10,
+            'source' => CarLoadItemSource::Warehouse->value,
+            'loaded_at' => now()->subDay(),
+        ]);
+
+        // 6 child units rolled over from a previous car load → 6 × 0.5 = 3.0 parent cartons
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $child->id,
+            'quantity_loaded' => 6,
+            'quantity_left' => 6,
+            'source' => CarLoadItemSource::FromPreviousCarLoad->value,
+            'loaded_at' => now()->subDay(),
+        ]);
+
+        $response = $this->callExportPdf($manager, $carLoad, $inventory);
+        $html = $response->getContent();
+
+        $response->assertOk();
+
+        // Loaded column must show 8 cartons (5 parent + 3 from from_previous child), NOT 13.
+        $this->assertMatchesRegularExpression(
+            '/8 cartons/',
+            $html,
+            'Loaded column must show 8 cartons — Warehouse child items must not be counted'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/13 cartons/',
+            $html,
+            'Loaded column must NOT show 13 cartons — that would mean Warehouse children were incorrectly included'
+        );
+
+        // Result = 5 + 0 − 8 = −3 → Manque 3 cartons (not 8)
+        $response->assertSee('Manque');
+        $this->assertMatchesRegularExpression(
+            '/Manque.*3 cartons/s',
+            $html,
+            'Result must be Manque 3 cartons — not inflated to 8 by Warehouse children'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/Manque.*8 cartons/s',
+            $html,
+            'Result must NOT be Manque 8 cartons — that is the buggy inflated value'
+        );
     }
 
     // ─── Product name ─────────────────────────────────────────────────────────

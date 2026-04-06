@@ -146,7 +146,6 @@ class SectorController extends Controller
         ]);
 
         // Add all customers from the sector to the visit batch
-        // TODO remove this condition later to include all customers
         $customerIds = $sector->customers()->where('is_prospect', false)->pluck('customers.id');
         foreach ($customerIds as $customerId) {
             $visitBatch->visits()->create([

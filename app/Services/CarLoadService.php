@@ -88,7 +88,6 @@ class CarLoadService
                 'quantity_loaded' => $data['quantity_loaded'],
                 'comment' => $data['comment'] ?? null,
             ]);
-            // TODO check the difference after update on warehouse stock update it accordingly
             if (isset($data['quantity_left'])) {
                 $item->quantity_left = $data['quantity_left'];
                 $item->save();
@@ -161,39 +160,6 @@ class CarLoadService
     /**
      * @throws Throwable
      */
-    public function createCarLoadFromAnotherPreviousCarLoad(CarLoad $previousCarLoad): CarLoad
-    {
-        if (! $previousCarLoad->status->isTerminal()) {
-            throw new Exception('Can only create a new car load from a fully settled car load (FULL_INVENTORY or TERMINATED_AND_TRANSFERRED)');
-        }
-
-        return DB::transaction(function () use ($previousCarLoad) {
-            $previousCarLoad->update(['status' => CarLoadStatus::TerminatedAndTransferred]);
-
-            $newCarLoad = CarLoad::create([
-                'name' => $previousCarLoad->name.' (Copy)',
-                'team_id' => $previousCarLoad->team_id,
-                'status' => CarLoadStatus::Loading,
-                'load_date' => Carbon::now(),
-                'previous_car_load_id' => $previousCarLoad->id,
-            ]);
-
-            foreach ($previousCarLoad->items as $item) {
-                $newCarLoad->items()->create([
-                    'product_id' => $item->product_id,
-                    'quantity_loaded' => $item->quantity_loaded,
-                    'cost_price_per_unit' => $item->cost_price_per_unit,
-                    'loaded_at' => Carbon::now(),
-                    'comment' => $item->comment,
-                    'source' => CarLoadItemSource::FromPreviousCarLoad,
-                    'from_previous_car_load_id' => $previousCarLoad->id,
-                ]);
-            }
-
-            return $newCarLoad;
-        });
-    }
-
     public function getCarLoadsByTeam(int $teamId)
     {
         return CarLoad::where('team_id', $teamId)
@@ -293,17 +259,27 @@ class CarLoadService
                 'return_date' => Carbon::now()->endOfWeek(),
                 'comment' => "Créé à partir de l'inventaire #{$inventory->id}",
                 'previous_car_load_id' => $carLoad->id,
+                'vehicle_id' => $carLoad->vehicle_id,
             ]);
 
-            // Create items based on inventory differences
+            // Create items based on inventory return quantities.
+            // Cost price is computed via FIFO-weighted average over the batches still
+            // in the previous car load so the new car load inherits the correct cost basis.
             foreach ($inventory->items as $item) {
                 $remainingQuantity = $item->total_returned;
 
                 if ($remainingQuantity > 0) {
+                    $costPricePerUnit = $this->computeFifoWeightedCostPriceForQuantityInCarLoad(
+                        $item->product,
+                        $remainingQuantity,
+                        $carLoad
+                    );
+
                     $newCarLoad->items()->create([
                         'product_id' => $item->product_id,
                         'quantity_loaded' => $remainingQuantity,
                         'quantity_left' => $remainingQuantity,
+                        'cost_price_per_unit' => $costPricePerUnit,
                         'source' => CarLoadItemSource::FromPreviousCarLoad,
                         'from_previous_car_load_id' => $carLoad->id,
                         'loaded_at' => Carbon::now()->toDateString(),
@@ -600,10 +576,7 @@ class CarLoadService
             $childItemsCountingAsLoaded = $carLoad->items()
                 ->join('products', 'products.id', '=', 'car_load_items.product_id')
                 ->where('products.parent_id', $parentProduct->id)
-                ->whereIn('source', [
-                    CarLoadItemSource::Warehouse->value,
-                    CarLoadItemSource::FromPreviousCarLoad->value,
-                ])
+                ->where('source', CarLoadItemSource::FromPreviousCarLoad->value)
                 ->get();
 
             foreach ($childItemsCountingAsLoaded as $childItem) {

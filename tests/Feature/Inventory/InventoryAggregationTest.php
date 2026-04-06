@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Inventory;
 
+use App\Enums\CarLoadItemSource;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
+use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Product;
@@ -161,6 +163,110 @@ class InventoryAggregationTest extends TestCase
         // total_sold is computed by joining ventes → sales_invoices WHERE car_load_id = carLoad.id
         $this->assertSame(4, (int) $parentItem->total_sold, 'Parent direct sales counted');
         $this->assertSame(6, (int) $variantItem->total_sold, 'Variant direct sales counted');
+    }
+
+    /**
+     * Regression test for the bug introduced in commit 9c2f2954.
+     *
+     * After the refactoring from the boolean `from_previous_car_load` column to the
+     * `source` enum, the children's loaded filter was accidentally changed to include
+     * BOTH `Warehouse` AND `FromPreviousCarLoad` child items. Only `FromPreviousCarLoad`
+     * children should ever add to the parent's total_loaded — `Warehouse`-sourced children
+     * were loaded as individual units and are tracked entirely on their own inventory item;
+     * including them again under the parent double-counts their stock.
+     *
+     * Setup:
+     *   parent:  base_quantity=50, price=10 000 F
+     *   child:   base_quantity=25  → 1 child unit = 0.5 parent carton
+     *
+     *   CarLoadItems for child:
+     *     10 units  source=Warehouse         → must NOT add to parent total_loaded
+     *      6 units  source=FromPreviousCarLoad → MUST add: 6 × 0.5 = 3.0 parent cartons
+     *
+     *   Inventory item for parent: total_loaded=5, total_sold=5, total_returned=0
+     *
+     * Expected (correct) total_loaded = 5 + 3.0 = 8.0
+     * Expected result                 = 5 + 0 − 8.0 = −3.0
+     *
+     * Buggy code includes Warehouse → total_loaded = 5 + (10+6)×0.5 = 13.0 → result = −8.0  ← WRONG
+     */
+    public function test_warehouse_child_items_are_not_counted_in_parent_total_loaded_only_from_previous_car_load_children_count(): void
+    {
+        $team = $this->makeTeamWithManager();
+        $commercial = $this->makeCommercialForTeam($team);
+        $this->actingAs($commercial->user);
+
+        $parent = Product::create([
+            'name' => 'Carton Parent 50u',
+            'price' => 10000,
+            'cost_price' => 8000,
+            'base_quantity' => 50,
+        ]);
+        $child = Product::create([
+            'name' => 'Paquet Enfant 25pcs',
+            'price' => 5500,
+            'cost_price' => 4000,
+            'parent_id' => $parent->id,
+            'base_quantity' => 25,
+        ]);
+
+        $carLoad = $this->makeActiveCarLoadForTeam($team);
+
+        $inventory = $carLoad->inventory()->create([
+            'name' => 'Inventaire Exclusion Warehouse',
+            'user_id' => $commercial->user->id,
+        ]);
+        $inventory->items()->create([
+            'product_id' => $parent->id,
+            'total_loaded' => 5,
+            'total_sold' => 5,
+            'total_returned' => 0,
+        ]);
+
+        // 10 child units from the warehouse — these are tracked under their own inventory item
+        // and must NOT be added to the parent product's total_loaded.
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $child->id,
+            'quantity_loaded' => 10,
+            'quantity_left' => 10,
+            'source' => CarLoadItemSource::Warehouse->value,
+            'loaded_at' => now()->subDay(),
+        ]);
+
+        // 6 child units rolled over from the previous car load — these MUST add
+        // 6 × (25/50) = 3.0 parent-equivalent cartons to total_loaded.
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $child->id,
+            'quantity_loaded' => 6,
+            'quantity_left' => 6,
+            'source' => CarLoadItemSource::FromPreviousCarLoad->value,
+            'loaded_at' => now()->subDay(),
+        ]);
+
+        $service = new CarLoadService;
+        $computedResult = $service->getCalculatedQuantitiesOfProductsInInventory($carLoad, $inventory);
+
+        $parentComputedItem = collect($computedResult['items'])
+            ->first(fn ($item) => $item->parent->name === $parent->name);
+
+        $this->assertNotNull($parentComputedItem, 'Parent product must appear in computed inventory items');
+
+        // Expected total_loaded = 5 (parent inv item) + 6 × 0.5 (from_previous child) = 8.0
+        // Buggy code gives 5 + (10 + 6) × 0.5 = 13.0
+        $this->assertEquals(
+            8.0,
+            $parentComputedItem->totalLoaded,
+            'total_loaded must count only FromPreviousCarLoad children — Warehouse children must be excluded to avoid double-counting'
+        );
+
+        // result = total_sold + total_returned − total_loaded = 5 + 0 − 8 = −3.0
+        $this->assertEquals(
+            -3.0,
+            $parentComputedItem->resultOfComputation,
+            'Result must reflect the correct total_loaded (8.0), not the inflated value (13.0) produced by including Warehouse children'
+        );
     }
 
     public function test_determine_total_sold_of_parent_includes_converted_children_but_excludes_parent_direct_sales_current_behavior(): void

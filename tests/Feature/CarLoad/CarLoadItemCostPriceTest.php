@@ -5,6 +5,7 @@ namespace Tests\Feature\CarLoad;
 use App\Enums\CarLoadItemSource;
 use App\Enums\CarLoadStatus;
 use App\Models\CarLoad;
+use App\Models\CarLoadInventory;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -31,7 +32,7 @@ use Tests\TestCase;
  *  - transformToVariants: null parent cost propagates as null (legacy)
  *  - computeFifoWeightedCostPriceForQuantityInCarLoad: weighted average across batches
  *  - computeFifoWeightedCostPriceForQuantityInCarLoad: returns null for legacy items
- *  - createCarLoadFromAnotherPreviousCarLoad: cost_price_per_unit is carried over
+ *  - createFromInventory: cost_price_per_unit is carried over via FIFO weighted average
  *  - SalesInvoiceStatsService: profit uses CarLoadItem cost when available
  *  - SalesInvoiceStatsService: falls back to weighted-average when CarLoadItem has null cost
  *  - SalesInvoiceStatsService: falls back to weighted-average when no car_load_id on invoice
@@ -457,12 +458,13 @@ class CarLoadItemCostPriceTest extends TestCase
     }
 
     // =========================================================================
-    // createCarLoadFromAnotherPreviousCarLoad — cost carried over
+    // createFromInventory — cost carried over via FIFO weighted average
     // =========================================================================
 
     public function test_rollover_car_load_carries_cost_price_per_unit_to_new_car_load(): void
     {
         $team = $this->makeTeam();
+        $manager = User::factory()->create();
         $previousCarLoad = CarLoad::create([
             'name' => 'Previous Load',
             'team_id' => $team->id,
@@ -483,16 +485,31 @@ class CarLoadItemCostPriceTest extends TestCase
             'source' => CarLoadItemSource::Warehouse,
         ]);
 
-        $newCarLoad = $this->carLoadService->createCarLoadFromAnotherPreviousCarLoad($previousCarLoad);
+        $inventory = CarLoadInventory::create([
+            'car_load_id' => $previousCarLoad->id,
+            'name' => 'Inventaire Clôturé',
+            'user_id' => $manager->id,
+            'closed' => true,
+        ]);
+        $inventory->items()->create([
+            'product_id' => $product->id,
+            'total_loaded' => 30,
+            'total_sold' => 20,
+            'total_returned' => 10,
+        ]);
+
+        $newCarLoad = $this->carLoadService->createFromInventory($inventory);
 
         $newItem = $newCarLoad->items()->where('product_id', $product->id)->sole();
-        $this->assertEquals(5_500, $newItem->cost_price_per_unit);
+        $this->assertEquals(10, $newItem->quantity_loaded, 'New item quantity must equal total_returned, not total_loaded');
+        $this->assertEquals(5_500, $newItem->cost_price_per_unit, 'FIFO weighted cost must be carried over to the new car load item');
         $this->assertEquals(CarLoadItemSource::FromPreviousCarLoad, $newItem->source);
     }
 
     public function test_rollover_car_load_carries_null_cost_when_previous_item_had_no_cost(): void
     {
         $team = $this->makeTeam();
+        $manager = User::factory()->create();
         $previousCarLoad = CarLoad::create([
             'name' => 'Previous Legacy Load',
             'team_id' => $team->id,
@@ -513,10 +530,24 @@ class CarLoadItemCostPriceTest extends TestCase
             'source' => CarLoadItemSource::Warehouse,
         ]);
 
-        $newCarLoad = $this->carLoadService->createCarLoadFromAnotherPreviousCarLoad($previousCarLoad);
+        $inventory = CarLoadInventory::create([
+            'car_load_id' => $previousCarLoad->id,
+            'name' => 'Inventaire Clôturé Legacy',
+            'user_id' => $manager->id,
+            'closed' => true,
+        ]);
+        $inventory->items()->create([
+            'product_id' => $product->id,
+            'total_loaded' => 20,
+            'total_sold' => 15,
+            'total_returned' => 5,
+        ]);
+
+        $newCarLoad = $this->carLoadService->createFromInventory($inventory);
 
         $newItem = $newCarLoad->items()->where('product_id', $product->id)->sole();
-        $this->assertNull($newItem->cost_price_per_unit);
+        $this->assertEquals(5, $newItem->quantity_loaded, 'New item quantity must equal total_returned');
+        $this->assertNull($newItem->cost_price_per_unit, 'Null cost from legacy item must propagate as null');
     }
 
     // =========================================================================

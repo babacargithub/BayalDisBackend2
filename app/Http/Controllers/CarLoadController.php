@@ -386,7 +386,14 @@ class CarLoadController extends Controller
     public function createFromPrevious(CarLoad $carLoad)
     {
         try {
-            $newCarLoad = $this->carLoadService->createCarLoadFromAnotherPreviousCarLoad($carLoad);
+            $inventory = $carLoad->inventory;
+
+            if (! $inventory || ! $inventory->closed) {
+                return redirect()->back()
+                    ->with('error', 'Ce chargement doit avoir un inventaire clôturé avant de créer un nouveau chargement');
+            }
+
+            $newCarLoad = $this->carLoadService->createFromInventory($inventory);
 
             return redirect()->route('car-loads.show', $newCarLoad)
                 ->with('success', 'Nouveau chargement créé avec succès');

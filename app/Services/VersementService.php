@@ -97,16 +97,16 @@ readonly class VersementService
                 'transaction_type' => Caisse::TRANSACTION_TYPE_WITHDRAW,
                 'label' => "Versement — {$commercial->name}",
             ]);
-            // TODO this is not safe, must use Recalculate balance
-            $commercialCaisse->decrement('balance', $amountToVerse);
+            $commercialCaisse->updateBalanceFromLedger();
+            $commercialCaisse->save();
 
             $caisseDepositTransaction = $mainCaisse->transactions()->create([
                 'amount' => $amountToVerse,
                 'transaction_type' => Caisse::TRANSACTION_TYPE_DEPOSIT,
                 'label' => "Versement de {$commercial->name}",
             ]);
-            // TODO this is not safe, must use updateBalance
-            $mainCaisse->increment('balance', $amountToVerse);
+            $mainCaisse->updateBalanceFromLedger();
+            $mainCaisse->save();
 
             // ── Step 2: Reallocate between accounts ───────────────────────────
             // Skipped when "Clôturer Journée" has already settled the accounts
