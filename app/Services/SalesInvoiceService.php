@@ -65,7 +65,7 @@ readonly class SalesInvoiceService
 
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
-                'invoice_number' => 'F'.date('Ymd').'-'.str_pad(SalesInvoice::count() + 1, 4, '0', STR_PAD_LEFT),
+                'invoice_number' => 'F'.date('Ymd').'-'.str_pad(SalesInvoice::max('id')+ 1, 4, '0', STR_PAD_LEFT),
                 'comment' => $data['comment'] ?? 'Facture de Vente',
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
                 'commercial_id' => $user->commercial->id,
