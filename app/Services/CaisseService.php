@@ -186,6 +186,9 @@ readonly class CaisseService
                 );
             }
 
+            // ── Invariant guard ────────────────────────────────────────────────────────
+            $this->accountService->assertGlobalInvariantHolds();
+
             // ── Step 6: Lock the caisse ────────────────────────────────────────────────
             $caisse->update(['locked_until' => $date->copy()->setTime(23, 59, 59, 999999)]);
         });

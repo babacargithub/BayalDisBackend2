@@ -11,10 +11,16 @@
                         <strong class="text-gray-800">{{ formatAmount(totalBalance) }}</strong>
                     </p>
                 </div>
-                <v-btn color="primary" @click="openCreateDialog">
-                    <v-icon start>mdi-plus</v-icon>
-                    Nouveau Compte
-                </v-btn>
+                <div class="flex gap-2">
+                    <v-btn color="secondary" variant="tonal" @click="openTransferDialog">
+                        <v-icon start>mdi-bank-transfer</v-icon>
+                        Transfert entre comptes
+                    </v-btn>
+                    <v-btn color="primary" @click="openCreateDialog">
+                        <v-icon start>mdi-plus</v-icon>
+                        Nouveau Compte
+                    </v-btn>
+                </div>
             </div>
         </template>
 
@@ -253,6 +259,81 @@
                         @click="confirmDelete"
                     >
                         Supprimer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- ── Inter-Account Transfer Dialog ─────────────────────────────── -->
+        <v-dialog v-model="transferDialog" max-width="520px" persistent>
+            <v-card>
+                <v-card-title class="text-h6 pa-6 pb-2">Transfert entre comptes</v-card-title>
+
+                <v-card-text class="pa-6 pt-2">
+                    <v-alert
+                        type="info"
+                        variant="tonal"
+                        density="compact"
+                        class="mb-4 text-body-2"
+                    >
+                        Ce transfert réalloue des fonds entre deux comptes sans modifier les caisses.
+                    </v-alert>
+
+                    <v-form ref="transferForm" @submit.prevent="submitTransfer">
+                        <v-autocomplete
+                            v-model="transferFormData.from_account_id"
+                            :items="accountsWithBalance"
+                            item-title="displayName"
+                            item-value="id"
+                            label="Compte source *"
+                            variant="outlined"
+                            :error-messages="transferFormData.errors.from_account_id"
+                            class="mb-4"
+                            no-data-text="Aucun compte avec solde disponible"
+                        />
+
+                        <v-autocomplete
+                            v-model="transferFormData.to_account_id"
+                            :items="transferDestinationAccounts"
+                            item-title="displayName"
+                            item-value="id"
+                            label="Compte destination *"
+                            variant="outlined"
+                            :error-messages="transferFormData.errors.to_account_id"
+                            class="mb-4"
+                            no-data-text="Aucun compte disponible"
+                        />
+
+                        <v-text-field
+                            v-model.number="transferFormData.amount"
+                            label="Montant (F CFA) *"
+                            type="number"
+                            min="1"
+                            variant="outlined"
+                            :error-messages="transferFormData.errors.amount"
+                            :hint="selectedSourceAccountBalance !== null ? `Solde disponible : ${formatAmount(selectedSourceAccountBalance)}` : ''"
+                            persistent-hint
+                            class="mb-4"
+                        />
+
+                        <v-text-field
+                            v-model="transferFormData.label"
+                            label="Libellé *"
+                            variant="outlined"
+                            :error-messages="transferFormData.errors.label"
+                        />
+                    </v-form>
+                </v-card-text>
+
+                <v-card-actions class="pa-6 pt-0">
+                    <v-spacer />
+                    <v-btn variant="text" color="error" @click="closeTransferDialog">Annuler</v-btn>
+                    <v-btn
+                        color="primary"
+                        :loading="transferFormData.processing"
+                        @click="submitTransfer"
+                    >
+                        Transférer
                     </v-btn>
                 </v-card-actions>
             </v-card>
@@ -568,6 +649,61 @@ const confirmDelete = () => {
         onError: () => {
             deleteDialog.value = false;
         },
+    });
+};
+
+// ── Inter-account transfer dialog ─────────────────────────────────────────
+
+const transferDialog = ref(false);
+const transferForm = ref(null);
+
+const transferFormData = useForm({
+    from_account_id: null,
+    to_account_id: null,
+    amount: null,
+    label: '',
+});
+
+const accountsWithBalance = computed(() =>
+    props.accounts
+        .filter((account) => account.balance > 0)
+        .map((account) => ({
+            ...account,
+            displayName: `${account.name} — ${formatAmount(account.balance)}`,
+        }))
+);
+
+const transferDestinationAccounts = computed(() =>
+    props.accounts
+        .filter((account) => account.id !== transferFormData.from_account_id)
+        .map((account) => ({
+            ...account,
+            displayName: `${account.name} — ${formatAmount(account.balance)}`,
+        }))
+);
+
+const selectedSourceAccountBalance = computed(() => {
+    if (!transferFormData.from_account_id) {
+        return null;
+    }
+    const sourceAccount = props.accounts.find((account) => account.id === transferFormData.from_account_id);
+    return sourceAccount?.balance ?? null;
+});
+
+const openTransferDialog = () => {
+    transferFormData.reset();
+    transferDialog.value = true;
+};
+
+const closeTransferDialog = () => {
+    transferDialog.value = false;
+    transferFormData.reset();
+};
+
+const submitTransfer = () => {
+    transferFormData.post(route('accounts.transfer'), {
+        preserveScroll: true,
+        onSuccess: () => closeTransferDialog(),
     });
 };
 

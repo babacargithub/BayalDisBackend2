@@ -204,6 +204,7 @@ Route::middleware('auth')->group(function () {
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
     Route::post('products/{product}/transform', [ProductController::class, 'transformToVariants'])->name('products.transform');
 
+    Route::post('accounts/transfer', [AccountController::class, 'transfer'])->name('accounts.transfer');
     Route::get('accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
     Route::resource('accounts', AccountController::class)->only(['index', 'store', 'update', 'destroy']);
 

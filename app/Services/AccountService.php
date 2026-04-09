@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountTransactionType;
 use App\Enums\AccountType;
 use App\Exceptions\InsufficientAccountBalanceException;
+use App\Exceptions\InvariantException;
 use App\Models\Account;
 use App\Models\AccountTransaction;
 use App\Models\Caisse;
@@ -235,6 +236,8 @@ class AccountService
 
         $accountTransaction = $this->credit($account, $amount, $accountLabel, $referenceType, $referenceId);
 
+        $this->assertGlobalInvariantHolds();
+
         return [
             'caisse_transaction' => $caisseTransaction,
             'account_transaction' => $accountTransaction,
@@ -274,6 +277,8 @@ class AccountService
             'label' => $caisseLabel,
         ]);
         $caisse->updateBalanceFromLedger();
+
+        $this->assertGlobalInvariantHolds();
 
         return [
             'caisse_transaction' => $caisseTransaction,
@@ -343,6 +348,8 @@ class AccountService
                     $remainingAmount -= $amountToDebitFromThisAccount;
                 }
             }
+
+            $this->assertGlobalInvariantHolds();
         });
     }
 
@@ -372,6 +379,30 @@ class AccountService
     public function isGlobalInvariantSatisfied(): bool
     {
         return $this->computeTotalAccountBalance() === $this->computeTotalCaisseBalance();
+    }
+
+    /**
+     * Assert that the company-wide invariant holds after an operation.
+     *
+     * Call this at the end of every self-contained financial operation
+     * (paired caisse+account or account+account transfers). Because callers
+     * always wrap their work in DB::transaction(), throwing here triggers an
+     * automatic rollback — the violating writes are never persisted.
+     *
+     * @throws InvariantException if SUM(account.balance) ≠ SUM(caisse.balance)
+     */
+    public function assertGlobalInvariantHolds(): void
+    {
+        $totalAccountBalance = $this->computeTotalAccountBalance();
+        $totalCaisseBalance = $this->computeTotalCaisseBalance();
+
+        if ($totalAccountBalance !== $totalCaisseBalance) {
+            throw new InvariantException(
+                "Violation de l'invariant comptable : la somme des comptes ({$totalAccountBalance} F) "
+                ."ne correspond pas à la somme des caisses ({$totalCaisseBalance} F). "
+                .'Opération annulée.'
+            );
+        }
     }
 
     // ── Account lookup / provisioning ───────────────────────────────────────

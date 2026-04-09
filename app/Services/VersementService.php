@@ -141,8 +141,8 @@ readonly class VersementService
                 $merchandiseAccountTransaction = $this->accountService->credit(
                     account: $merchandiseSalesAccount,
                     amount: $merchandiseToCredit,
-                    label: "Vente marchandises — versement {$commercial->name}",
-                    referenceType: 'VERSEMENT',
+                    label: "Vente marchandises — versement de {$commercial->name}",
+                    referenceType: 'VERSEMENT du '.now()->format('d/m/Y'),
                 );
             }
 
@@ -166,6 +166,9 @@ readonly class VersementService
 
             DailyCommission::whereIn('id', $unversedDailyCommissions->pluck('id'))
                 ->update(['versement_id' => $versement->id]);
+
+            // ── Invariant guard ────────────────────────────────────────────────
+            $this->accountService->assertGlobalInvariantHolds();
 
             return $versement;
         });

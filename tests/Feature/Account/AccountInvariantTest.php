@@ -150,7 +150,7 @@ class AccountInvariantTest extends TestCase
             'label' => 'Solde initial',
             'reference_type' => 'INITIAL',
         ]);
-        $merchandiseSalesAccount->increment('balance', $existingBalance);
+        $merchandiseSalesAccount->updateBalanceFromLedger();
 
         $this->assertGlobalInvariantHolds();
     }

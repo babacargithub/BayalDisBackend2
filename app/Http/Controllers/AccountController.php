@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AccountType;
+use App\Exceptions\InsufficientAccountBalanceException;
+use App\Exceptions\InvariantException;
 use App\Http\Requests\StoreAccountRequest;
+use App\Http\Requests\TransferBetweenAccountsRequest;
 use App\Http\Requests\UpdateAccountRequest;
 use App\Models\Account;
 use App\Models\Commercial;
@@ -12,6 +15,7 @@ use App\Services\AccountService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -71,6 +75,45 @@ class AccountController extends Controller
         }
 
         return back()->with('flash', ['success' => 'Compte supprimé avec succès.']);
+    }
+
+    /**
+     * Transfer an amount from one account to another.
+     *
+     * This is a pure account reallocation — no caisse is touched.
+     * The global invariant SUM(account.balance) == SUM(caisse.balance) is preserved
+     * because the debit and credit cancel out to a net zero change in total account balances.
+     *
+     * @throws \Throwable
+     */
+    public function transfer(TransferBetweenAccountsRequest $request): RedirectResponse
+    {
+        $validated = $request->validated();
+
+        $fromAccount = Account::findOrFail($validated['from_account_id']);
+        $toAccount = Account::findOrFail($validated['to_account_id']);
+        if ($fromAccount->id === $toAccount->id) {
+            return back()->with('flash', ['error' => 'Impossible de faire un transfert sur le meme compte.']);
+
+        }
+
+        try {
+            DB::transaction(function () use ($fromAccount, $toAccount, $validated) {
+                $this->accountService->transferBetweenAccounts(
+                    fromAccount: $fromAccount,
+                    toAccount: $toAccount,
+                    amount: $validated['amount'],
+                    label: $validated['label'],
+                    referenceType: 'INTER_ACCOUNT_TRANSFER',
+                );
+
+                $this->accountService->assertGlobalInvariantHolds();
+            });
+        } catch (InsufficientAccountBalanceException|InvariantException $exception) {
+            return back()->with('flash', ['error' => $exception->getMessage()]);
+        }
+
+        return back()->with('flash', ['success' => 'Transfert entre comptes effectué avec succès.']);
     }
 
     /**

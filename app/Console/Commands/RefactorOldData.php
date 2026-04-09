@@ -1247,7 +1247,7 @@ class RefactorOldData extends Command
         //            'reference_id' => null,
         //        ]);
         //
-        //        $merchandiseSalesAccount->increment('balance', $deficit);
+        //        $merchandiseSalesAccount->updateBalanceFromLedger();
         //
         //        $this->info("  Credited MERCHANDISE_SALES with {$deficit} F (initial balance attribution). Invariant satisfied.");
     }
