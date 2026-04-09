@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CarLoadStatus;
 use App\Jobs\RecalculateInvoicesDeliveryCostJob;
+use App\Services\Abc\CarLoadCostAggregatorService;
 use App\Services\Abc\VehicleCostCalculatorService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -41,20 +42,22 @@ class CarLoad extends Model
         // updates to the car load (e.g. changing dates or any other field) always
         // reflect the vehicle's current monthly cost structure.
         static::saving(function (CarLoad $carLoad): void {
-            if ($carLoad->vehicle_id === null) {
-                $carLoad->fixed_daily_cost = null;
-            } else {
-                $vehicle = Vehicle::find($carLoad->vehicle_id);
-                if ($vehicle !== null) {
-                    $carLoad->fixed_daily_cost = app(VehicleCostCalculatorService::class)
-                        ->computePredeterminedDailyRunningCostForVehicle($vehicle);
-                }
-            }
+
         });
 
         // After the fixed_daily_cost is persisted, redistribute the daily delivery cost
         // across all today's invoices linked to this car load so financial totals stay current.
         static::saved(function (CarLoad $carLoad): void {
+
+            if ($carLoad->vehicle_id === null) {
+                $carLoad->fixed_daily_cost = null;
+            } else {
+                $vehicle = Vehicle::find($carLoad->vehicle_id);
+                if ($vehicle !== null) {
+                    $carLoad->fixed_daily_cost = app(CarLoadCostAggregatorService::class)
+                        ->computeTotalDailyCostForCarLoad($carLoad);
+                }
+            }
             RecalculateInvoicesDeliveryCostJob::dispatch(
                 carLoadId: $carLoad->id,
                 workDay: today()->toDateString(),

@@ -701,6 +701,82 @@ class CloseDayTest extends TestCase
         $this->assertSame(50_000, $merchandiseSalesAccount->balance);
     }
 
+    public function test_close_day_distributes_fixed_costs_when_car_load_is_in_loading_status(): void
+    {
+        // A car load in LOADING status (being prepared) should still trigger fixed cost distribution.
+        // This is the real-world scenario: after one car load cycle ends, the next car load is
+        // created in LOADING state while commercials continue receiving payments on old invoices.
+        // Fixed costs (warehouse rent, overhead) accrue daily regardless of car load selling status.
+        $commercial = $this->createCommercialWithCaisse(50_000);
+        $team = $this->createTeam('Équipe chargement en cours');
+        $commercial->update(['team_id' => $team->id]);
+
+        CarLoad::create([
+            'name' => 'Chargement en préparation',
+            'load_date' => today(),
+            'team_id' => $team->id,
+            'vehicle_id' => null,
+            'status' => CarLoadStatus::Loading,
+        ]);
+
+        $this->createMonthlyFixedCost(MonthlyFixedCostPool::Storage, 26_000, perVehicleAmount: 26_000);
+        // daily = 26_000 / 26 = 1_000
+        $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
+
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
+
+        // MERCHANDISE_SALES: +50_000 (step 1) - 1_000 (fixed cost step 4) = 49_000
+        $merchandiseSalesAccount->refresh();
+        $this->assertSame(49_000, $merchandiseSalesAccount->balance);
+
+        $storageAccount = Account::where('account_type', AccountType::FixedCost->value)
+            ->where('name', MonthlyFixedCostPool::Storage->label())
+            ->firstOrFail();
+        $this->assertSame(1_000, $storageAccount->balance);
+    }
+
+    public function test_close_day_distributes_vehicle_costs_when_car_load_is_in_loading_status_with_vehicle(): void
+    {
+        // A car load in LOADING status WITH a vehicle should distribute vehicle daily costs.
+        // The vehicle is already assigned and its daily operating costs should start accruing.
+        $vehicle = Vehicle::factory()->create([
+            'depreciation_monthly' => 26_000, // 1_000 / day
+            'insurance_monthly' => 0,
+            'repair_reserve_monthly' => 0,
+            'maintenance_monthly' => 0,
+            'driver_salary_monthly' => 0,
+            'estimated_daily_fuel_consumption' => 2_000,
+            'working_days_per_month' => 26,
+        ]);
+        // total daily = 1_000 (depreciation) + 2_000 (fuel) = 3_000
+
+        $commercial = $this->createCommercialWithCaisse(100_000);
+        $team = $this->createTeam('Équipe avec véhicule en chargement');
+        $commercial->update(['team_id' => $team->id]);
+
+        CarLoad::create([
+            'name' => 'Chargement avec véhicule',
+            'load_date' => today(),
+            'team_id' => $team->id,
+            'vehicle_id' => $vehicle->id,
+            'status' => CarLoadStatus::Loading,
+        ]);
+
+        $merchandiseSalesAccount = $this->createMerchandiseSalesAccount(0);
+
+        $this->closeDayService->closeCaisseForDay($commercial, Carbon::today());
+
+        // Vehicle depreciation account should have 1_000 credited.
+        $depreciationAccount = Account::where('account_type', AccountType::VehicleDepreciation->value)
+            ->where('vehicle_id', $vehicle->id)
+            ->firstOrFail();
+        $this->assertSame(1_000, $depreciationAccount->balance);
+
+        // MERCHANDISE_SALES: +100_000 (step 1) - 3_000 (vehicle costs step 3) = 97_000
+        $merchandiseSalesAccount->refresh();
+        $this->assertSame(97_000, $merchandiseSalesAccount->balance);
+    }
+
     public function test_close_day_vehicle_costs_are_not_distributed_twice_when_two_commercials_on_same_team_close(): void
     {
         $vehicle = Vehicle::factory()->create([

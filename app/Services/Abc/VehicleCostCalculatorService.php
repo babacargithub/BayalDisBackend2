@@ -116,17 +116,10 @@ class VehicleCostCalculatorService
         if ($carLoad->vehicle_id === null) {
             return 0;
         }
+        $vehicle = $carLoad->vehicle;
 
-        $dailyRate = $carLoad->fixed_daily_cost;
+        $dailyRate = $this->computePredeterminedDailyRunningCostForVehicle($vehicle);
 
-        if ($dailyRate === null) {
-            $vehicle = $carLoad->vehicle;
-
-            if ($vehicle === null) {
-                return 0;
-            }
-            $dailyRate = $this->computePredeterminedDailyRunningCostForVehicle($vehicle);
-        }
 
         return $dailyRate * ($carLoad->vehicle->working_days_per_month ?? 0);
     }

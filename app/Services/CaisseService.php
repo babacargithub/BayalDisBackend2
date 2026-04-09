@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
+use App\Data\Vente\VenteStatsFilter;
 use App\Enums\AccountType;
-use App\Enums\CarLoadStatus;
 use App\Enums\MonthlyFixedCostPool;
 use App\Exceptions\DayAlreadyClosedException;
 use App\Models\Account;
@@ -13,7 +13,7 @@ use App\Models\Commercial;
 use App\Models\CommercialWorkPeriod;
 use App\Models\DailyCommission;
 use App\Models\MonthlyFixedCost;
-use App\Models\Payment;
+use App\Services\Abc\FixedCostCalculationAndDistributionService;
 use App\Services\Abc\VehicleCostCalculatorService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +55,9 @@ readonly class CaisseService
     public function __construct(
         private AccountService $accountService,
         private VehicleCostCalculatorService $vehicleCostService,
+        private readonly FixedCostCalculationAndDistributionService $fixedCostCalculationAndDistributionService,
+        private CarLoadService $carLoadService,
+        private SalesInvoiceStatsService $salesInvoiceStatsService,
     ) {}
 
     /**
@@ -150,7 +153,9 @@ readonly class CaisseService
             }
 
             // Look up active car load once — shared by steps 3 and 4.
-            $activeCarLoad = $this->findActiveCarLoad($commercial);
+            $activeCarLoad = $commercial->team !== null
+                ? $this->carLoadService->getCurrentCarLoadForTeam($commercial->team)
+                : null;
 
             // ── Step 3: Distribute vehicle daily operating costs ──────────────────────
             // Finds the vehicle from the commercial's currently active car load, then
@@ -169,7 +174,11 @@ readonly class CaisseService
             // This follows the same formula as StatisticsService: totalRealizedProfit − totalCommissions − totalCosts.
             // The positive remainder is transferred from MERCHANDISE_SALES → PROFIT.
             // When costs exceed gross profit (net profit ≤ 0), this step is skipped.
-            $grossDailyProfit = $this->computeGrossDailyProfit($commercial, $date);
+            $grossDailyProfit = $this->salesInvoiceStatsService->totalRealizedProfits(
+                startDate: $date->copy()->startOfDay(),
+                endDate: $date->copy()->endOfDay(),
+                filter: VenteStatsFilter::new()->thatAreMadeByCommercial($commercial->id),
+            );
             $netDailyProfit = $grossDailyProfit - $commissionTransferredAmount - $vehicleCostsDistributed - $fixedCostsDistributed;
 
             if ($netDailyProfit > 0) {
@@ -303,14 +312,10 @@ readonly class CaisseService
             ->exists()) {
             return 0;
         }
+        $fixedCosts = $this->fixedCostCalculationAndDistributionService->computeProratedFixedCostsForCarLoad($activeCarLoad, daily:  true);
 
-        $defaultWorkingDaysPerMonth = 26;
-        $dailyStorageAmount = (int) round(
-            $this->computeCarLoadPoolMonthlyAllocation($activeCarLoad, MonthlyFixedCostPool::Storage, $date) / $defaultWorkingDaysPerMonth
-        );
-        $dailyOverheadAmount = (int) round(
-            $this->computeCarLoadPoolMonthlyAllocation($activeCarLoad, MonthlyFixedCostPool::Overhead, $date) / $defaultWorkingDaysPerMonth
-        );
+        $dailyStorageAmount = (int) round($fixedCosts->storageAllocation);
+        $dailyOverheadAmount = (int) round($fixedCosts->overheadAllocation );
 
         $totalDailyFixedCost = $dailyStorageAmount + $dailyOverheadAmount;
 
@@ -364,94 +369,6 @@ readonly class CaisseService
         return $totalDailyFixedCost;
     }
 
-    /**
-     * Compute this car load's monthly allocation for a given fixed cost pool.
-     *
-     * Formula (same as AbcFixedCostDistributionService, but computed live from raw
-     * amounts so it works even when the month has not yet been finalized):
-     *
-     *   per_carload_monthly = pool_total / active_vehicle_count / carloads_for_this_vehicle
-     *
-     * - pool_total              : sum of MonthlyFixedCost.amount for the pool in this month
-     * - active_vehicle_count    : distinct vehicles with a car load this month
-     * - carloads_for_this_vehicle: how many car loads this vehicle ran this month
-     *
-     * @return int monthly XOF amount allocated to this car load for the given pool
-     */
-    private function computeCarLoadPoolMonthlyAllocation(
-        CarLoad $activeCarLoad,
-        MonthlyFixedCostPool $pool,
-        Carbon $date,
-    ): int {
-        $year = $date->year;
-        $month = $date->month;
-
-        $poolTotal = (int) MonthlyFixedCost::query()
-            ->where('cost_pool', $pool)
-            ->where('period_year', $year)
-            ->where('period_month', $month)
-            ->sum('amount');
-
-        if ($poolTotal === 0) {
-            return 0;
-        }
-
-        $activeVehicleCount = max(1, CarLoad::query()
-            ->whereNotNull('vehicle_id')
-            ->whereYear('load_date', $year)
-            ->whereMonth('load_date', $month)
-            ->distinct('vehicle_id')
-            ->count('vehicle_id'));
-
-        $carloadsForThisVehicleThisMonth = max(1, CarLoad::query()
-            ->where('vehicle_id', $activeCarLoad->vehicle_id)
-            ->whereYear('load_date', $year)
-            ->whereMonth('load_date', $month)
-            ->count());
-
-        return (int) round($poolTotal / $activeVehicleCount / $carloadsForThisVehicleThisMonth);
-    }
-
-    /**
-     * Sum of Payment.profit for all payments received by this commercial on the given date.
-     *
-     * This is the "gross daily profit" — the realized margin on goods sold and paid for today.
-     * Formula mirrors StatisticsService: totalRealizedProfit = SUM(payments.profit).
-     *
-     * Returns 0 when the commercial has no user account (factory default) or when no
-     * payments were received today.
-     */
-    private function computeGrossDailyProfit(Commercial $commercial, Carbon $date): int
-    {
-        if ($commercial->user_id === null) {
-            return 0;
-        }
-
-        return (int) Payment::where('user_id', $commercial->user_id)
-            ->whereDate('created_at', $date->toDateString())
-            ->sum('profit');
-    }
-
-    /**
-     * Find the commercial's currently active car load.
-     * "Active" means the vehicle is still in operation: Selling or OngoingInventory.
-     * Returns null if the commercial has no team or the team has no active car load.
-     */
-    private function findActiveCarLoad(Commercial $commercial): ?CarLoad
-    {
-        $team = $commercial->team;
-
-        if ($team === null) {
-            return null;
-        }
-
-        return CarLoad::query()
-            ->where('team_id', $team->id)
-            ->whereIn('status', [CarLoadStatus::Selling, CarLoadStatus::OngoingInventory])
-            ->with('vehicle')
-            ->orderByDesc('id')
-            ->first();
-    }
 
     /**
      * Find today's DailyCommission for the commercial that has not yet been finalized.

@@ -22,3 +22,4 @@ dev-setup.sh
 simulate-second-vehicle.php
 simulate-vehicle2-via-http.php
 /test-accounts-receive-the-correct-amount.php
+debug-close-day.php

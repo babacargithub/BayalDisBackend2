@@ -62,7 +62,8 @@ class FixedCostCalculationAndDistributionService
      * If the month is still open, falls back to the previous month's per_vehicle_amount
      * as an estimate — clearly flagged via the isMonthFinalized flag on the DTO.
      */
-    public function computeAllocatedFixedCostsForCarLoad(CarLoad $carLoad): CarLoadFixedCostAllocationDTO
+    public function computeProratedFixedCostsForCarLoad(CarLoad $carLoad, bool $daily = false):
+    CarLoadFixedCostAllocationDTO
     {
         if ($carLoad->load_date === null) {
             return CarLoadFixedCostAllocationDTO::zero();
@@ -92,8 +93,8 @@ class FixedCostCalculationAndDistributionService
         );
 
         return new CarLoadFixedCostAllocationDTO(
-            storageAllocation: $storageAllocation,
-            overheadAllocation: $overheadAllocation,
+            storageAllocation: !$daily ? $storageAllocation : ($storageAllocation / ($carLoad->vehicle?->working_days_per_month ?? 1)),
+            overheadAllocation: !$daily ? $overheadAllocation : ($overheadAllocation / ($carLoad->vehicle?->working_days_per_month ?? 1)),
         );
     }
 

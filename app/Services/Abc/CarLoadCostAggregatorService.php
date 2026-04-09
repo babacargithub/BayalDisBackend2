@@ -33,8 +33,7 @@ readonly class CarLoadCostAggregatorService
     public function computeTotalOverallCostForCarLoad(CarLoad $carLoad): int
     {
         $totalVehicleCost = $this->abcVehicleCostService->computeTotalVehiclePredeterminedAndVariableCostForCarLoad($carLoad);
-
-        $fixedCostAllocation = $this->abcFixedCostDistributionService->computeAllocatedFixedCostsForCarLoad($carLoad);
+        $fixedCostAllocation = $this->abcFixedCostDistributionService->computeProratedFixedCostsForCarLoad($carLoad);
         $totalFixedAllocation = $fixedCostAllocation->storageAllocation + $fixedCostAllocation->overheadAllocation;
 
         return $totalVehicleCost + $totalFixedAllocation;
@@ -66,7 +65,7 @@ readonly class CarLoadCostAggregatorService
         $vehicleFixedCost = $this->abcVehicleCostService->computeAlreadyElapsedVehicleCostForCarLoad($carLoad);
         $vehicleExpensesCost = $this->abcVehicleCostService->computeVariableExpensesForCarLoad($carLoad);
 
-        $fixedCostAllocation = $this->abcFixedCostDistributionService->computeAllocatedFixedCostsForCarLoad($carLoad);
+        $fixedCostAllocation = $this->abcFixedCostDistributionService->computeProratedFixedCostsForCarLoad($carLoad);
 
         $isMonthFinalized = $carLoad->load_date !== null
             && $this->abcFixedCostDistributionService->isMonthFinalized(

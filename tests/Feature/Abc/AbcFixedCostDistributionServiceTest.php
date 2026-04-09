@@ -180,7 +180,7 @@ class AbcFixedCostDistributionServiceTest extends TestCase
             'finalized_at' => now(),
         ]);
 
-        $allocation = $this->service->computeAllocatedFixedCostsForCarLoad($carLoad);
+        $allocation = $this->service->computeProratedFixedCostsForCarLoad($carLoad);
 
         $this->assertEquals(172_000, $allocation->storageAllocation);
         $this->assertEquals(225_000, $allocation->overheadAllocation);
@@ -204,8 +204,8 @@ class AbcFixedCostDistributionServiceTest extends TestCase
             'finalized_at' => now(),
         ]);
 
-        $allocation1 = $this->service->computeAllocatedFixedCostsForCarLoad($carLoad1);
-        $allocation2 = $this->service->computeAllocatedFixedCostsForCarLoad($carLoad2);
+        $allocation1 = $this->service->computeProratedFixedCostsForCarLoad($carLoad1);
+        $allocation2 = $this->service->computeProratedFixedCostsForCarLoad($carLoad2);
 
         $this->assertEquals(86_000, $allocation1->storageAllocation);
         $this->assertEquals(86_000, $allocation2->storageAllocation);
@@ -218,7 +218,7 @@ class AbcFixedCostDistributionServiceTest extends TestCase
         // The service only reads $carLoad->load_date — no DB query is needed for this edge case.
         $carLoad = new CarLoad(['load_date' => null, 'vehicle_id' => null]);
 
-        $allocation = $this->service->computeAllocatedFixedCostsForCarLoad($carLoad);
+        $allocation = $this->service->computeProratedFixedCostsForCarLoad($carLoad);
 
         $this->assertEquals(0, $allocation->storageAllocation);
         $this->assertEquals(0, $allocation->overheadAllocation);
@@ -260,7 +260,7 @@ class AbcFixedCostDistributionServiceTest extends TestCase
             ]);
         }
 
-        $allocation = $this->service->computeAllocatedFixedCostsForCarLoad($carLoad);
+        $allocation = $this->service->computeProratedFixedCostsForCarLoad($carLoad);
 
         $this->assertEquals(162_000, $allocation->storageAllocation);
     }

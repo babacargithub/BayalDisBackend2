@@ -519,6 +519,27 @@ class CarLoadService
             ->first();
     }
 
+    /**
+     * Find the team's currently in-progress car load by status.
+     *
+     * "In-progress" covers Loading (being stocked), Selling (in the field),
+     * and OngoingInventory (end-of-cycle count). Loading is included because
+     * daily fixed costs (warehouse, overhead) accrue from the moment a car
+     * load is created — not only once it starts selling.
+     *
+     * Returns null when the team has no car load in any of these statuses
+     * (e.g. between cycles where all car loads are terminated).
+     */
+    public function findInProgressCarLoadForTeam(Team $team): ?CarLoad
+    {
+        return CarLoad::query()
+            ->where('team_id', $team->id)
+            ->whereIn('status', [CarLoadStatus::Loading, CarLoadStatus::Selling, CarLoadStatus::OngoingInventory])
+            ->with('vehicle')
+            ->orderByDesc('id')
+            ->first();
+    }
+
     private function convertQuantity(Product $product, float|int $quantity): ConvertedQuantityDTO
     {
         $convertedDisplay = $product->getFormattedDisplayOfCartonAndParquets($quantity);

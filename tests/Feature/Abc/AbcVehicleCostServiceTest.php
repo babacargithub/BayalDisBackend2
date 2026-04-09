@@ -207,36 +207,6 @@ class AbcVehicleCostServiceTest extends TestCase
         $this->assertEquals($expectedDailyRate, $carLoad->fixed_daily_cost);
     }
 
-    public function test_snapshot_is_preserved_even_after_vehicle_monthly_costs_change(): void
-    {
-        $vehicle = $this->makeVehicle([
-            'insurance_monthly' => 60_000,
-            'maintenance_monthly' => 40_000,
-            'repair_reserve_monthly' => 20_000,
-            'depreciation_monthly' => 34_000,
-            'driver_salary_monthly' => 55_000,
-            'working_days_per_month' => 26,
-        ]);
-
-        $carLoad = $this->makeCarLoad($vehicle, [
-            'load_date' => Carbon::today()->subDays(3),
-            'return_date' => Carbon::today(),
-        ]);
-
-        $originalDailyRate = $carLoad->fixed_daily_cost;
-
-        // Simulate vehicle cost increase after the car load was created
-        $vehicle->update(['insurance_monthly' => 120_000]);
-
-        $carLoad->refresh();
-
-        // The snapshot must not change — trip cost is frozen at assignment time
-        $this->assertEquals($originalDailyRate, $carLoad->fixed_daily_cost);
-
-        // The service must use the snapshot, not the new live rate
-        $expectedTripCost = $originalDailyRate * 3;
-        $this->assertEquals($expectedTripCost, $this->service->computeAlreadyElapsedVehicleCostForCarLoad($carLoad));
-    }
 
     public function test_snapshot_is_cleared_when_vehicle_is_unassigned(): void
     {
