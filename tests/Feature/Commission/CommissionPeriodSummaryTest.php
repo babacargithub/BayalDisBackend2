@@ -17,7 +17,9 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\CarLoadCostAggregatorService;
+use App\Services\Abc\FixedCostCalculationAndDistributionService;
+use App\Services\Abc\VehicleCostCalculatorService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
@@ -68,7 +70,10 @@ class CommissionPeriodSummaryTest extends TestCase
 
         $this->service = new DailyCommissionService(
             new CommissionCalculatorService(new CommissionRateResolverService),
-            new AbcVehicleCostService,
+            new CarLoadCostAggregatorService(
+                new VehicleCostCalculatorService,
+                new FixedCostCalculationAndDistributionService,
+            ),
             new SalesInvoiceStatsService(new CommissionRateResolverService),
         );
 

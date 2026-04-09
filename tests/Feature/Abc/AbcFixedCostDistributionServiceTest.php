@@ -9,7 +9,7 @@ use App\Models\MonthlyFixedCost;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vehicle;
-use App\Services\Abc\AbcFixedCostDistributionService;
+use App\Services\Abc\FixedCostCalculationAndDistributionService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -18,12 +18,12 @@ class AbcFixedCostDistributionServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private AbcFixedCostDistributionService $service;
+    private FixedCostCalculationAndDistributionService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new AbcFixedCostDistributionService;
+        $this->service = new FixedCostCalculationAndDistributionService;
     }
 
     private function makeVehicle(string $name = 'Camion Alpha'): Vehicle

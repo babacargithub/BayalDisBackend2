@@ -16,7 +16,7 @@ use App\Models\Vehicle;
  * All arithmetic lives here so the frontend receives pre-computed values
  * and can be tested independently of the UI.
  */
-class AbcCostSummaryService
+class CostAggregatesService
 {
     private const FALLBACK_WORKING_DAYS_PER_MONTH = 26;
 

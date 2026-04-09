@@ -14,9 +14,9 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vehicle;
-use App\Services\Abc\AbcCarLoadProfitabilityService;
-use App\Services\Abc\AbcFixedCostDistributionService;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\CarLoadCostAggregatorService;
+use App\Services\Abc\FixedCostCalculationAndDistributionService;
+use App\Services\Abc\VehicleCostCalculatorService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -25,14 +25,14 @@ class AbcCarLoadProfitabilityServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private AbcCarLoadProfitabilityService $service;
+    private CarLoadCostAggregatorService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new AbcCarLoadProfitabilityService(
-            new AbcVehicleCostService,
-            new AbcFixedCostDistributionService,
+        $this->service = new CarLoadCostAggregatorService(
+            new VehicleCostCalculatorService,
+            new FixedCostCalculationAndDistributionService,
         );
     }
 

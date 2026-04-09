@@ -14,7 +14,7 @@ use App\Models\CommercialWorkPeriod;
 use App\Models\DailyCommission;
 use App\Models\MonthlyFixedCost;
 use App\Models\Payment;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\VehicleCostCalculatorService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -54,7 +54,7 @@ readonly class CaisseService
 {
     public function __construct(
         private AccountService $accountService,
-        private AbcVehicleCostService $vehicleCostService,
+        private VehicleCostCalculatorService $vehicleCostService,
     ) {}
 
     /**
@@ -226,7 +226,7 @@ readonly class CaisseService
         }
 
         /** @var array<int, array{0: AccountType, 1: int}> $allCostEntries */
-        $allCostEntries = $this->vehicleCostService->computeDailyFixedCostBreakdownForVehicle($activeVehicle);
+        $allCostEntries = $this->vehicleCostService->computeCostBreakdownPerDayForVehicle($activeVehicle);
         $totalVehicleCost = (int) array_sum(array_column($allCostEntries, 1));
 
         if ($totalVehicleCost <= 0) {

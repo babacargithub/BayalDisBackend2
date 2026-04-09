@@ -15,7 +15,7 @@ use App\Models\Vehicle;
  * Variable expenses (fuel, parking, fines, washing, etc.) are entered as actual
  * receipts via CarLoadExpense and summed directly.
  */
-class AbcVehicleCostService
+class VehicleCostCalculatorService
 {
     /**
      * Maps vehicle field names to their corresponding AccountType.
@@ -36,7 +36,7 @@ class AbcVehicleCostService
      * Daily fixed cost for a vehicle, excluding fuel.
      * Variable expenses are tracked per trip via CarLoadExpense.
      */
-    public function computeDailyRunningCostForVehicle(Vehicle $vehicle): int
+    public function computePredeterminedDailyRunningCostForVehicle(Vehicle $vehicle): int
     {
         if ($vehicle->working_days_per_month === 0) {
             return 0;
@@ -46,6 +46,7 @@ class AbcVehicleCostService
         foreach (array_keys(self::VARIABLES_USED_IN_COMPUTE_DAILY_FIXED_COST_FOR_VEHICLE) as $fieldName) {
             $totalMonthlyFixedCost += $vehicle->{$fieldName} ?? 0;
         }
+        $totalMonthlyFixedCost += ($vehicle->estimated_daily_fuel_consumption * $vehicle->working_days_per_month);
 
         return (int) round($totalMonthlyFixedCost / $vehicle->working_days_per_month);
     }
@@ -64,7 +65,7 @@ class AbcVehicleCostService
      *
      * @return array<int, array{0: AccountType, 1: int}>
      */
-    public function computeDailyFixedCostBreakdownForVehicle(Vehicle $vehicle): array
+    public function computeCostBreakdownPerDayForVehicle(Vehicle $vehicle): array
     {
         $workingDaysPerMonth = max(1, $vehicle->working_days_per_month);
 
@@ -91,7 +92,7 @@ class AbcVehicleCostService
      * over a live computation, so historical trip costs remain accurate even if the vehicle's
      * monthly rates are updated later.
      */
-    public function computeOverallVehicleRunningCostForCarLoad(CarLoad $carLoad): int
+    public function computeAlreadyElapsedVehicleCostForCarLoad(CarLoad $carLoad): int
     {
         if ($carLoad->vehicle_id === null) {
             return 0;
@@ -105,11 +106,29 @@ class AbcVehicleCostService
             if ($vehicle === null) {
                 return 0;
             }
-
-            $dailyRate = $this->computeDailyRunningCostForVehicle($vehicle);
+            $dailyRate = $this->computePredeterminedDailyRunningCostForVehicle($vehicle);
         }
 
         return $dailyRate * $this->computeTripDurationDays($carLoad);
+    }
+    public function computeOverallRunningCostForCarLoad(CarLoad $carLoad): int
+    {
+        if ($carLoad->vehicle_id === null) {
+            return 0;
+        }
+
+        $dailyRate = $carLoad->fixed_daily_cost;
+
+        if ($dailyRate === null) {
+            $vehicle = $carLoad->vehicle;
+
+            if ($vehicle === null) {
+                return 0;
+            }
+            $dailyRate = $this->computePredeterminedDailyRunningCostForVehicle($vehicle);
+        }
+
+        return $dailyRate * ($carLoad->vehicle->working_days_per_month ?? 0);
     }
 
     /**
@@ -123,9 +142,9 @@ class AbcVehicleCostService
     /**
      * Total vehicle running cost for a CarLoad: fixed (prorated) + variable expenses (actual).
      */
-    public function computeTotalFixedAndVariableVehicleCostForCarLoad(CarLoad $carLoad): int
+    public function computeTotalVehiclePredeterminedAndVariableCostForCarLoad(CarLoad $carLoad): int
     {
-        return $this->computeOverallVehicleRunningCostForCarLoad($carLoad)
+        return $this->computeOverallRunningCostForCarLoad($carLoad)
             + $this->computeVariableExpensesForCarLoad($carLoad);
     }
 
@@ -137,11 +156,11 @@ class AbcVehicleCostService
     {
         $tripDurationDays = $this->computeTripDurationDays($carLoad);
 
-        return (int) round($this->computeTotalFixedAndVariableVehicleCostForCarLoad($carLoad) / $tripDurationDays);
+        return (int) round($this->computeTotalVehiclePredeterminedAndVariableCostForCarLoad($carLoad) / $tripDurationDays);
     }
 
     /**
-     * Number of days the CarLoad has been active so far.
+     * Number of working days (excluding Sundays) the CarLoad has been active so far.
      *
      * For completed trips (return_date already passed), uses return_date as the end.
      * For active trips whose planned return_date is still in the future, caps at today
@@ -149,7 +168,7 @@ class AbcVehicleCostService
      *
      * Minimum of 1 day to avoid zero-cost trips.
      */
-    private function computeTripDurationDays(CarLoad $carLoad): int
+    public function computeTripDurationDays(CarLoad $carLoad): int
     {
         $startDate = $carLoad->load_date ?? now();
 
@@ -158,8 +177,18 @@ class AbcVehicleCostService
             ? $plannedReturnDate
             : now();
 
-        $durationDays = (int) $startDate->diffInDays($endDate);
+        $workingDays = 0;
+        $currentDate = $startDate->copy()->startOfDay();
+        $endDateNormalized = $endDate->copy()->startOfDay();
 
-        return max(1, $durationDays);
+        // Exclusive of the end date, matching Carbon::diffInDays() semantics.
+        while ($currentDate->lessThan($endDateNormalized)) {
+            if (! $currentDate->isSunday()) {
+                $workingDays++;
+            }
+            $currentDate->addDay();
+        }
+
+        return max(1, $workingDays);
     }
 }

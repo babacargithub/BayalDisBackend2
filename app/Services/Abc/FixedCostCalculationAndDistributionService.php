@@ -24,7 +24,7 @@ use App\Models\MonthlyFixedCost;
  * The effective_rate field is intentionally NOT used here — distribution is
  * equal per vehicle regardless of revenue.
  */
-class AbcFixedCostDistributionService
+class FixedCostCalculationAndDistributionService
 {
     /**
      * Finalize a month: compute and store per_vehicle_amount for all cost entries.

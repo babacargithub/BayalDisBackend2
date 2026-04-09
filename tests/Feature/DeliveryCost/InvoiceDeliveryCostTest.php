@@ -14,7 +14,9 @@ use App\Models\Customer;
 use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\CarLoadCostAggregatorService;
+use App\Services\Abc\FixedCostCalculationAndDistributionService;
+use App\Services\Abc\VehicleCostCalculatorService;
 use App\Services\InvoiceDeliveryCostService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -62,7 +64,12 @@ class InvoiceDeliveryCostTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new InvoiceDeliveryCostService(new AbcVehicleCostService);
+        $this->service = new InvoiceDeliveryCostService(
+            new CarLoadCostAggregatorService(
+                new VehicleCostCalculatorService,
+                new FixedCostCalculationAndDistributionService,
+            )
+        );
 
         $this->user = User::factory()->create();
 

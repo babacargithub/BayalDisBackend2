@@ -5,10 +5,9 @@ namespace Tests\Feature\Abc;
 use App\Models\MonthlyFixedCost;
 use App\Models\SalesInvoice;
 use App\Models\Vehicle;
-use App\Services\Abc\AbcCostSummaryService;
+use App\Services\Abc\CostAggregatesService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use PHPUnit\Metadata\Group;
 use Tests\TestCase;
 
 /**
@@ -30,19 +29,18 @@ use Tests\TestCase;
  *  - Edge cases: no vehicles, no invoices, zero revenue, zero margin
  *  - Rounding correctness
  */
-
 class AbcCostSummaryServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private AbcCostSummaryService $service;
+    private CostAggregatesService $service;
 
     private int $commercialPhoneCounter = 1;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new AbcCostSummaryService();
+        $this->service = new CostAggregatesService;
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -52,8 +50,8 @@ class AbcCostSummaryServiceTest extends TestCase
         // Create a minimal commercial → customer → invoice chain to satisfy FK constraints.
         // user_id is nullable so no User is needed.
         $commercialId = DB::table('commercials')->insertGetId([
-            'name' => 'Invoice Helper Commercial ' . $this->commercialPhoneCounter,
-            'phone_number' => '33600' . str_pad($this->commercialPhoneCounter++, 5, '0', STR_PAD_LEFT),
+            'name' => 'Invoice Helper Commercial '.$this->commercialPhoneCounter,
+            'phone_number' => '33600'.str_pad($this->commercialPhoneCounter++, 5, '0', STR_PAD_LEFT),
             'gender' => 'male',
             'salary' => 0,
             'created_at' => now(),
@@ -62,7 +60,7 @@ class AbcCostSummaryServiceTest extends TestCase
 
         $customerId = DB::table('customers')->insertGetId([
             'name' => 'Invoice Helper Customer',
-            'phone_number' => '33700' . str_pad($commercialId, 5, '0', STR_PAD_LEFT),
+            'phone_number' => '33700'.str_pad($commercialId, 5, '0', STR_PAD_LEFT),
             'owner_number' => '0000000000',
             'gps_coordinates' => '0,0',
             'commercial_id' => $commercialId,
@@ -85,8 +83,8 @@ class AbcCostSummaryServiceTest extends TestCase
     private function makeCommercial(int $salary): void
     {
         DB::table('commercials')->insert([
-            'name' => 'Commercial ' . $this->commercialPhoneCounter,
-            'phone_number' => '22170000' . str_pad($this->commercialPhoneCounter++, 4, '0', STR_PAD_LEFT),
+            'name' => 'Commercial '.$this->commercialPhoneCounter,
+            'phone_number' => '22170000'.str_pad($this->commercialPhoneCounter++, 4, '0', STR_PAD_LEFT),
             'gender' => 'male',
             'salary' => $salary,
             'created_at' => now(),
@@ -412,7 +410,7 @@ class AbcCostSummaryServiceTest extends TestCase
         $this->assertArrayHasKey('total_estimated_profit', $array['break_even']);
     }
 
-    public function test_to_array_grand_total_matches_grandTotal_method(): void
+    public function test_to_array_grand_total_matches_grand_total_method(): void
     {
         MonthlyFixedCost::factory()->create(['period_year' => 2026, 'period_month' => 3, 'amount' => 100_000]);
         $this->makeCommercial(200_000);
@@ -422,7 +420,7 @@ class AbcCostSummaryServiceTest extends TestCase
         $this->assertSame($summary->grandTotal(), $summary->toArray()['grand_total']);
     }
 
-    public function test_to_array_daily_total_matches_dailyTotalOverallCost_method(): void
+    public function test_to_array_daily_total_matches_daily_total_overall_cost_method(): void
     {
         MonthlyFixedCost::factory()->create(['period_year' => 2026, 'period_month' => 3, 'amount' => 260_000]);
 

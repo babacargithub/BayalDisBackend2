@@ -1,4 +1,6 @@
-<?php /** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
+<?php
+
+/** @noinspection PhpUnnecessaryCurlyVarSyntaxInspection */
 
 namespace App\Services\Commission;
 
@@ -17,7 +19,7 @@ use App\Models\DailyCommission;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\CarLoadCostAggregatorService;
 use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -49,7 +51,7 @@ readonly class DailyCommissionService
 {
     public function __construct(
         private CommissionCalculatorService $commissionCalculatorService,
-        private AbcVehicleCostService $abcVehicleCostService,
+        private CarLoadCostAggregatorService $carLoadCostAggregatorService,
         private SalesInvoiceStatsService $salesInvoiceStatsService,
     ) {}
 
@@ -268,10 +270,9 @@ readonly class DailyCommissionService
                 ]);
             }
 
-
             // --- Sync estimated_commercial_commission on every invoice in this period ---
-           $this->updateEstimatedCommercialCommissionForPeriodInvoices($commercial, Carbon::parse($workDay)
-               ->startOfDay());
+            $this->updateEstimatedCommercialCommissionForPeriodInvoices($commercial, Carbon::parse($workDay)
+                ->startOfDay());
 
             return $dailyCommission->fresh();
         });
@@ -333,8 +334,7 @@ readonly class DailyCommissionService
     private function updateEstimatedCommercialCommissionForPeriodInvoices(
         Commercial $commercial,
         Carbon $workDay,
-    ): void
-    {
+    ): void {
         $periodStart = $workDay->startOfDay();
         $periodEnd = $workDay->clone()->endOfDay();
         $periodInvoices = SalesInvoice::where('commercial_id', $commercial->id)
@@ -415,7 +415,7 @@ readonly class DailyCommissionService
             return ['threshold' => 0, 'margin_rate' => null];
         }
 
-        $dailyTotalCost = $this->abcVehicleCostService->computeDailyFixedAndVariableVehicleCostForCarLoad($activeCarLoad);
+        $dailyTotalCost = $this->carLoadCostAggregatorService->computeTotalDailyCostForCarLoad($activeCarLoad);
 
         if ($dailyTotalCost === 0) {
             return ['threshold' => 0, 'margin_rate' => null];
@@ -1016,7 +1016,7 @@ readonly class DailyCommissionService
             $dailyCommission = $dailyCommissionsByDate->get($dateString);
 
             $dayMandatoryDailyThreshold = $dailyCommission?->mandatory_daily_threshold ?? 0;
-            $dayMandatoryThresholdReached = !($dailyCommission !== null) || $dailyCommission->mandatory_threshold_reached;
+            $dayMandatoryThresholdReached = ! ($dailyCommission !== null) || $dailyCommission->mandatory_threshold_reached;
             $dayCachedAverageMarginRate = $dailyCommission?->cached_average_margin_rate !== null
                 ? (float) $dailyCommission->cached_average_margin_rate
                 : null;

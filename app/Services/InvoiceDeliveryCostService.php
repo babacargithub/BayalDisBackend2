@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\CarLoad;
 use App\Models\SalesInvoice;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\CarLoadCostAggregatorService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
 readonly class InvoiceDeliveryCostService
 {
     public function __construct(
-        private AbcVehicleCostService $vehicleCostService,
+        private CarLoadCostAggregatorService $carLoadCostAggregatorService,
     ) {}
 
     /**
@@ -37,7 +37,7 @@ readonly class InvoiceDeliveryCostService
         CarLoad $carLoad,
         string $workDay,
     ): void {
-        $dailyCost = $this->vehicleCostService->computeDailyFixedAndVariableVehicleCostForCarLoad($carLoad);
+        $dailyCost = $this->carLoadCostAggregatorService->computeTotalDailyCostForCarLoad($carLoad);
 
         $invoiceIds = SalesInvoice::where('car_load_id', $carLoad->id)
             ->whereDate('created_at', $workDay)

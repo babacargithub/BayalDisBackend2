@@ -7,20 +7,50 @@ use App\Models\CarLoad;
 use App\Models\SalesInvoice;
 
 /**
- * Assembles the full ABC profitability picture for a single CarLoad.
+ * Single source of truth for car load cost and profitability calculations.
+ *
+ * Cost layers:
+ *   1. Vehicle costs = fixed daily rate × trip days + actual variable expenses (fuel, parking, fines, etc.)
+ *   2. Fixed burdens = storage + overhead allocations (equal per vehicle per month)
+ *   3. Total daily cost = (vehicle costs + fixed burdens) / trip duration in days
  *
  * Profitability layers:
  *   1. Gross profit = SUM(sales_invoices.total_estimated_profit) — product margin only
- *   2. Vehicle costs = fixed daily rate × trip days + actual variable expenses (fuel, parking, fines, etc.)
- *   3. Fixed burdens = storage + overhead allocations (equal per vehicle per month)
- *   4. Net profit = gross profit − vehicle costs − fixed burdens
+ *   2. Net profit = gross profit − vehicle costs − fixed burdens
  */
-readonly class AbcCarLoadProfitabilityService
+readonly class CarLoadCostAggregatorService
 {
     public function __construct(
-        private AbcVehicleCostService $abcVehicleCostService,
-        private AbcFixedCostDistributionService $abcFixedCostDistributionService,
+        private VehicleCostCalculatorService               $abcVehicleCostService,
+        private FixedCostCalculationAndDistributionService $abcFixedCostDistributionService,
     ) {}
+
+    /**
+     * Total cost allocated to a CarLoad for the entire trip duration:
+     * vehicle running costs (fixed prorated + variable expenses) plus
+     * the monthly fixed cost allocations (storage + overhead).
+     */
+    public function computeTotalOverallCostForCarLoad(CarLoad $carLoad): int
+    {
+        $totalVehicleCost = $this->abcVehicleCostService->computeTotalVehiclePredeterminedAndVariableCostForCarLoad($carLoad);
+
+        $fixedCostAllocation = $this->abcFixedCostDistributionService->computeAllocatedFixedCostsForCarLoad($carLoad);
+        $totalFixedAllocation = $fixedCostAllocation->storageAllocation + $fixedCostAllocation->overheadAllocation;
+
+        return $totalVehicleCost + $totalFixedAllocation;
+    }
+
+    /**
+     * Daily cost for a CarLoad: total overall cost divided by trip duration.
+     * This is the single source of truth for the cost to distribute across
+     * invoices on any given work day (used by InvoiceDeliveryCostService).
+     */
+    public function computeTotalDailyCostForCarLoad(CarLoad $carLoad): int
+    {
+        $tripDurationDays = $carLoad->vehicle?->working_days_per_month ?? 1;
+
+        return (int) round($this->computeTotalOverallCostForCarLoad($carLoad) / $tripDurationDays);
+    }
 
     /**
      * Compute the full profitability for a given CarLoad.
@@ -33,7 +63,7 @@ readonly class AbcCarLoadProfitabilityService
         $totalRevenue = $this->computeTotalRevenueForCarLoad($carLoad);
         $totalGrossProfit = $this->computeTotalGrossProfitForCarLoad($carLoad);
 
-        $vehicleFixedCost = $this->abcVehicleCostService->computeOverallVehicleRunningCostForCarLoad($carLoad);
+        $vehicleFixedCost = $this->abcVehicleCostService->computeAlreadyElapsedVehicleCostForCarLoad($carLoad);
         $vehicleExpensesCost = $this->abcVehicleCostService->computeVariableExpensesForCarLoad($carLoad);
 
         $fixedCostAllocation = $this->abcFixedCostDistributionService->computeAllocatedFixedCostsForCarLoad($carLoad);
@@ -76,4 +106,6 @@ readonly class AbcCarLoadProfitabilityService
             ->where('car_load_id', $carLoad->id)
             ->sum('total_estimated_profit');
     }
+
+
 }

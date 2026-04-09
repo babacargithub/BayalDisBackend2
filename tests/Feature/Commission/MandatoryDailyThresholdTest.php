@@ -14,7 +14,9 @@ use App\Models\Team;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\Vente;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\CarLoadCostAggregatorService;
+use App\Services\Abc\FixedCostCalculationAndDistributionService;
+use App\Services\Abc\VehicleCostCalculatorService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
@@ -65,7 +67,10 @@ class MandatoryDailyThresholdTest extends TestCase
 
         $this->service = new DailyCommissionService(
             new CommissionCalculatorService(new CommissionRateResolverService),
-            new AbcVehicleCostService,
+            new CarLoadCostAggregatorService(
+                new VehicleCostCalculatorService,
+                new FixedCostCalculationAndDistributionService,
+            ),
             new SalesInvoiceStatsService(new CommissionRateResolverService),
         );
 

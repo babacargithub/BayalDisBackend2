@@ -4,7 +4,7 @@ namespace App\Models;
 
 use App\Enums\CarLoadStatus;
 use App\Jobs\RecalculateInvoicesDeliveryCostJob;
-use App\Services\Abc\AbcVehicleCostService;
+use App\Services\Abc\VehicleCostCalculatorService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -46,8 +46,8 @@ class CarLoad extends Model
             } else {
                 $vehicle = Vehicle::find($carLoad->vehicle_id);
                 if ($vehicle !== null) {
-                    $carLoad->fixed_daily_cost = app(AbcVehicleCostService::class)
-                        ->computeDailyRunningCostForVehicle($vehicle);
+                    $carLoad->fixed_daily_cost = app(VehicleCostCalculatorService::class)
+                        ->computePredeterminedDailyRunningCostForVehicle($vehicle);
                 }
             }
         });

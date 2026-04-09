@@ -7,8 +7,8 @@ use App\Enums\MonthlyFixedCostSubCategory;
 use App\Models\Commercial;
 use App\Models\MonthlyFixedCost;
 use App\Models\Vehicle;
-use App\Services\Abc\AbcCostSummaryService;
-use App\Services\Abc\AbcFixedCostDistributionService;
+use App\Services\Abc\CostAggregatesService;
+use App\Services\Abc\FixedCostCalculationAndDistributionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -18,8 +18,8 @@ use Inertia\Response;
 class MonthlyFixedCostController extends Controller
 {
     public function __construct(
-        private readonly AbcFixedCostDistributionService $abcFixedCostDistributionService,
-        private readonly AbcCostSummaryService $abcCostSummaryService,
+        private readonly FixedCostCalculationAndDistributionService $abcFixedCostDistributionService,
+        private readonly CostAggregatesService $abcCostSummaryService,
     ) {}
 
     public function index(Request $request): Response

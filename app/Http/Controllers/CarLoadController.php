@@ -12,7 +12,7 @@ use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\Vehicle;
-use App\Services\Abc\AbcCarLoadProfitabilityService;
+use App\Services\Abc\CarLoadCostAggregatorService;
 use App\Services\CarLoadService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +27,7 @@ class CarLoadController extends Controller
 
     public function __construct(
         CarLoadService $carLoadService,
-        private readonly AbcCarLoadProfitabilityService $abcCarLoadProfitabilityService,
+        private readonly CarLoadCostAggregatorService $abcCarLoadProfitabilityService,
     ) {
         $this->carLoadService = $carLoadService;
     }
