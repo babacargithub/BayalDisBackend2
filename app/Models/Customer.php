@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Customer extends Model
 {
@@ -21,7 +22,7 @@ class Customer extends Model
         'ligne_id',
         'description',
         'is_prospect',
-        'customer_category_id'
+        'customer_category_id',
     ];
 
     protected $casts = [
@@ -111,18 +112,23 @@ class Customer extends Model
         return $this->hasMany(SalesInvoice::class);
     }
 
-    public function sector()
+    public function sector(): BelongsTo
     {
         return $this->belongsTo(Sector::class);
     }
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(CustomerTag::class);
+    }
+
     public function getHasDebtAttribute(): bool
     {
         return $this->ventes()->where('paid', false)->exists();
     }
+
     public function getTotalDebtAttribute(): int
     {
-        return (int)$this->salesInvoices->sum("total_remaining");
+        return (int) $this->salesInvoices->sum('total_remaining');
     }
-    
-
-} 
+}

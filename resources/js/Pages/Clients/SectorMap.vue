@@ -1,6 +1,6 @@
 <template>
     <Head title="Carte des Clients du Secteur" />
-    
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
@@ -34,28 +34,28 @@
                     <div class="p-6">
                         <div class="mb-4">
                             <div class="text-subtitle-1 font-weight-bold mb-2">Légende:</div>
-                            <div class="d-flex gap-4">
+                            <div class="d-flex gap-4 flex-wrap">
                                 <div class="d-flex align-center">
-                                    <v-icon color="green" class="mr-2">mdi-map-marker</v-icon>
+                                    <div class="mr-2 rounded-circle" style="width:16px;height:16px;background-color:#22c55e;border:2px solid #555;"></div>
                                     <span>Clients du secteur</span>
                                 </div>
                                 <div class="d-flex align-center">
-                                    <v-icon color="red" class="mr-2">mdi-map-marker</v-icon>
+                                    <div class="mr-2 rounded-circle" style="width:16px;height:16px;background-color:#ef4444;border:2px solid #555;"></div>
                                     <span>Clients disponibles</span>
                                 </div>
                                 <div class="d-flex align-center">
-                                    <v-icon color="yellow" class="mr-2">mdi-map-marker</v-icon>
+                                    <div class="mr-2 rounded-circle" style="width:16px;height:16px;background-color:#eab308;border:2px solid #555;"></div>
                                     <span>Prospects disponibles</span>
                                 </div>
                                 <div class="d-flex align-center">
-                                    <v-icon color="blue" class="mr-2">mdi-map-marker</v-icon>
+                                    <div class="mr-2 rounded-circle" style="width:16px;height:16px;background-color:#3b82f6;border:2px solid #555;"></div>
                                     <span>Clients sélectionnés</span>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Map Container -->
-                        <div id="map" style="height: 600px; width: 100%;"></div>
+                        <div id="sector-map" style="height: 600px; width: 100%;"></div>
                     </div>
                 </div>
             </div>
@@ -76,262 +76,222 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import Swal from 'sweetalert2/dist/sweetalert2.js';
 import 'sweetalert2/dist/sweetalert2.css';
 
 const props = defineProps({
     sector: {
         type: Object,
-        required: true
+        required: true,
     },
-    googleMapsApiKey: {
-        type: String,
-        required: true
-    }
 });
 
 const loading = ref(false);
-let map;
-let markers = [];
-let currentInfoWindow = null;
 const selectedCustomers = ref([]);
-const isGoogleMapsLoaded = ref(false);
 
-const loadGoogleMapsScript = () => {
-    return new Promise((resolve, reject) => {
-        if (window.google) {
-            isGoogleMapsLoaded.value = true;
-            resolve();
-            return;
-        }
+let leafletMap = null;
+// Tracks Leaflet marker instances keyed by customer id so we can update their icon on selection toggle
+const markersByCustomerId = {};
 
-        const script = document.createElement('script');
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${props.googleMapsApiKey}`;
-        script.async = true;
-        script.defer = true;
+const ICON_GREEN  = buildCircleIcon('#22c55e');
+const ICON_RED    = buildCircleIcon('#ef4444');
+const ICON_YELLOW = buildCircleIcon('#eab308');
+const ICON_BLUE   = buildCircleIcon('#3b82f6');
 
-        script.addEventListener('load', () => {
-            isGoogleMapsLoaded.value = true;
-            resolve();
-        });
+function buildCircleIcon(hexColor) {
+    const svgMarkup = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" fill="${hexColor}" stroke="#333" stroke-width="1.5"/>
+        </svg>`;
 
-        script.addEventListener('error', (error) => {
-            reject(new Error('Failed to load Google Maps script'));
-        });
-
-        document.head.appendChild(script);
+    return L.divIcon({
+        html: svgMarkup,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -14],
     });
-};
+}
 
-const addSelectedCustomers = async () => {
-    if (selectedCustomers.value.length === 0) return;
-
-    try {
-        loading.value = true;
-        await axios.post(route('sectors.add-customers', props.sector.id), {
-            customer_ids: selectedCustomers.value.map(c => c.id)
-        });
-        
-        Swal.fire({
-            title: 'Succès',
-            text: `${selectedCustomers.value.length} client(s) ajouté(s) au secteur avec succès`,
-            icon: 'success'
-        });
-        
-        selectedCustomers.value = [];
-        await loadMapData();
-    } catch (error) {
-        console.error('Error adding customers to sector:', error);
-        Swal.fire({
-            title: 'Erreur',
-            text: 'Une erreur est survenue lors de l\'ajout des clients au secteur',
-            icon: 'error'
-        });
-    } finally {
-        loading.value = false;
+function resolveMarkerIconForAvailableCustomer(customer) {
+    const isSelected = selectedCustomers.value.some(selectedCustomer => selectedCustomer.id === customer.id);
+    if (isSelected) {
+        return ICON_BLUE;
     }
-};
+    return customer.is_prospect ? ICON_YELLOW : ICON_RED;
+}
 
-const toggleCustomerSelection = (customer, marker) => {
-    const index = selectedCustomers.value.findIndex(c => c.id === customer.id);
-    if (index === -1) {
-        selectedCustomers.value.push(customer);
-        marker.setIcon({ url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png' });
-    } else {
-        selectedCustomers.value.splice(index, 1);
-        marker.setIcon({ 
-            url: customer.is_prospect ? 
-                'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png' : 
-                'https://maps.google.com/mapfiles/ms/icons/red-dot.png' 
-        });
-    }
+function buildPopupContent(customer) {
+    const isSelected = selectedCustomers.value.some(selectedCustomer => selectedCustomer.id === customer.id);
+    const selectionButtonLabel = isSelected ? 'Désélectionner' : 'Sélectionner';
 
-    // Close the current info window if it's open
-    if (currentInfoWindow) {
-        currentInfoWindow.close();
-        currentInfoWindow = null;
-    }
-};
-
-const createInfoWindowContent = (customer) => {
     return `
-        <div class="p-3">
-            <h3 class="text-lg font-bold mb-2">${customer.name}</h3>
-            <div class="mb-2">
+        <div style="min-width:200px">
+            <strong style="font-size:14px">${customer.name}</strong>
+            <div style="margin:6px 0;font-size:13px">
                 <div><strong>Adresse:</strong> ${customer.address || 'Non spécifiée'}</div>
                 <div><strong>Téléphone:</strong> ${customer.phone_number || 'Non spécifié'}</div>
                 <div><strong>Type:</strong> ${customer.is_prospect ? 'Prospect' : 'Client'}</div>
                 ${customer.description ? `<div><strong>Description:</strong> ${customer.description}</div>` : ''}
             </div>
-            ${customer.can_be_added ? 
-                `<button 
-                    onclick="window.toggleCustomerSelection_${customer.id}()"
-                    class="px-4 py-2 bg-primary text-white rounded hover:bg-primary-dark"
-                >
-                    ${selectedCustomers.value.find(c => c.id === customer.id) ? 'Désélectionner' : 'Sélectionner'}
-                </button>` 
-                : '<div class="text-success">Déjà dans le secteur</div>'
+            ${customer.can_be_added
+                ? `<button
+                        onclick="window.__sectorMapToggleSelection(${customer.id})"
+                        style="margin-top:6px;padding:4px 12px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px"
+                   >
+                       ${selectionButtonLabel}
+                   </button>`
+                : '<div style="color:#16a34a;font-weight:bold;margin-top:6px">Déjà dans le secteur</div>'
             }
-        </div>
-    `;
-};
+        </div>`;
+}
 
-const loadMapData = async () => {
+function toggleCustomerSelection(customerId) {
+    const markerEntry = markersByCustomerId[customerId];
+    if (!markerEntry) {
+        return;
+    }
+
+    const { customer, marker } = markerEntry;
+    const existingIndex = selectedCustomers.value.findIndex(selectedCustomer => selectedCustomer.id === customerId);
+
+    if (existingIndex === -1) {
+        selectedCustomers.value.push(customer);
+    } else {
+        selectedCustomers.value.splice(existingIndex, 1);
+    }
+
+    marker.setIcon(resolveMarkerIconForAvailableCustomer(customer));
+    marker.setPopupContent(buildPopupContent(customer));
+}
+
+function parseGpsCoordinates(gpsCoordinatesString) {
+    const parts = gpsCoordinatesString.split(',');
+    if (parts.length !== 2) {
+        return null;
+    }
+    const lat = parseFloat(parts[0].trim());
+    const lng = parseFloat(parts[1].trim());
+    if (isNaN(lat) || isNaN(lng)) {
+        return null;
+    }
+    return { lat, lng };
+}
+
+async function loadMapData() {
     try {
         loading.value = true;
+
         const response = await axios.get(route('sectors.map-customers', props.sector.id));
         const { customers, sector_customers } = response.data;
-        
-        console.log('Loaded customers:', customers);
-        console.log('Loaded sector customers:', sector_customers);
 
-        // Clear existing markers
-        markers.forEach(marker => marker.setMap(null));
-        markers = [];
+        // Remove existing markers
+        Object.values(markersByCustomerId).forEach(({ marker }) => marker.remove());
+        Object.keys(markersByCustomerId).forEach(key => delete markersByCustomerId[key]);
+        selectedCustomers.value = [];
 
-        // Add markers for all customers
         const allCustomers = [...customers, ...sector_customers];
-        console.log('Total customers to map:', allCustomers.length);
+        const markerBounds = [];
 
         allCustomers.forEach(customer => {
-            if (customer.gps_coordinates) {
-                try {
-                    console.log('Processing customer:', customer.name, 'GPS:', customer.gps_coordinates);
-                    const coordinates = customer.gps_coordinates.split(',');
-                    if (coordinates.length !== 2) {
-                        console.error('Invalid coordinates format for customer:', customer.name);
-                        return;
-                    }
-
-                    const lat = parseFloat(coordinates[0].trim());
-                    const lng = parseFloat(coordinates[1].trim());
-
-                    if (isNaN(lat) || isNaN(lng)) {
-                        console.error('Invalid coordinates values for customer:', customer.name);
-                        return;
-                    }
-
-                    console.log('Creating marker for:', customer.name, 'at:', lat, lng);
-
-                    // Determine marker color based on customer type and sector membership
-                    let iconUrl;
-                    if (!customer.can_be_added) {
-                        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'; // In sector
-                    } else if (customer.is_prospect) {
-                        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/yellow-dot.png'; // Available prospect
-                    } else {
-                        iconUrl = 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'; // Available customer
-                    }
-
-                    const marker = new google.maps.Marker({
-                        position: { lat, lng },
-                        map: map,
-                        title: customer.name,
-                        icon: { url: iconUrl }
-                    });
-
-                    // Add info window with customer details
-                    const infoWindow = new google.maps.InfoWindow({
-                        content: createInfoWindowContent(customer)
-                    });
-
-                    // Add click handler for the selection button
-                    if (customer.can_be_added) {
-                        window[`toggleCustomerSelection_${customer.id}`] = () => {
-                            toggleCustomerSelection(customer, marker);
-                            infoWindow.setContent(createInfoWindowContent(customer));
-                        };
-                    }
-
-                    marker.addListener('click', () => {
-                        if (currentInfoWindow) {
-                            currentInfoWindow.close();
-                        }
-                        infoWindow.open(map, marker);
-                        currentInfoWindow = infoWindow;
-                    });
-
-                    markers.push(marker);
-                    console.log('Marker created successfully for:', customer.name);
-                } catch (error) {
-                    console.error(`Error creating marker for customer ${customer.name}:`, error);
-                }
+            if (!customer.gps_coordinates) {
+                return;
             }
+
+            const coordinates = parseGpsCoordinates(customer.gps_coordinates);
+            if (!coordinates) {
+                console.error(`Invalid GPS coordinates for customer ${customer.name}:`, customer.gps_coordinates);
+                return;
+            }
+
+            const markerIcon = customer.can_be_added
+                ? resolveMarkerIconForAvailableCustomer(customer)
+                : ICON_GREEN;
+
+            const marker = L.marker([coordinates.lat, coordinates.lng], { icon: markerIcon })
+                .addTo(leafletMap)
+                .bindPopup(buildPopupContent(customer));
+
+            if (customer.can_be_added) {
+                markersByCustomerId[customer.id] = { customer, marker };
+            }
+
+            markerBounds.push([coordinates.lat, coordinates.lng]);
         });
 
-        // If no markers were created, center the map on a default location
-        if (markers.length === 0) {
-            console.log('No markers created, using default center');
-            map.setCenter({ lat: 14.6937, lng: -17.4441 }); // Default to Dakar
-            map.setZoom(12);
+        if (markerBounds.length > 0) {
+            leafletMap.fitBounds(markerBounds, { padding: [30, 30] });
         } else {
-            // Fit the map bounds to include all markers
-            const bounds = new google.maps.LatLngBounds();
-            markers.forEach(marker => bounds.extend(marker.getPosition()));
-            map.fitBounds(bounds);
+            leafletMap.setView([14.6937, -17.4441], 12);
         }
     } catch (error) {
         console.error('Error loading map data:', error);
         Swal.fire({
             title: 'Erreur',
             text: 'Une erreur est survenue lors du chargement des données de la carte',
-            icon: 'error'
+            icon: 'error',
         });
     } finally {
         loading.value = false;
     }
-};
+}
 
-onMounted(async () => {
+async function addSelectedCustomers() {
+    if (selectedCustomers.value.length === 0) {
+        return;
+    }
+
     try {
         loading.value = true;
-        await loadGoogleMapsScript();
-        
-        // Initialize the map
-        map = new google.maps.Map(document.getElementById('map'), {
-            zoom: 12,
-            center: { lat: 14.6937, lng: -17.4441 }, // Default center (Dakar)
+        await axios.post(route('sectors.add-customers', props.sector.id), {
+            customer_ids: selectedCustomers.value.map(selectedCustomer => selectedCustomer.id),
         });
 
-        // Load the initial data
+        Swal.fire({
+            title: 'Succès',
+            text: `${selectedCustomers.value.length} client(s) ajouté(s) au secteur avec succès`,
+            icon: 'success',
+        });
+
         await loadMapData();
     } catch (error) {
-        console.error('Error initializing map:', error);
+        console.error('Error adding customers to sector:', error);
         Swal.fire({
             title: 'Erreur',
-            text: 'Une erreur est survenue lors du chargement de Google Maps',
-            icon: 'error'
+            text: 'Une erreur est survenue lors de l\'ajout des clients au secteur',
+            icon: 'error',
         });
     } finally {
         loading.value = false;
+    }
+}
+
+onMounted(async () => {
+    // Expose toggle function globally so popup button onclick can call it
+    window.__sectorMapToggleSelection = toggleCustomerSelection;
+
+    leafletMap = L.map('sector-map').setView([14.6937, -17.4441], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+    }).addTo(leafletMap);
+
+    await loadMapData();
+});
+
+onUnmounted(() => {
+    delete window.__sectorMapToggleSelection;
+
+    if (leafletMap) {
+        leafletMap.remove();
+        leafletMap = null;
     }
 });
 </script>
-
-<style scoped>
-/* Add your styles here */
-</style>

@@ -9,6 +9,7 @@ use App\Http\Controllers\CommercialController;
 use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\CustomerCategoryController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerTagController;
 use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryBatchController;
@@ -182,6 +183,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/search', [CustomerController::class, 'search'])->name('search');
         Route::get('/top-customers', [CustomerController::class, 'topCustomers'])->name('top-customers');
         Route::get('/top-customers/export-pdf', [CustomerController::class, 'exportTopCustomersPdf'])->name('top-customers.export-pdf');
+        Route::get('/activity-map', [CustomerController::class, 'customerActivity'])->name('activity-map');
+        Route::get('/area-analysis', [CustomerController::class, 'areaAnalysis'])->name('area-analysis');
         Route::post('/', [CustomerController::class, 'store'])->name('store');
         Route::get('/{client}', [CustomerController::class, 'show'])->name('show');
         Route::put('/{client}', [CustomerController::class, 'update'])->name('update');
@@ -189,6 +192,13 @@ Route::middleware('auth')->group(function () {
     });
     Route::resource('customer-categories', CustomerCategoryController::class);
     Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');
+
+    // Customer Tags Routes
+    Route::get('customer-tags', [CustomerTagController::class, 'index'])->name('customer-tags.index');
+    Route::post('customer-tags', [CustomerTagController::class, 'store'])->name('customer-tags.store');
+    Route::put('customer-tags/{customerTag}', [CustomerTagController::class, 'update'])->name('customer-tags.update');
+    Route::delete('customer-tags/{customerTag}', [CustomerTagController::class, 'destroy'])->name('customer-tags.destroy');
+    Route::post('clients/{client}/tags', [CustomerTagController::class, 'syncCustomerTags'])->name('clients.tags.sync');
 
     // Supplier Management Routes
     Route::resource('suppliers', SupplierController::class);

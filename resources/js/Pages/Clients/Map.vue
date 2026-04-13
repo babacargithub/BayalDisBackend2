@@ -1,6 +1,6 @@
 <template>
     <Head title="Carte des Clients" />
-    
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
@@ -33,41 +33,37 @@
                                 <div class="d-flex gap-4 flex-wrap">
                                     <div class="text-subtitle-2">Secteurs:</div>
                                     <div v-for="(sector, id) in sectorsWithColors" :key="id" class="d-flex align-center">
-                                        <div class="d-flex align-center gap-2 mr-2">
-                                            <img :src="`https://maps.google.com/mapfiles/ms/icons/${sector.color}-dot.png`" 
-                                                 :alt="sector.name" style="width: 20px; height: 20px;">
-                                        </div>
+                                        <div
+                                            class="mr-2 rounded-circle"
+                                            :style="{ width: '16px', height: '16px', backgroundColor: sector.hexColor, border: '2px solid #555' }"
+                                        ></div>
                                         <span>{{ sector.name }}</span>
                                     </div>
                                     <div class="d-flex align-center">
-                                        <div class="d-flex align-center gap-2 mr-2">
-                                            <img src="https://maps.google.com/mapfiles/ms/icons/red-dot.png" 
-                                                 alt="Sans secteur" style="width: 20px; height: 20px;">
-                                        </div>
+                                        <div class="mr-2 rounded-circle" style="width: 16px; height: 16px; background-color: #FF0000; border: 2px solid #555;"></div>
                                         <span>Sans secteur</span>
                                     </div>
                                 </div>
-                                
+
                                 <!-- Client types -->
                                 <div class="d-flex gap-4 flex-wrap">
                                     <div class="text-subtitle-2">Types:</div>
                                     <div class="d-flex align-center">
-                                        <img src="https://maps.google.com/mapfiles/ms/icons/red-dot.png" 
-                                             alt="Client" class="mr-2" style="width: 20px; height: 20px;">
+                                        <div class="mr-2 rounded-circle" style="width: 16px; height: 16px; background-color: #3388ff; border: 2px solid #555;"></div>
                                         <span>Client</span>
                                     </div>
                                     <div class="d-flex align-center">
-                                        <div class="rounded-circle mr-2" style="width: 20px; height: 20px; background-color: red; border: 2px solid black;"></div>
-                                        <span>Prospect</span>
+                                        <div class="mr-2" style="width: 16px; height: 16px; background-color: transparent; border: 3px solid #555; border-radius: 50%;"></div>
+                                        <span>Prospect (anneau)</span>
                                     </div>
                                     <div class="d-flex align-center">
-                                        <div style="width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 20px solid red; margin-right: 8px;"></div>
+                                        <div class="mr-2" style="width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 16px solid #e53e3e;"></div>
                                         <span>Client avec dette</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Map Container -->
                         <div id="map" style="height: 600px; width: 100%;"></div>
                     </div>
@@ -78,219 +74,172 @@
 </template>
 
 <script setup>
-import { onMounted, computed } from 'vue';
+import { onMounted, onUnmounted, computed } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const props = defineProps({
     clients: {
         type: Array,
-        required: true
+        required: true,
     },
-    googleMapsApiKey: {
-        type: String,
-        required: true
-    }
 });
 
-let map;
-let markers = [];
-let currentInfoWindow = null;
+let leafletMap = null;
+let currentOpenPopup = null;
 
-// Define a list of distinct colors for sectors
-const sectorColors = [
-    'red', 'blue', 'green', 'yellow', 'purple', 'orange', 
-    'pink', 'teal', 'brown', 'gray', 'cyan', 'magenta'
+const sectorColorPalette = [
+    { name: 'blue',    hex: '#3388ff' },
+    { name: 'green',   hex: '#22c55e' },
+    { name: 'yellow',  hex: '#eab308' },
+    { name: 'purple',  hex: '#a855f7' },
+    { name: 'orange',  hex: '#f97316' },
+    { name: 'pink',    hex: '#ec4899' },
+    { name: 'teal',    hex: '#14b8a6' },
+    { name: 'brown',   hex: '#a52a2a' },
+    { name: 'gray',    hex: '#6b7280' },
+    { name: 'cyan',    hex: '#06b6d4' },
+    { name: 'magenta', hex: '#d946ef' },
+    { name: 'lime',    hex: '#84cc16' },
 ];
 
-// Group clients by sector and assign colors
 const sectorsWithColors = computed(() => {
     const sectors = {};
     let colorIndex = 0;
 
     props.clients.forEach(client => {
-        if (client.sector?.id) {
-            if (!sectors[client.sector.id]) {
-                sectors[client.sector.id] = {
-                    name: client.sector.name,
-                    color: sectorColors[colorIndex % sectorColors.length],
-                    clients: []
-                };
-                colorIndex++;
-            }
-            sectors[client.sector.id].clients.push(client);
+        if (client.sector?.id && !sectors[client.sector.id]) {
+            const palette = sectorColorPalette[colorIndex % sectorColorPalette.length];
+            sectors[client.sector.id] = {
+                name: client.sector.name,
+                hexColor: palette.hex,
+            };
+            colorIndex++;
         }
     });
 
     return sectors;
 });
 
-// Get marker options based on client type and sector
-function getMarkerOptions(client) {
-    let markerColor;
-    if (client.sector?.id) {
-        markerColor = sectorsWithColors.value[client.sector.id]?.color || 'red';
+function buildMarkerIcon(hexColor, clientType) {
+    let svgShape;
+
+    if (clientType === 'prospect') {
+        // Ring / circle outline for prospects
+        svgShape = `<circle cx="12" cy="12" r="9" fill="none" stroke="${hexColor}" stroke-width="3"/>`;
+    } else if (clientType === 'debt') {
+        // Triangle pointing down for clients with debt
+        svgShape = `<polygon points="12,3 22,21 2,21" fill="${hexColor}" stroke="#333" stroke-width="1"/>`;
     } else {
-        markerColor = 'red';
+        // Filled circle for regular clients
+        svgShape = `<circle cx="12" cy="12" r="9" fill="${hexColor}" stroke="#333" stroke-width="1"/>`;
     }
 
-    // Create SVG marker for different client types
-    const createCustomSVG = (color, type) => {
-        const colors = {
-            'red': '#FF0000',
-            'blue': '#0000FF',
-            'green': '#008000',
-            'yellow': '#FFD700',
-            'purple': '#800080',
-            'orange': '#FFA500',
-            'pink': '#FFC0CB',
-            'teal': '#008080',
-            'brown': '#A52A2A',
-            'gray': '#808080',
-            'cyan': '#00FFFF',
-            'magenta': '#FF00FF'
-        };
-        const fillColor = colors[color] || colors['red'];
-        
-        // Different shapes for different types
-        const shapes = {
-            'prospect': {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 8
-            },
-            'debt': {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 6
-            },
-            'regular': {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 8
-            }
-        };
-        
-        return {
-            ...shapes[type],
-            fillColor: fillColor,
-            fillOpacity: 1,
-            strokeWeight: 0.5,
-            strokeColor: '#000000'
-        };
-    };
+    const svgMarkup = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+            ${svgShape}
+        </svg>`;
 
-    // Create regular marker for standard clients
-    const createClientMarker = (color) => {
-        return {
-            url: `https://maps.google.com/mapfiles/ms/icons/${color}-dot.png`,
-            scaledSize: new google.maps.Size(30, 30)
-        };
-    };
-
-    // Determine marker type based on client status
-    let markerType;
-    if (client.is_prospect) {
-        return {
-            position: { 
-                lat: parseFloat(client.gps_coordinates.split(',')[0].trim()),
-                lng: parseFloat(client.gps_coordinates.split(',')[1].trim())
-            },
-            map: map,
-            title: client.name,
-            icon: createCustomSVG(markerColor, 'prospect')
-        };
-    } else if (client.has_debt) {
-        return {
-            position: { 
-                lat: parseFloat(client.gps_coordinates.split(',')[0].trim()),
-                lng: parseFloat(client.gps_coordinates.split(',')[1].trim())
-            },
-            map: map,
-            title: client.name,
-            icon: createCustomSVG(markerColor, 'debt')
-        };
-    } else {
-        return {
-            position: { 
-                lat: parseFloat(client.gps_coordinates.split(',')[0].trim()),
-                lng: parseFloat(client.gps_coordinates.split(',')[1].trim())
-            },
-            map: map,
-            title: client.name,
-            icon: createClientMarker(markerColor)
-        };
-    }
+    return L.divIcon({
+        html: svgMarkup,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -14],
+    });
 }
 
-// Update the infoWindow content to show debt information
-const createInfoWindowContent = (client) => {
+function buildPopupContent(client) {
+    const debtFormatted = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(client.total_debt);
     return `
-        <div class="p-2">
-            <h3 class="font-bold">${client.name}</h3>
-            <ul>
+        <div style="min-width:180px">
+            <strong style="font-size:14px">${client.name}</strong>
+            <ul style="margin:6px 0 0; padding-left:16px; font-size:13px">
                 <li>${client.address || 'Pas d\'adresse'}</li>
-                <li>Tél: ${client.phone_number}</li>
+                <li>Tél: ${client.phone_number || '—'}</li>
                 <li>Type: ${client.is_prospect ? 'Prospect' : 'Client'}</li>
                 <li>Secteur: ${client.sector?.name || 'Non assigné'}</li>
-                ${client.has_debt ? `<li class="text-red-600 font-bold">Dette: ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'XOF' }).format(client.total_debt)}</li>` : ''}
+                ${client.has_debt ? `<li style="color:#c53030;font-weight:bold">Dette: ${debtFormatted}</li>` : ''}
                 ${client.description ? `<li>${client.description}</li>` : ''}
             </ul>
-        </div>
-    `;
-};
+        </div>`;
+}
+
+function parseGpsCoordinates(gpsCoordinatesString) {
+    const parts = gpsCoordinatesString.split(',');
+    if (parts.length !== 2) {
+        return null;
+    }
+    const lat = parseFloat(parts[0].trim());
+    const lng = parseFloat(parts[1].trim());
+    if (isNaN(lat) || isNaN(lng)) {
+        return null;
+    }
+    return { lat, lng };
+}
 
 function initMap() {
-    const center = { lat: 14.7167, lng: -17.4677 };
-    
-    map = new google.maps.Map(document.getElementById('map'), {
-        zoom: 12,
-        center: center,
-    });
+    leafletMap = L.map('map').setView([14.7167, -17.4677], 12);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+    }).addTo(leafletMap);
+
+    const markerBounds = [];
 
     props.clients.forEach(client => {
-        if (client.gps_coordinates) {
-            try {
-                const marker = new google.maps.Marker(getMarkerOptions(client));
-
-                const infoWindow = new google.maps.InfoWindow({
-                    content: createInfoWindowContent(client)
-                });
-
-                marker.addListener('click', () => {
-                    if (currentInfoWindow) {
-                        currentInfoWindow.close();
-                    }
-                    infoWindow.open(map, marker);
-                    currentInfoWindow = infoWindow;
-                });
-
-                markers.push(marker);
-            } catch (error) {
-                console.error(`Error processing coordinates for client ${client.name}:`, error);
-            }
+        if (!client.gps_coordinates) {
+            return;
         }
+
+        const coordinates = parseGpsCoordinates(client.gps_coordinates);
+        if (!coordinates) {
+            console.error(`Invalid GPS coordinates for client ${client.name}:`, client.gps_coordinates);
+            return;
+        }
+
+        const sectorHexColor = client.sector?.id
+            ? sectorsWithColors.value[client.sector.id]?.hexColor ?? '#FF0000'
+            : '#FF0000';
+
+        let clientType;
+        if (client.is_prospect) {
+            clientType = 'prospect';
+        } else if (client.has_debt) {
+            clientType = 'debt';
+        } else {
+            clientType = 'regular';
+        }
+
+        const markerIcon = buildMarkerIcon(sectorHexColor, clientType);
+
+        const marker = L.marker([coordinates.lat, coordinates.lng], { icon: markerIcon })
+            .addTo(leafletMap)
+            .bindPopup(buildPopupContent(client));
+
+        marker.on('click', () => {
+            marker.openPopup();
+        });
+
+        markerBounds.push([coordinates.lat, coordinates.lng]);
     });
 
-    // Add click listener to close info window
-    map.addListener('click', () => {
-        if (currentInfoWindow) {
-            currentInfoWindow.close();
-            currentInfoWindow = null;
-        }
-    });
-
-    // Fit bounds to markers
-    if (markers.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        markers.forEach(marker => bounds.extend(marker.getPosition()));
-        map.fitBounds(bounds);
+    if (markerBounds.length > 0) {
+        leafletMap.fitBounds(markerBounds, { padding: [30, 30] });
     }
 }
 
 onMounted(() => {
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${props.googleMapsApiKey}`;
-    script.async = true;
-    script.defer = true;
-    script.onload = initMap;
-    document.head.appendChild(script);
+    initMap();
 });
-</script> 
+
+onUnmounted(() => {
+    if (leafletMap) {
+        leafletMap.remove();
+        leafletMap = null;
+    }
+});
+</script>

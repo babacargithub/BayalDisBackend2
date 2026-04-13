@@ -209,17 +209,10 @@ class SectorController extends Controller
         ]);
     }
 
-    public function map(Sector $sector)
+    public function map(Sector $sector): \Inertia\Response
     {
-        $googleMapsApiKey = config('services.google.maps_api_key');
-
-        if (! $googleMapsApiKey) {
-            return redirect()->back()->with('error', 'La clé API Google Maps n\'est pas configurée.');
-        }
-
         return inertia('Clients/SectorMap', [
             'sector' => $sector->load('ligne'),
-            'googleMapsApiKey' => $googleMapsApiKey,
         ]);
     }
 }

@@ -16,6 +16,10 @@ const props = defineProps({
         type: Array,
         required: true
     },
+    allTags: {
+        type: Array,
+        default: () => [],
+    },
     errors: Object,
     flash: Object,
     filters: {
@@ -35,6 +39,7 @@ const createForm = useForm({
     gps_coordinates: '',
     commercial_id: '',
     address: '',
+    tag_ids: [],
 });
 
 const submitCreate = () => {
@@ -59,6 +64,7 @@ const editForm = useForm({
     commercial_id: '',
     description: '',
     address: '',
+    tag_ids: [],
 });
 
 const openEditDialog = (client) => {
@@ -70,11 +76,12 @@ const openEditDialog = (client) => {
     editForm.commercial_id = client.commercial_id;
     editForm.description = client.description || '';
     editForm.address = client.address || '';
+    editForm.tag_ids = (client.tags || []).map(tag => tag.id);
     editDialogVisible.value = true;
 };
 
 const submitEdit = () => {
-    editForm.patch(route('clients.update', editingClient.value.id), {
+    editForm.put(route('clients.update', editingClient.value.id), {
         preserveScroll: true,
         onSuccess: () => {
             editDialogVisible.value = false;
@@ -148,8 +155,9 @@ const openGoogleMaps = (coordinates) => {
 
 const showOnlyProspects = ref(props.filters?.prospect_status === 'prospects');
 const showOnlyConfirmed = ref(props.filters?.prospect_status === 'customers');
+const selectedTagFilter = ref(props.filters?.tag_id ? Number(props.filters.tag_id) : null);
 
-const applyProspectFilter = () => {
+const applyFilters = () => {
     let prospectStatus = '';
     if (showOnlyProspects.value && !showOnlyConfirmed.value) {
         prospectStatus = 'prospects';
@@ -159,13 +167,17 @@ const applyProspectFilter = () => {
 
     router.get(
         route('clients.index'),
-        { prospect_status: prospectStatus },
+        {
+            prospect_status: prospectStatus,
+            tag_id: selectedTagFilter.value || '',
+        },
         { preserveState: true, preserveScroll: true, only: ['clients', 'filters'] }
     );
 };
 
-watch(showOnlyProspects, applyProspectFilter);
-watch(showOnlyConfirmed, applyProspectFilter);
+watch(showOnlyProspects, applyFilters);
+watch(showOnlyConfirmed, applyFilters);
+watch(selectedTagFilter, applyFilters);
 
 // ─── Backend autocomplete search ──────────────────────────────────────────────
 
@@ -274,6 +286,34 @@ const handlePageChange = (page) => {
                                 />
                             </div>
 
+                            <!-- Tag filter -->
+                            <v-select
+                                v-model="selectedTagFilter"
+                                :items="allTags"
+                                item-title="name"
+                                item-value="id"
+                                label="Filtrer par étiquette"
+                                clearable
+                                hide-details
+                                density="compact"
+                                style="max-width: 200px;"
+                            >
+                                <template v-slot:item="{ props: itemProps, item }">
+                                    <v-list-item v-bind="itemProps">
+                                        <template v-slot:prepend>
+                                            <v-chip :color="item.raw.color" variant="flat" size="x-small" class="text-white mr-2">
+                                                &nbsp;
+                                            </v-chip>
+                                        </template>
+                                    </v-list-item>
+                                </template>
+                                <template v-slot:selection="{ item }">
+                                    <v-chip :color="item.raw.color" variant="flat" size="small" class="text-white">
+                                        {{ item.raw.name }}
+                                    </v-chip>
+                                </template>
+                            </v-select>
+
                             <v-spacer />
 
                             <!-- Cartographie des clients -->
@@ -306,6 +346,7 @@ const handlePageChange = (page) => {
                                 <th>Téléphone</th>
                                 <th>Numéro Propriétaire</th>
                                 <th>Commercial</th>
+                                <th>Étiquettes</th>
                                 <th>Type</th>
                                 <th>Actions</th>
                             </tr>
@@ -336,6 +377,20 @@ const handlePageChange = (page) => {
                                 <td>{{ client.phone_number }}</td>
                                 <td>{{ client.owner_number }}</td>
                                 <td>{{ client.commercial?.name }}</td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1 py-1">
+                                        <v-chip
+                                            v-for="tag in (client.tags || [])"
+                                            :key="tag.id"
+                                            :color="tag.color"
+                                            variant="flat"
+                                            size="x-small"
+                                            class="text-white"
+                                        >
+                                            {{ tag.name }}
+                                        </v-chip>
+                                    </div>
+                                </td>
                                 <td>
                                     <v-icon
                                         v-if="client.is_prospect"
@@ -379,7 +434,7 @@ const handlePageChange = (page) => {
                                 </td>
                             </tr>
                             <tr v-if="displayedClients().length === 0">
-                                <td colspan="6" class="text-center text-grey py-6">
+                                <td colspan="7" class="text-center text-grey py-6">
                                     Aucun client trouvé
                                 </td>
                             </tr>
@@ -440,6 +495,28 @@ const handlePageChange = (page) => {
                             label="Commercial"
                             :error-messages="createForm.errors.commercial_id"
                         />
+                        <v-select
+                            v-model="createForm.tag_ids"
+                            :items="allTags"
+                            item-title="name"
+                            item-value="id"
+                            label="Étiquettes"
+                            multiple
+                            chips
+                            closable-chips
+                            :error-messages="createForm.errors.tag_ids"
+                        >
+                            <template v-slot:chip="{ props: chipProps, item }">
+                                <v-chip
+                                    v-bind="chipProps"
+                                    :color="item.raw.color"
+                                    variant="flat"
+                                    class="text-white"
+                                >
+                                    {{ item.raw.name }}
+                                </v-chip>
+                            </template>
+                        </v-select>
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="createDialogVisible = false">Annuler</v-btn>
@@ -500,6 +577,28 @@ const handlePageChange = (page) => {
                             :error-messages="editForm.errors.address"
                             class="mb-4"
                         />
+                        <v-select
+                            v-model="editForm.tag_ids"
+                            :items="allTags"
+                            item-title="name"
+                            item-value="id"
+                            label="Étiquettes"
+                            multiple
+                            chips
+                            closable-chips
+                            :error-messages="editForm.errors.tag_ids"
+                        >
+                            <template v-slot:chip="{ props: chipProps, item }">
+                                <v-chip
+                                    v-bind="chipProps"
+                                    :color="item.raw.color"
+                                    variant="flat"
+                                    class="text-white"
+                                >
+                                    {{ item.raw.name }}
+                                </v-chip>
+                            </template>
+                        </v-select>
                         <v-card-actions>
                             <v-spacer />
                             <v-btn color="error" @click="editDialogVisible = false">Annuler</v-btn>

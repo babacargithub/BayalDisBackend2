@@ -42,10 +42,13 @@ const menuItems = [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
             { name: 'Secteurs', route: 'sectors.index', icon: 'mdi-map-marker-multiple' },
             { name: 'Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
+            { name: 'Activités', route: 'clients.activity-map', icon: 'mdi-map-marker-star' },
+            { name: 'Analyse de zones', route: 'clients.area-analysis', icon: 'mdi-map-search' },
             { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' },
             { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
             { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
             { name: 'Catégories client', route: 'customer-categories.index', icon: 'mdi-folder-account' },
+            { name: 'Étiquettes client', route: 'customer-tags.index', icon: 'mdi-tag-multiple' },
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },
         ]
     },

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Commercial;
 use App\Models\Customer;
+use App\Models\CustomerTag;
+use App\Models\Sector;
 use App\Services\CustomerService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -15,7 +17,7 @@ class CustomerController extends Controller
     public function index(Request $request): \Inertia\Response
     {
         $query = Customer::query()
-            ->with(['commercial:id,name'])
+            ->with(['commercial:id,name', 'tags:id,name,color'])
             ->select('id', 'name', 'phone_number', 'owner_number', 'commercial_id', 'description', 'address', 'gps_coordinates', 'is_prospect', 'created_at');
 
         if ($request->filled('commercial_id')) {
@@ -28,6 +30,10 @@ class CustomerController extends Controller
             } elseif ($request->prospect_status === 'customers') {
                 $query->nonProspects();
             }
+        }
+
+        if ($request->filled('tag_id')) {
+            $query->whereHas('tags', fn ($tagQuery) => $tagQuery->where('customer_tags.id', $request->tag_id));
         }
 
         return Inertia::render('Clients/Index', [
@@ -47,9 +53,15 @@ class CustomerController extends Controller
                         'id' => $customer->commercial->id,
                         'name' => $customer->commercial->name,
                     ] : null,
+                    'tags' => $customer->tags->map(fn ($tag) => [
+                        'id' => $tag->id,
+                        'name' => $tag->name,
+                        'color' => $tag->color,
+                    ]),
                 ]),
             'commerciaux' => Commercial::select('id', 'name')->get(),
-            'filters' => $request->only(['prospect_status', 'commercial_id']),
+            'allTags' => CustomerTag::select('id', 'name', 'color')->orderBy('name')->get(),
+            'filters' => $request->only(['prospect_status', 'commercial_id', 'tag_id']),
             'can' => [
                 'create' => Auth::user()->can('create', Customer::class),
                 'edit' => Auth::user()->can('edit', Customer::class),
@@ -120,7 +132,7 @@ class CustomerController extends Controller
         return response()->json($customers);
     }
 
-    public function store(Request $request)
+    public function store(Request $request): \Illuminate\Http\RedirectResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -130,22 +142,22 @@ class CustomerController extends Controller
             'commercial_id' => 'nullable|exists:commercials,id',
             'description' => 'nullable|string',
             'address' => 'nullable|string|max:255',
+            'tag_ids' => 'nullable|array',
+            'tag_ids.*' => 'exists:customer_tags,id',
         ]);
 
-        Customer::create($validated);
+        $tagIds = $validated['tag_ids'] ?? [];
+        unset($validated['tag_ids']);
+
+        $customer = Customer::create($validated);
+        $customer->tags()->sync($tagIds);
 
         return redirect()->back()->with('success', 'Client créé avec succès');
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id): \Illuminate\Http\RedirectResponse
     {
         $customer = Customer::findOrFail($id);
-
-        // Debug incoming request data
-        \Log::info('Update Client Request:', [
-            'request_data' => $request->all(),
-            'client_id' => $customer->id,
-        ]);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -154,9 +166,15 @@ class CustomerController extends Controller
             'gps_coordinates' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'address' => 'nullable|string|max:255',
+            'tag_ids' => 'nullable|array',
+            'tag_ids.*' => 'exists:customer_tags,id',
         ]);
 
+        $tagIds = $validated['tag_ids'] ?? [];
+        unset($validated['tag_ids']);
+
         $customer->update($validated);
+        $customer->tags()->sync($tagIds);
 
         return redirect()->back()->with('success', 'Client mis à jour avec succès');
     }
@@ -218,7 +236,55 @@ class CustomerController extends Controller
                     ] : null,
                 ];
             }),
-            'googleMapsApiKey' => config('services.google.maps_api_key'),
+        ]);
+    }
+
+    public function areaAnalysis(CustomerService $customerService): \Inertia\Response
+    {
+        return Inertia::render('Clients/AreaAnalysis', [
+            'customers' => $customerService->getCustomersWithFinancialMetricsForAreaAnalysis(),
+            'sectorMetrics' => $customerService->getSectorFinancialMetricsForAreaAnalysis(),
+        ]);
+    }
+
+    public function customerActivity(Request $request, CustomerService $customerService): \Inertia\Response
+    {
+        $startDate = $request->get('start_date', now()->startOfMonth()->toDateString());
+        $endDate = $request->get('end_date', now()->toDateString());
+        $filterType = $request->get('filter_type', 'with_invoice');
+        $sectorId = $request->get('sector_id');
+        $minimumAmount = $request->get('minimum_amount');
+        $minimumAverageAmount = $request->get('minimum_average_amount');
+        $inactiveDays = $request->get('inactive_days');
+
+        $customers = match ($filterType) {
+            'by_sector' => $sectorId
+                ? $customerService->getCustomersInSectorWithInvoicesInDateRange((int) $sectorId, $startDate, $endDate)
+                : collect(),
+            'above_amount' => $minimumAmount
+                ? $customerService->getCustomersWithInvoicesAboveAmountInDateRange((int) $minimumAmount, $startDate, $endDate)
+                : collect(),
+            'above_average_amount' => $minimumAverageAmount
+                ? $customerService->getCustomersWithAverageInvoiceAboveAmountInDateRange((int) $minimumAverageAmount, $startDate, $endDate)
+                : collect(),
+            'churning' => $inactiveDays
+                ? $customerService->getChurningCustomersInDateRange((int) $inactiveDays, $startDate, $endDate)
+                : collect(),
+            default => $customerService->getCustomersWithInvoicesInDateRange($startDate, $endDate),
+        };
+
+        return Inertia::render('Clients/Activity', [
+            'customers' => $customers,
+            'sectors' => Sector::query()->select('id', 'name')->orderBy('name')->get(),
+            'filters' => [
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'filter_type' => $filterType,
+                'sector_id' => $sectorId ? (int) $sectorId : null,
+                'minimum_amount' => $minimumAmount ? (int) $minimumAmount : null,
+                'minimum_average_amount' => $minimumAverageAmount ? (int) $minimumAverageAmount : null,
+                'inactive_days' => $inactiveDays ? (int) $inactiveDays : null,
+            ],
         ]);
     }
 
