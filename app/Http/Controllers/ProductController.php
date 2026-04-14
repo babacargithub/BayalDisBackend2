@@ -9,12 +9,16 @@ use App\Services\CarLoadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Throwable;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(CarLoadService $carLoadService)
     {
+        $wareHouseStock = Product::with('stockEntries')
+            ->get()
+            ->sum('stock_value');
+        $carLoadStock = $carLoadService->getTotalActiveCarLoadsStockValue();
+
         return Inertia::render('Produits/Index', [
             'products' => Product::with(['stockEntries' => function ($query) {
                 $query->orderBy('created_at', 'desc');
@@ -50,9 +54,9 @@ class ProductController extends Controller
                         }),
                     ];
                 }),
-            'total_stock_value' => Product::with('stockEntries')
-                ->get()
-                ->sum('stock_value'),
+            'total_stock_value' => $wareHouseStock,
+            'car_loads_stock_value' => $carLoadStock,
+            'total_stock' => $wareHouseStock + $carLoadStock,
             'base_products' => Product::whereNull('parent_id')
                 ->select('id', 'name')
                 ->get(),
@@ -163,7 +167,6 @@ class ProductController extends Controller
         }
     }
 
-
     public function transformToVariants(Request $request, Product $product)
     {
         $validated = $request->validate([
@@ -188,41 +191,40 @@ class ProductController extends Controller
         }
 
         try {
-           /* DB::transaction(function () use ($product, $validated) {
-                $variant = Product::findOrFail($validated['variant_id']);
+            /* DB::transaction(function () use ($product, $validated) {
+                 $variant = Product::findOrFail($validated['variant_id']);
 
-                // Verify this is a valid parent-child relationship
-                if ($variant->parent_id !== $product->id) {
-                    throw new \Exception('Le produit sélectionné n\'est pas un variant de ce produit');
-                }
+                 // Verify this is a valid parent-child relationship
+                 if ($variant->parent_id !== $product->id) {
+                     throw new \Exception('Le produit sélectionné n\'est pas un variant de ce produit');
+                 }
 
-                // Calculate total pieces needed
-                $totalPiecesNeeded = $validated['quantity'];
+                 // Calculate total pieces needed
+                 $totalPiecesNeeded = $validated['quantity'];
 
-                // Check if parent product has enough stock
-                if ($product->stock_available < $totalPiecesNeeded) {
-                    throw new \Exception('Stock insuffisant. Stock disponible: '.$product->stock_available.' pièces');
-                }
+                 // Check if parent product has enough stock
+                 if ($product->stock_available < $totalPiecesNeeded) {
+                     throw new \Exception('Stock insuffisant. Stock disponible: '.$product->stock_available.' pièces');
+                 }
 
-                // Decrement parent stock
-                $parentStockEntry = $product->getStockEntry();
-                $commercial = auth()?->user?->commercial;
-                $currentCarLoad = app(CarLoadService::class)->getCurrentCarLoadForTeam($commercial->team);
-                $product->decrementStock($totalPiecesNeeded, updateMainStock: false, carLoad: $currentCarLoad);
+                 // Decrement parent stock
+                 $parentStockEntry = $product->getStockEntry();
+                 $commercial = auth()?->user?->commercial;
+                 $currentCarLoad = app(CarLoadService::class)->getCurrentCarLoadForTeam($commercial->team);
+                 $product->decrementStock($totalPiecesNeeded, updateMainStock: false, carLoad: $currentCarLoad);
 
-                // Increment variant stock
-                // create a new stock entry for the variant
-                $stockEntryQuantity = ($product->base_quantity / $variant->base_quantity) - $validated['unused_quantity'];
-                StockEntry::create([
-                    'product_id' => $variant->id,
-                    'quantity' => $stockEntryQuantity,
-                    'quantity_left' => $stockEntryQuantity,
-                    'unit_price' => ($product->cost_price / $product->base_quantity) * $variant->base_quantity,
-                    'purchase_invoice_item_id' => $parentStockEntry->purchase_invoice_item_id,
+                 // Increment variant stock
+                 // create a new stock entry for the variant
+                 $stockEntryQuantity = ($product->base_quantity / $variant->base_quantity) - $validated['unused_quantity'];
+                 StockEntry::create([
+                     'product_id' => $variant->id,
+                     'quantity' => $stockEntryQuantity,
+                     'quantity_left' => $stockEntryQuantity,
+                     'unit_price' => ($product->cost_price / $product->base_quantity) * $variant->base_quantity,
+                     'purchase_invoice_item_id' => $parentStockEntry->purchase_invoice_item_id,
 
-                ]);
-            });*/
-
+                 ]);
+             });*/
 
             return redirect()->back()->withErrors(['error' => "La fonctionnalité de transformation n'est pas encore mise en place."]);
 

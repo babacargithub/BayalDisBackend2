@@ -165,18 +165,25 @@
                         <div class="mt-4">
                             <div class="d-flex justify-space-between align-center mb-4">
                                 <h3 class="text-h6">Articles</h3>
+                                <v-checkbox
+                                    v-model="showParentProductsOnly"
+                                    label="Produits parents uniquement"
+                                    hide-details
+                                    density="compact"
+                                />
                             </div>
 
                             <div v-for="(item, index) in form.items" :key="index" class="mb-4">
                                 <v-row>
                                     <v-col cols="12" md="4">
-                                        <v-select
+                                        <v-autocomplete
                                             v-model="item.product_id"
-                                            :items="products"
+                                            :items="filteredProducts"
                                             item-title="name"
                                             item-value="id"
                                             label="Produit"
                                             required
+                                            clearable
                                             :disabled="!!editingInvoice?.is_stocked"
                                             :error-messages="form.errors[`items.${index}.product_id`]"
                                         />
@@ -384,6 +391,15 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+
+const showParentProductsOnly = ref(false);
+
+const filteredProducts = computed(() => {
+    if (showParentProductsOnly.value) {
+        return props.products.filter((product) => product.parent_id === null);
+    }
+    return props.products;
+});
 import { useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 

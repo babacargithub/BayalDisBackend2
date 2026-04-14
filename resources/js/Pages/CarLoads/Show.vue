@@ -7,6 +7,7 @@ import moment from 'moment';
 
 const props = defineProps({
     carLoad: { type: Object, required: true },
+    stock_value: { type: Number, default: 0 },
     products: { type: Array, required: true },
     missingInventoryProducts: { type: Array, default: () => [] },
     expenses: { type: Array, default: () => [] },
@@ -463,6 +464,10 @@ const inventoryTableHeaders = [
                             <div>
                                 <p class="text-gray-400 text-xs">Équipe</p>
                                 <p class="font-medium">{{ carLoad.team?.name ?? '-' }}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-400 text-xs">Valeur du stock</p>
+                                <p class="font-medium text-orange-600">{{ new Intl.NumberFormat('fr-FR').format(stock_value) }} F</p>
                             </div>
                             <div>
                                 <p class="text-gray-400 text-xs">Chargé le</p>

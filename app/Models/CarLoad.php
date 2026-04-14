@@ -5,13 +5,12 @@ namespace App\Models;
 use App\Enums\CarLoadStatus;
 use App\Jobs\RecalculateInvoicesDeliveryCostJob;
 use App\Services\Abc\CarLoadCostAggregatorService;
-use App\Services\Abc\VehicleCostCalculatorService;
+use App\Services\CarLoadService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
-use Illuminate\Support\Facades\DB;
 
 class CarLoad extends Model
 {
@@ -41,9 +40,7 @@ class CarLoad extends Model
         // Always refresh the vehicle's daily fixed cost rate on every save so that
         // updates to the car load (e.g. changing dates or any other field) always
         // reflect the vehicle's current monthly cost structure.
-        static::saving(function (CarLoad $carLoad): void {
-
-        });
+        static::saving(function (CarLoad $carLoad): void {});
 
         // After the fixed_daily_cost is persisted, redistribute the daily delivery cost
         // across all today's invoices linked to this car load so financial totals stay current.
@@ -92,16 +89,7 @@ class CarLoad extends Model
 
     public function getStockValueAttribute(): int
     {
-        // Terminated car loads have transferred all remaining stock to the next car load.
-        if ($this->status === CarLoadStatus::TerminatedAndTransferred) {
-            return 0;
-        }
-
-        return (int) DB::table('car_load_items')
-            ->join('products', 'products.id', '=', 'car_load_items.product_id')
-            ->where('car_load_items.car_load_id', $this->id)
-            ->where('car_load_items.quantity_left', '>', 0)
-            ->sum(DB::raw('car_load_items.quantity_left * products.cost_price'));
+        return app(CarLoadService::class)->getCarLoadStockValue($this);
     }
 
     public function commercial(): HasOneThrough

@@ -43,7 +43,7 @@ class PurchaseInvoiceController extends Controller
         return Inertia::render('PurchaseInvoices/Index', [
             'purchaseInvoices' => $purchaseInvoices,
             'suppliers' => Supplier::select('id', 'name')->get(),
-            'products' => Product::select('id', 'name', 'price')->get(),
+            'products' => Product::select('id', 'name', 'price', 'parent_id')->orderBy('name')->get(),
             'activeCarLoads' => $activeCarLoads,
             'warehouses' => Warehouse::select('id', 'name')->get(),
         ]);

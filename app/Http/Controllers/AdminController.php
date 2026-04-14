@@ -2,64 +2,59 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\SalesInvoiceStatus;
 use App\Models\Caisse;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
 use App\Models\Product;
-use App\Models\Payment;
-use App\Models\Investment;
-use App\Models\Depense;
 use App\Models\SalesInvoice;
-use App\Models\Vente;
-use Illuminate\Support\Facades\DB;
-use App\Models\CarLoad;
+use App\Services\CarLoadService;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class AdminController extends Controller
 {
-    public function rapport()
+    private const FOND_DE_ROULEMENT = 1_944_000;
+
+    private const UNPAID_INVOICES_START_DATE = '2026-03-29';
+
+    public function __construct(private readonly CarLoadService $carLoadService) {}
+
+    public function rapport(): Response
     {
-        $fondRoulement = 855000+1620000;
-        // Calculate total stock value
-        $stockValue = Product::all()->sum("stock_value");
-        $totalCarLoads = CarLoad::where("returned", false)->get()->sum("stock_value");
-        $stockValue += $totalCarLoads;
+        $warehouseStockValue = Product::all()->sum('stock_value');
 
-        // Calculate total debt (unpaid amount from sales)
-        $totalDebt = SalesInvoice::all()->sum("total_remaining");
+        $carLoadsStockValue = $this->carLoadService->getTotalActiveCarLoadsStockValue();
 
-        // Calculate total investments
-        $totalInvestments = Investment::sum('amount');
+        $totalCaissesBalance = Caisse::sum('balance');
 
-        // Calculate total expenses
-        $totalDepenses = Depense::sum('amount');
+        $unpaidInvoiceStatuses = [
+            SalesInvoiceStatus::Draft->value,
+            SalesInvoiceStatus::Issued->value,
+            SalesInvoiceStatus::PartiallyPaid->value,
+        ];
 
-        // Calculate total sales
-        $totalSales = Vente::sum(DB::raw('quantity * price'));
+        $unpaidInvoices = SalesInvoice::query()
+            ->whereIn('status', $unpaidInvoiceStatuses)
+            ->where('created_at', '>=', self::UNPAID_INVOICES_START_DATE)
+            ->get();
 
-        // Calculate total profits (sales - (investments + expenses))
-        $totalProfitsOfSingleVentes = Vente::where("type","SINGLE")
-            ->where("paid", true)
-            ->sum("profit");
-        $totalProfitsSalesInvoices  = SalesInvoice::all()
-        ->sum('totalProfitPaid');
+        $totalUnpaidInvoicesAmount = $unpaidInvoices->sum('total_remaining');
+        $totalUnpaidInvoicesCount = $unpaidInvoices->count();
 
-        $totalProfits = $totalProfitsOfSingleVentes + $totalProfitsSalesInvoices;
-        $totalCaisses = Caisse::all()->sum('balance');
+        $businessValue = $warehouseStockValue + $carLoadsStockValue + $totalCaissesBalance + $totalUnpaidInvoicesAmount;
+        $netPlusValue = $businessValue - self::FOND_DE_ROULEMENT;
 
         return Inertia::render('Admin/Rapport', [
             'statistics' => [
-                'stock_value' => $stockValue,
-                'total_debt' => $totalDebt,
-                'total_investments' => $totalInvestments,
-                'total_depenses' => $totalDepenses,
-                'total_sales' => $totalSales,
-                'total_profits' => $totalProfits,
-                "total_caisses"=>"$totalCaisses",
-                "total_payments"=>Payment::all()->sum('amount'),
-                "value_of_business"=>($stockValue+$totalCaisses+$totalDebt),
-                "profit_un_paid"=> $totalProfitsOfSingleVentes,
-                "net_profit"=> ($stockValue+$totalCaisses+$totalDebt) - $fondRoulement
-            ]
+                'warehouse_stock_value' => $warehouseStockValue,
+                'car_loads_stock_value' => $carLoadsStockValue,
+                'total_caisses_balance' => $totalCaissesBalance,
+                'total_unpaid_invoices_amount' => $totalUnpaidInvoicesAmount,
+                'total_unpaid_invoices_count' => $totalUnpaidInvoicesCount,
+                'unpaid_invoices_start_date' => self::UNPAID_INVOICES_START_DATE,
+                'business_value' => $businessValue,
+                'fond_de_roulement' => self::FOND_DE_ROULEMENT,
+                'net_plus_value' => $netPlusValue,
+            ],
         ]);
     }
-} 
+}

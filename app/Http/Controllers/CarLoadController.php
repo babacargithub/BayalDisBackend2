@@ -192,6 +192,7 @@ class CarLoadController extends Controller
 
         return Inertia::render('CarLoads/Show', [
             'carLoad' => $carLoad,
+            'stock_value' => $this->carLoadService->getCarLoadStockValue($carLoad),
             'products' => $products,
             'missingInventoryProducts' => $missingInventoryProducts,
             'vehicles' => $vehicles,

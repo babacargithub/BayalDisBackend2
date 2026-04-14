@@ -168,6 +168,39 @@ class CarLoadService
             ->paginate(100);
     }
 
+    /**
+     * Compute the stock value of a single car load by summing
+     * (quantity_left × product.cost_price) across all its items with remaining stock.
+     *
+     * Returns 0 for terminated/transferred car loads since their stock has been moved out.
+     */
+    public function getCarLoadStockValue(CarLoad $carLoad): int
+    {
+        if ($carLoad->status === CarLoadStatus::TerminatedAndTransferred) {
+            return 0;
+        }
+
+        return (int) DB::table('car_load_items')
+            ->join('products', 'products.id', '=', 'car_load_items.product_id')
+            ->where('car_load_items.car_load_id', $carLoad->id)
+            ->where('car_load_items.quantity_left', '>', 0)
+            ->sum(DB::raw('car_load_items.quantity_left * products.cost_price'));
+    }
+
+    /**
+     * Compute the total stock value across all active (non-terminated) car loads
+     * in a single aggregated DB query.
+     */
+    public function getTotalActiveCarLoadsStockValue(): int
+    {
+        return (int) DB::table('car_load_items')
+            ->join('car_loads', 'car_loads.id', '=', 'car_load_items.car_load_id')
+            ->join('products', 'products.id', '=', 'car_load_items.product_id')
+            ->where('car_loads.status', '!=', CarLoadStatus::TerminatedAndTransferred->value)
+            ->where('car_load_items.quantity_left', '>', 0)
+            ->sum(DB::raw('car_load_items.quantity_left * products.cost_price'));
+    }
+
     public function getAllCarLoads()
     {
         return CarLoad::with(['team', 'inventory', 'vehicle'])

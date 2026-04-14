@@ -7,6 +7,8 @@ import { useForm } from '@inertiajs/vue3';
 const props = defineProps({
     products: Array,
     total_stock_value: Number,
+    car_loads_stock_value: { type: Number, default: 0 },
+    total_stock: { type: Number, default: 0 },
     base_products: Array,
     product_categories: Array,
 });
@@ -235,43 +237,58 @@ const calculateMargin = (price, costPrice) => {
     <Head title="Produits" />
 
     <AuthenticatedLayout>
-        <template #header>
-            <div class="flex justify-between items-center">
-                <div>
-                    <h2 class="font-semibold text-xl text-gray-800 leading-tight">Produits</h2>
-                    <div class="text-subtitle-1 mt-2">
-                        Valeur totale du stock: {{ formatPrice(props.total_stock_value) }}
-                    </div>
-                </div>
-                <div class="d-flex gap-2 align-center">
-                    <v-select
-                        v-model="selectedCategoryIdFilter"
-                        :items="product_categories"
-                        item-title="name"
-                        item-value="id"
-                        label="Filtrer par catégorie"
-                        clearable
-                        hide-details
-                        density="compact"
-                        style="min-width: 200px"
-                    />
-                    <v-btn
-                        :color="showParentProductsOnly ? 'primary' : 'default'"
-                        :variant="showParentProductsOnly ? 'flat' : 'outlined'"
-                        @click="showParentProductsOnly = !showParentProductsOnly"
-                        prepend-icon="mdi-package-variant"
-                    >
-                        Produits parents uniquement
-                    </v-btn>
-                    <v-btn color="primary" @click="openDialog()">
-                        Ajouter un produit
-                    </v-btn>
-                </div>
-            </div>
-        </template>
 
-        <div class="py-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+
+        <div class="py-8">
+          <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-4">
+
+            <!-- Page header -->
+            <div class="flex flex-wrap items-start justify-between gap-4">
+
+              <!-- Title + stock KPI chips -->
+              <div class="flex flex-col gap-2">
+                <h2 class="font-semibold text-xl text-gray-800 leading-tight">Produits</h2>
+                <div class="flex flex-wrap items-center gap-2">
+                  <v-chip color="blue" variant="tonal" size="small" prepend-icon="mdi-warehouse">
+                    Entrepôt : {{ formatPrice(props.total_stock_value) }}
+                  </v-chip>
+                  <v-chip color="orange" variant="tonal" size="small" prepend-icon="mdi-truck-cargo-container">
+                    Tournées : {{ formatPrice(props.car_loads_stock_value) }}
+                  </v-chip>
+                  <v-chip color="green" variant="tonal" size="small" prepend-icon="mdi-sigma">
+                    Total : {{ formatPrice(props.total_stock) }}
+                  </v-chip>
+                </div>
+              </div>
+
+              <!-- Filters + action -->
+              <div class="flex flex-wrap items-center gap-2">
+                <v-select
+                    v-model="selectedCategoryIdFilter"
+                    :items="product_categories"
+                    item-title="name"
+                    item-value="id"
+                    label="Filtrer par catégorie"
+                    clearable
+                    hide-details
+                    density="compact"
+                    style="min-width: 200px"
+                />
+                <v-btn
+                    :color="showParentProductsOnly ? 'primary' : 'default'"
+                    :variant="showParentProductsOnly ? 'flat' : 'outlined'"
+                    @click="showParentProductsOnly = !showParentProductsOnly"
+                    prepend-icon="mdi-package-variant"
+                    size="small"
+                >
+                  Parents seulement
+                </v-btn>
+                <v-btn color="primary" prepend-icon="mdi-plus" @click="openDialog()">
+                  Ajouter un produit
+                </v-btn>
+              </div>
+            </div>
+
                 <v-card>
                     <v-table>
                         <thead>
