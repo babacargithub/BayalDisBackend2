@@ -116,6 +116,7 @@ class AbcVehicleCostServiceTest extends TestCase
 
     public function test_fixed_cost_for_carload_is_prorated_over_trip_duration(): void
     {
+        Carbon::setTestNow(FROZEN_TODAY_FOR_DURATION_TESTS.' 10:00:00');
         $vehicle = $this->makeVehicle();
         // Use a completed trip with return_date in the past so the full duration is counted.
         $carLoad = $this->makeCarLoad($vehicle, [
@@ -130,6 +131,7 @@ class AbcVehicleCostServiceTest extends TestCase
 
     public function test_fixed_cost_for_active_carload_with_future_return_date_uses_elapsed_days_not_planned_days(): void
     {
+        Carbon::setTestNow(FROZEN_TODAY_FOR_DURATION_TESTS.' 10:00:00');
         $vehicle = $this->makeVehicle();
         // Active trip: load_date 2 days ago, return_date far in the future.
         // Cost must reflect only elapsed days, not the full planned duration.
