@@ -62,8 +62,7 @@ class FixedCostCalculationAndDistributionService
      * If the month is still open, falls back to the previous month's per_vehicle_amount
      * as an estimate — clearly flagged via the isMonthFinalized flag on the DTO.
      */
-    public function computeProratedFixedCostsForCarLoad(CarLoad $carLoad, bool $daily = false):
-    CarLoadFixedCostAllocationDTO
+    public function computeProratedFixedCostsForCarLoad(CarLoad $carLoad, bool $daily = false): CarLoadFixedCostAllocationDTO
     {
         if ($carLoad->load_date === null) {
             return CarLoadFixedCostAllocationDTO::zero();
@@ -72,29 +71,21 @@ class FixedCostCalculationAndDistributionService
         $year = $carLoad->load_date->year;
         $month = $carLoad->load_date->month;
 
-        $vehicleCarLoadCountThisMonth = $this->countCarLoadsForVehicleInMonth(
-            vehicleId: $carLoad->vehicle_id,
-            year: $year,
-            month: $month,
-        );
-
         $storageAllocation = $this->computePoolAllocationForCarLoad(
             costPool: MonthlyFixedCostPool::Storage,
             year: $year,
             month: $month,
-            vehicleCarLoadCountThisMonth: $vehicleCarLoadCountThisMonth,
         );
 
         $overheadAllocation = $this->computePoolAllocationForCarLoad(
             costPool: MonthlyFixedCostPool::Overhead,
             year: $year,
             month: $month,
-            vehicleCarLoadCountThisMonth: $vehicleCarLoadCountThisMonth,
         );
 
         return new CarLoadFixedCostAllocationDTO(
-            storageAllocation: !$daily ? $storageAllocation : ($storageAllocation / ($carLoad->vehicle?->working_days_per_month ?? 1)),
-            overheadAllocation: !$daily ? $overheadAllocation : ($overheadAllocation / ($carLoad->vehicle?->working_days_per_month ?? 1)),
+            storageAllocation: ! $daily ? $storageAllocation : ($storageAllocation / ($carLoad->vehicle?->working_days_per_month ?? 1)),
+            overheadAllocation: ! $daily ? $overheadAllocation : ($overheadAllocation / ($carLoad->vehicle?->working_days_per_month ?? 1)),
         );
     }
 
@@ -121,7 +112,6 @@ class FixedCostCalculationAndDistributionService
         MonthlyFixedCostPool $costPool,
         int $year,
         int $month,
-        int $vehicleCarLoadCountThisMonth,
     ): int {
         $perVehicleTotal = $this->getPerVehicleTotalForPool($costPool, $year, $month);
 
@@ -129,11 +119,7 @@ class FixedCostCalculationAndDistributionService
             $perVehicleTotal = $this->getFallbackPerVehicleTotalFromLatestFinalizedMonth($costPool, $year, $month);
         }
 
-        if ($vehicleCarLoadCountThisMonth === 0) {
-            return 0;
-        }
-
-        return (int) round($perVehicleTotal / $vehicleCarLoadCountThisMonth);
+        return $perVehicleTotal;
     }
 
     /**
@@ -199,24 +185,5 @@ class FixedCostCalculationAndDistributionService
             ->whereMonth('load_date', $month)
             ->distinct('vehicle_id')
             ->count('vehicle_id');
-    }
-
-    /**
-     * Count how many CarLoads a specific vehicle ran in a given month.
-     */
-    private function countCarLoadsForVehicleInMonth(
-        ?int $vehicleId,
-        int $year,
-        int $month,
-    ): int {
-        if ($vehicleId === null) {
-            return 0;
-        }
-
-        return CarLoad::query()
-            ->where('vehicle_id', $vehicleId)
-            ->whereYear('load_date', $year)
-            ->whereMonth('load_date', $month)
-            ->count();
     }
 }

@@ -187,7 +187,7 @@ class AbcFixedCostDistributionServiceTest extends TestCase
         $this->assertEquals(397_000, $allocation->total());
     }
 
-    public function test_allocation_splits_equally_between_two_carloads_of_same_vehicle(): void
+    public function test_allocation_gives_full_per_vehicle_amount_to_each_carload_regardless_of_carload_count(): void
     {
         $vehicle = $this->makeVehicle();
         $carLoad1 = $this->makeCarLoadForVehicleInMonth($vehicle, Carbon::create(2026, 3, 1));
@@ -207,9 +207,10 @@ class AbcFixedCostDistributionServiceTest extends TestCase
         $allocation1 = $this->service->computeProratedFixedCostsForCarLoad($carLoad1);
         $allocation2 = $this->service->computeProratedFixedCostsForCarLoad($carLoad2);
 
-        $this->assertEquals(86_000, $allocation1->storageAllocation);
-        $this->assertEquals(86_000, $allocation2->storageAllocation);
-        $this->assertEquals(172_000, $allocation1->storageAllocation + $allocation2->storageAllocation);
+        // Each CarLoad independently receives the full per-vehicle allocation —
+        // fixed costs are not split across multiple trips in the same month.
+        $this->assertEquals(172_000, $allocation1->storageAllocation);
+        $this->assertEquals(172_000, $allocation2->storageAllocation);
     }
 
     public function test_allocation_returns_zero_dto_when_carload_has_no_load_date(): void
