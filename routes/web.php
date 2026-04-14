@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AccountDebtController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CaisseController;
 use App\Http\Controllers\CarLoadController;
@@ -217,6 +218,10 @@ Route::middleware('auth')->group(function () {
     Route::post('accounts/transfer', [AccountController::class, 'transfer'])->name('accounts.transfer');
     Route::get('accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
     Route::resource('accounts', AccountController::class)->only(['index', 'store', 'update', 'destroy']);
+
+    Route::get('account-debts/{account}/outstanding', [AccountDebtController::class, 'outstandingDebtsForAccount'])->name('account-debts.outstanding');
+    Route::post('account-debts/borrow', [AccountDebtController::class, 'borrow'])->name('account-debts.borrow');
+    Route::post('account-debts/{accountDebt}/repay', [AccountDebtController::class, 'repay'])->name('account-debts.repay');
 
     Route::post('caisses/{caisse}/close-day', [CaisseController::class, 'closeDay'])->name('caisses.close-day');
     Route::get('caisses/{caisse}/transactions', [CaisseController::class, 'transactions'])->name('caisses.transactions');

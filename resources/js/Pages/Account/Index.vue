@@ -109,6 +109,14 @@
                                     @click="openTransactionsDialog(item)"
                                 />
                                 <v-btn
+                                    icon="mdi-hand-coin-outline"
+                                    variant="text"
+                                    color="warning"
+                                    size="small"
+                                    title="Dettes & Emprunts"
+                                    @click="openDebtDialog(item)"
+                                />
+                                <v-btn
                                     icon="mdi-pencil"
                                     variant="text"
                                     color="primary"
@@ -339,6 +347,340 @@
             </v-card>
         </v-dialog>
 
+        <!-- ── Debt & Borrow Dialog ────────────────────────────────────── -->
+        <v-dialog v-model="debtDialog" max-width="680px" scrollable>
+            <v-card v-if="debtDialogAccount">
+                <v-card-title class="pa-6 pb-2">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="text-h6">Dettes & Emprunts</div>
+                            <div class="text-body-2 text-grey-darken-1 mt-1">
+                                {{ debtDialogAccount.name }}
+                                — Solde : <strong>{{ formatAmount(debtDialogAccount.balance) }}</strong>
+                            </div>
+                        </div>
+                        <v-btn variant="text" icon="mdi-close" @click="debtDialog = false" />
+                    </div>
+                </v-card-title>
+
+                <v-tabs v-model="debtActiveTab" color="warning" class="px-4">
+                    <v-tab value="borrow">
+                        <v-icon start>mdi-bank-minus</v-icon>
+                        Emprunter
+                    </v-tab>
+                    <v-tab value="repay">
+                        <v-icon start>mdi-bank-plus</v-icon>
+                        Rembourser
+                        <v-chip
+                            v-if="debtsAsDebtor.length > 0"
+                            size="x-small"
+                            color="warning"
+                            class="ml-2"
+                        >
+                            {{ debtsAsDebtor.length }}
+                        </v-chip>
+                    </v-tab>
+                    <v-tab value="lent">
+                        <v-icon start>mdi-bank-check</v-icon>
+                        Prêts accordés
+                        <v-chip
+                            v-if="debtsAsCreditor.length > 0"
+                            size="x-small"
+                            color="info"
+                            class="ml-2"
+                        >
+                            {{ debtsAsCreditor.length }}
+                        </v-chip>
+                    </v-tab>
+                </v-tabs>
+
+                <v-divider />
+
+                <v-card-text class="pa-0" style="min-height: 320px;">
+                    <v-tabs-window v-model="debtActiveTab">
+
+                        <!-- ── TAB: Borrow ── -->
+                        <v-tabs-window-item value="borrow" class="pa-6">
+                            <v-alert
+                                type="info"
+                                variant="tonal"
+                                density="compact"
+                                class="mb-5 text-body-2"
+                            >
+                                Les fonds seront prélevés des comptes prêteurs et crédités sur
+                                <strong>{{ debtDialogAccount.name }}</strong>.
+                                Une dette est créée pour chaque ligne.
+                            </v-alert>
+
+                            <v-text-field
+                                v-model="borrowReason"
+                                label="Motif de l'emprunt *"
+                                variant="outlined"
+                                density="compact"
+                                class="mb-4"
+                                placeholder="Ex : Achat marchandises — solde insuffisant"
+                            />
+
+                            <!-- Borrow lines -->
+                            <div
+                                v-for="(borrowLine, borrowLineIndex) in borrowLines"
+                                :key="borrowLineIndex"
+                                class="flex gap-3 items-start mb-3"
+                            >
+                                <v-autocomplete
+                                    v-model="borrowLine.creditor_account_id"
+                                    :items="availableCreditorAccountsForLine(borrowLineIndex)"
+                                    item-title="displayName"
+                                    item-value="id"
+                                    label="Compte prêteur *"
+                                    variant="outlined"
+                                    density="compact"
+                                    no-data-text="Aucun compte avec solde disponible"
+                                    style="flex: 1;"
+                                    @update:model-value="autoFillBorrowAmount(borrowLine)"
+                                />
+                                <v-text-field
+                                    v-model.number="borrowLine.amount"
+                                    label="Montant (F CFA) *"
+                                    type="number"
+                                    min="1"
+                                    :max="creditorAvailableBalance(borrowLine.creditor_account_id)"
+                                    variant="outlined"
+                                    density="compact"
+                                    :hint="creditorBalanceHint(borrowLine.creditor_account_id)"
+                                    :rules="[v => !borrowLine.creditor_account_id || !v || v <= creditorAvailableBalance(borrowLine.creditor_account_id) || `Maximum : ${formatAmount(creditorAvailableBalance(borrowLine.creditor_account_id))}`]"
+                                    persistent-hint
+                                    style="max-width: 200px;"
+                                    @update:model-value="clampBorrowAmount(borrowLine)"
+                                />
+                                <v-btn
+                                    v-if="borrowLines.length > 1"
+                                    icon="mdi-close"
+                                    variant="text"
+                                    color="error"
+                                    size="small"
+                                    class="mt-1"
+                                    @click="removeBorrowLine(borrowLineIndex)"
+                                />
+                            </div>
+
+                            <!-- Running total -->
+                            <div
+                                v-if="borrowLinesTotalAmount > 0"
+                                class="flex justify-end items-center gap-2 mb-3 px-1"
+                            >
+                                <span class="text-body-2 text-grey-darken-1">Total emprunté :</span>
+                                <span class="text-body-1 font-semibold text-warning">
+                                    {{ formatAmount(borrowLinesTotalAmount) }}
+                                </span>
+                            </div>
+
+                            <v-btn
+                                variant="tonal"
+                                color="warning"
+                                size="small"
+                                class="mb-4"
+                                @click="addBorrowLine"
+                            >
+                                <v-icon start>mdi-plus</v-icon>
+                                Ajouter un compte prêteur
+                            </v-btn>
+
+                            <div class="flex justify-end gap-2 pt-2">
+                                <v-btn variant="text" color="error" @click="debtDialog = false">Annuler</v-btn>
+                                <v-btn
+                                    color="warning"
+                                    :loading="borrowSubmitting"
+                                    :disabled="!borrowFormIsValid"
+                                    @click="submitBorrow"
+                                >
+                                    <v-icon start>mdi-bank-minus</v-icon>
+                                    Confirmer l'emprunt
+                                </v-btn>
+                            </div>
+                        </v-tabs-window-item>
+
+                        <!-- ── TAB: Repay ── -->
+                        <v-tabs-window-item value="repay" class="pa-6">
+                            <div v-if="debtDebtsLoading" class="text-center py-10 text-grey-darken-1">
+                                Chargement des dettes…
+                            </div>
+
+                            <div v-else-if="debtsAsDebtor.length === 0" class="text-center py-10 text-grey-darken-1">
+                                <v-icon size="48" color="success" class="mb-3">mdi-check-circle-outline</v-icon>
+                                <div>Aucune dette en cours pour ce compte.</div>
+                            </div>
+
+                            <div v-else>
+                                <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+                                    <div class="text-body-2 text-grey-darken-1">
+                                        Total restant dû :
+                                        <strong class="text-warning">{{ formatAmount(totalOutstandingOwed) }}</strong>
+                                        — Solde disponible :
+                                        <strong>{{ formatAmount(debtDialogAccount.balance) }}</strong>
+                                    </div>
+                                    <v-btn
+                                        size="small"
+                                        variant="tonal"
+                                        color="grey"
+                                        @click="toggleSelectAllDebts"
+                                    >
+                                        {{ selectedDebtIds.length === debtsAsDebtor.length ? 'Tout déselectionner' : 'Tout sélectionner' }}
+                                    </v-btn>
+                                </div>
+
+                                <v-card
+                                    v-for="debtItem in debtsAsDebtor"
+                                    :key="debtItem.id"
+                                    :variant="selectedDebtIds.includes(debtItem.id) ? 'tonal' : 'outlined'"
+                                    :color="selectedDebtIds.includes(debtItem.id) ? 'success' : undefined"
+                                    class="mb-3 cursor-pointer"
+                                    @click="toggleDebtSelection(debtItem)"
+                                >
+                                    <v-card-text class="pa-4">
+                                        <div class="flex gap-3 items-start">
+                                            <v-checkbox
+                                                :model-value="selectedDebtIds.includes(debtItem.id)"
+                                                color="success"
+                                                hide-details
+                                                density="compact"
+                                                class="mt-0 flex-shrink-0"
+                                                @click.stop="toggleDebtSelection(debtItem)"
+                                            />
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex justify-between items-start flex-wrap gap-2">
+                                                    <div>
+                                                        <div class="text-body-2 font-semibold">
+                                                            {{ debtItem.creditor_account_name }}
+                                                        </div>
+                                                        <div class="text-caption text-grey-darken-1 mt-1">
+                                                            {{ debtItem.reason }}
+                                                        </div>
+                                                        <div class="text-caption text-grey-darken-1">
+                                                            Créé le {{ formatDate(debtItem.created_at) }}
+                                                        </div>
+                                                    </div>
+                                                    <div class="text-right flex-shrink-0">
+                                                        <v-chip
+                                                            :color="debtStatusColor(debtItem.status)"
+                                                            size="small"
+                                                            variant="tonal"
+                                                            class="mb-1"
+                                                        >
+                                                            {{ debtItem.status_label }}
+                                                        </v-chip>
+                                                        <div class="text-caption text-grey-darken-1">
+                                                            Emprunté : {{ formatAmount(debtItem.original_amount) }}
+                                                        </div>
+                                                        <div class="text-body-2 font-semibold text-warning">
+                                                            Restant : {{ formatAmount(debtItem.remaining_amount) }}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Amount field shown only when selected -->
+                                                <div
+                                                    v-if="selectedDebtIds.includes(debtItem.id)"
+                                                    class="mt-3 pt-3 border-t"
+                                                    @click.stop
+                                                >
+                                                    <v-text-field
+                                                        v-model.number="repayAmounts[debtItem.id]"
+                                                        label="Montant à rembourser (F CFA)"
+                                                        type="number"
+                                                        min="1"
+                                                        :max="maxRepayableAmountForDebt(debtItem)"
+                                                        variant="outlined"
+                                                        density="compact"
+                                                        :hint="`Max : ${formatAmount(maxRepayableAmountForDebt(debtItem))}`"
+                                                        :rules="[v => !v || v <= maxRepayableAmountForDebt(debtItem) || `Maximum : ${formatAmount(maxRepayableAmountForDebt(debtItem))}`]"
+                                                        persistent-hint
+                                                        @update:model-value="clampRepayAmount(debtItem)"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </v-card-text>
+                                </v-card>
+
+                                <!-- Selection summary + submit -->
+                                <div
+                                    v-if="selectedDebtIds.length > 0"
+                                    class="mt-4 pt-4 border-t flex justify-between items-center flex-wrap gap-3"
+                                >
+                                    <div class="text-body-2">
+                                        <span class="text-grey-darken-1">{{ selectedDebtIds.length }} dette(s) sélectionnée(s) — Total :</span>
+                                        <strong class="text-success ml-1">{{ formatAmount(repaySelectionTotalAmount) }}</strong>
+                                    </div>
+                                    <v-btn
+                                        color="success"
+                                        :loading="bulkRepaySubmitting"
+                                        :disabled="!bulkRepayFormIsValid"
+                                        @click="submitBulkRepay"
+                                    >
+                                        <v-icon start>mdi-bank-plus</v-icon>
+                                        Rembourser la sélection
+                                    </v-btn>
+                                </div>
+                            </div>
+                        </v-tabs-window-item>
+
+                        <!-- ── TAB: Lent ── -->
+                        <v-tabs-window-item value="lent" class="pa-6">
+                            <div v-if="debtDebtsLoading" class="text-center py-10 text-grey-darken-1">
+                                Chargement…
+                            </div>
+
+                            <div v-else-if="debtsAsCreditor.length === 0" class="text-center py-10 text-grey-darken-1">
+                                <v-icon size="48" color="grey" class="mb-3">mdi-hand-coin-outline</v-icon>
+                                <div>Ce compte n'a pas de prêts en cours.</div>
+                            </div>
+
+                            <v-card
+                                v-for="debtItem in debtsAsCreditor"
+                                :key="debtItem.id"
+                                variant="outlined"
+                                class="mb-3"
+                            >
+                                <v-card-text class="pa-4">
+                                    <div class="flex justify-between items-start flex-wrap gap-2">
+                                        <div>
+                                            <div class="text-body-2 font-semibold">
+                                                Prêté à : {{ debtItem.debtor_account_name }}
+                                            </div>
+                                            <div class="text-caption text-grey-darken-1 mt-1">
+                                                {{ debtItem.reason }}
+                                            </div>
+                                            <div class="text-caption text-grey-darken-1">
+                                                Créé le {{ formatDate(debtItem.created_at) }}
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <v-chip
+                                                :color="debtStatusColor(debtItem.status)"
+                                                size="small"
+                                                variant="tonal"
+                                                class="mb-1"
+                                            >
+                                                {{ debtItem.status_label }}
+                                            </v-chip>
+                                            <div class="text-caption text-grey-darken-1">
+                                                Prêté : {{ formatAmount(debtItem.original_amount) }}
+                                            </div>
+                                            <div class="text-body-2 font-semibold text-info">
+                                                À récupérer : {{ formatAmount(debtItem.remaining_amount) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </v-card-text>
+                            </v-card>
+                        </v-tabs-window-item>
+
+                    </v-tabs-window>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
+
         <!-- ── Transactions Dialog ──────────────────────────────────────── -->
         <v-dialog v-model="transactionsDialog" max-width="900px" scrollable>
             <v-card v-if="selectedAccount">
@@ -530,7 +872,7 @@ const tableHeaders = [
     { title: 'Lié à', key: 'linked_to', sortable: false },
     { title: 'Statut', key: 'is_active', sortable: true },
     { title: 'Mis à jour', key: 'updated_at', sortable: true },
-    { title: 'Actions', key: 'actions', sortable: false, align: 'center', minWidth: '130px' },
+    { title: 'Actions', key: 'actions', sortable: false, align: 'center', minWidth: '160px' },
 ];
 
 const transactionHeaders = [
@@ -758,4 +1100,263 @@ const openTransactionsDialog = (account) => {
 };
 
 const applyTransactionFilters = () => fetchTransactions();
+
+// ── Debt & Borrow dialog ───────────────────────────────────────────────────
+
+const debtDialog = ref(false);
+const debtDialogAccount = ref(null);
+const debtActiveTab = ref('borrow');
+const debtDebtsLoading = ref(false);
+
+const debtsAsDebtor = ref([]);
+const debtsAsCreditor = ref([]);
+const totalOutstandingOwed = ref(0);
+
+// ── Borrow form state ──────────────────────────────────────────────────────
+
+const borrowReason = ref('');
+const borrowLines = ref([{ creditor_account_id: null, amount: null }]);
+const borrowSubmitting = ref(false);
+
+const availableCreditorAccountsForLine = (currentLineIndex) => {
+    if (!debtDialogAccount.value) {
+        return [];
+    }
+    const accountIdsAlreadySelectedInOtherLines = borrowLines.value
+        .filter((_, lineIndex) => lineIndex !== currentLineIndex)
+        .map((borrowLine) => borrowLine.creditor_account_id)
+        .filter(Boolean);
+
+    return props.accounts
+        .filter(
+            (account) =>
+                account.id !== debtDialogAccount.value.id &&
+                account.balance > 0 &&
+                !accountIdsAlreadySelectedInOtherLines.includes(account.id)
+        )
+        .map((account) => ({
+            ...account,
+            displayName: `${account.name} — ${formatAmount(account.balance)}`,
+        }));
+};
+
+const creditorAvailableBalance = (creditorAccountId) => {
+    if (!creditorAccountId) {
+        return 0;
+    }
+    return props.accounts.find((account) => account.id === creditorAccountId)?.balance ?? 0;
+};
+
+const creditorBalanceHint = (creditorAccountId) => {
+    const balance = creditorAvailableBalance(creditorAccountId);
+    return creditorAccountId ? `Solde disponible : ${formatAmount(balance)}` : '';
+};
+
+const clampBorrowAmount = (borrowLine) => {
+    const maxBalance = creditorAvailableBalance(borrowLine.creditor_account_id);
+    if (maxBalance > 0 && borrowLine.amount > maxBalance) {
+        borrowLine.amount = maxBalance;
+    }
+};
+
+const autoFillBorrowAmount = (borrowLine) => {
+    borrowLine.amount = creditorAvailableBalance(borrowLine.creditor_account_id) || null;
+};
+
+const borrowLinesTotalAmount = computed(() =>
+    borrowLines.value.reduce((total, borrowLine) => total + (borrowLine.amount || 0), 0)
+);
+
+const borrowFormIsValid = computed(() => {
+    if (!borrowReason.value.trim()) {
+        return false;
+    }
+    return borrowLines.value.every((borrowLine) => {
+        if (!borrowLine.creditor_account_id || !borrowLine.amount || borrowLine.amount <= 0) {
+            return false;
+        }
+        const maxBalance = creditorAvailableBalance(borrowLine.creditor_account_id);
+        return borrowLine.amount <= maxBalance;
+    });
+});
+
+const addBorrowLine = () => {
+    borrowLines.value.push({ creditor_account_id: null, amount: null });
+};
+
+const removeBorrowLine = (borrowLineIndex) => {
+    borrowLines.value.splice(borrowLineIndex, 1);
+};
+
+const resetBorrowForm = () => {
+    borrowReason.value = '';
+    borrowLines.value = [{ creditor_account_id: null, amount: null }];
+};
+
+const submitBorrow = async () => {
+    borrowSubmitting.value = true;
+
+    try {
+        for (const borrowLine of borrowLines.value) {
+            await axios.post(route('account-debts.borrow'), {
+                debtor_account_id: debtDialogAccount.value.id,
+                creditor_account_id: borrowLine.creditor_account_id,
+                amount: borrowLine.amount,
+                reason: borrowReason.value,
+            });
+        }
+
+        successMessage.value = 'Emprunt(s) enregistré(s) avec succès.';
+        successSnackbar.value = true;
+
+        debtDialog.value = false;
+        resetBorrowForm();
+        router.reload({ preserveScroll: true });
+    } catch (error) {
+        const serverErrorMessage = error.response?.data?.message
+            ?? error.response?.data?.error
+            ?? 'Erreur lors de l\'enregistrement de l\'emprunt.';
+        errorMessage.value = serverErrorMessage;
+        errorSnackbar.value = true;
+    } finally {
+        borrowSubmitting.value = false;
+    }
+};
+
+// ── Repay form state ───────────────────────────────────────────────────────
+
+const selectedDebtIds = ref([]);
+const repayAmounts = ref({});
+const bulkRepaySubmitting = ref(false);
+
+/**
+ * Amount already committed to other selected debts (excluding the given debt).
+ */
+const repayAmountAllocatedToOtherDebts = (debtItem) => {
+    return selectedDebtIds.value
+        .filter((selectedId) => selectedId !== debtItem.id)
+        .reduce((sum, selectedId) => sum + (repayAmounts.value[selectedId] || 0), 0);
+};
+
+/**
+ * Maximum repayable for a single debt: the smaller of the remaining debt
+ * and the account balance minus what is already committed to other selected debts.
+ */
+const maxRepayableAmountForDebt = (debtItem) => {
+    const availableBalance =
+        (debtDialogAccount.value?.balance ?? 0) - repayAmountAllocatedToOtherDebts(debtItem);
+    return Math.max(0, Math.min(debtItem.remaining_amount, availableBalance));
+};
+
+const clampRepayAmount = (debtItem) => {
+    const maxAmount = maxRepayableAmountForDebt(debtItem);
+    if ((repayAmounts.value[debtItem.id] || 0) > maxAmount) {
+        repayAmounts.value[debtItem.id] = maxAmount;
+    }
+};
+
+const toggleDebtSelection = (debtItem) => {
+    const index = selectedDebtIds.value.indexOf(debtItem.id);
+    if (index === -1) {
+        selectedDebtIds.value.push(debtItem.id);
+        repayAmounts.value[debtItem.id] = maxRepayableAmountForDebt(debtItem);
+    } else {
+        selectedDebtIds.value.splice(index, 1);
+        delete repayAmounts.value[debtItem.id];
+    }
+};
+
+const toggleSelectAllDebts = () => {
+    if (selectedDebtIds.value.length === debtsAsDebtor.value.length) {
+        selectedDebtIds.value = [];
+        repayAmounts.value = {};
+    } else {
+        selectedDebtIds.value = [];
+        repayAmounts.value = {};
+        for (const debtItem of debtsAsDebtor.value) {
+            selectedDebtIds.value.push(debtItem.id);
+            repayAmounts.value[debtItem.id] = maxRepayableAmountForDebt(debtItem);
+        }
+    }
+};
+
+const repaySelectionTotalAmount = computed(() =>
+    selectedDebtIds.value.reduce((sum, debtId) => sum + (repayAmounts.value[debtId] || 0), 0)
+);
+
+const bulkRepayFormIsValid = computed(() =>
+    selectedDebtIds.value.length > 0 &&
+    selectedDebtIds.value.every(
+        (debtId) => repayAmounts.value[debtId] > 0
+    )
+);
+
+const submitBulkRepay = async () => {
+    bulkRepaySubmitting.value = true;
+
+    try {
+        for (const debtId of selectedDebtIds.value) {
+            await axios.post(route('account-debts.repay', debtId), {
+                amount: repayAmounts.value[debtId],
+            });
+        }
+
+        successMessage.value = `${selectedDebtIds.value.length} remboursement(s) enregistré(s) avec succès.`;
+        successSnackbar.value = true;
+
+        selectedDebtIds.value = [];
+        repayAmounts.value = {};
+
+        await fetchOutstandingDebts(debtDialogAccount.value);
+        router.reload({ preserveScroll: true });
+    } catch (error) {
+        const serverErrorMessage = error.response?.data?.message
+            ?? error.response?.data?.error
+            ?? 'Erreur lors du remboursement.';
+        errorMessage.value = serverErrorMessage;
+        errorSnackbar.value = true;
+    } finally {
+        bulkRepaySubmitting.value = false;
+    }
+};
+
+// ── Fetch outstanding debts ────────────────────────────────────────────────
+
+const fetchOutstandingDebts = async (account) => {
+    debtDebtsLoading.value = true;
+
+    try {
+        const response = await axios.get(route('account-debts.outstanding', account.id));
+        debtsAsDebtor.value = response.data.debts_as_debtor;
+        debtsAsCreditor.value = response.data.debts_as_creditor;
+        totalOutstandingOwed.value = response.data.total_outstanding_owed;
+    } catch {
+        errorMessage.value = 'Erreur lors du chargement des dettes.';
+        errorSnackbar.value = true;
+    } finally {
+        debtDebtsLoading.value = false;
+    }
+};
+
+const openDebtDialog = (account) => {
+    debtDialogAccount.value = account;
+    debtActiveTab.value = 'borrow';
+    debtsAsDebtor.value = [];
+    debtsAsCreditor.value = [];
+    totalOutstandingOwed.value = 0;
+    selectedDebtIds.value = [];
+    repayAmounts.value = {};
+    resetBorrowForm();
+    debtDialog.value = true;
+    fetchOutstandingDebts(account);
+};
+
+const debtStatusColor = (status) => {
+    const colorMap = {
+        PENDING: 'warning',
+        PARTIALLY_REPAID: 'orange',
+        FULLY_REPAID: 'success',
+    };
+    return colorMap[status] ?? 'grey';
+};
 </script>
