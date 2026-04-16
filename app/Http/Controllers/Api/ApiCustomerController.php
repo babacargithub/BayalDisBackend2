@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\SalesInvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\CreateCustomerRequest;
 use App\Http\Requests\Api\UpdateCustomerRequest;
@@ -86,13 +87,20 @@ class ApiCustomerController extends Controller
         return $this->venteResource($query);
     }
 
-    public function getCustomerInvoices(Customer $customer): JsonResponse
+    public function getCustomerInvoices(Request $request, Customer $customer): JsonResponse
     {
-        $invoices = SalesInvoice::with(['items.product', 'payments'])
-            ->where('customer_id', $customer->id)
-            ->latest()
+        $query = SalesInvoice::with(['items.product', 'payments'])
+            ->where('customer_id', $customer->id);
+
+        if ($request->boolean('overdue')) {
+            $query->where('status', '<>', SalesInvoiceStatus::FullyPaid->value)
+                ->whereNotNull('should_be_paid_at')
+                ->where('should_be_paid_at', '<', now());
+        }
+
+        $invoices = $query->latest()
             ->get()
-            ->map(fn ($invoice) => [
+            ->map(fn (SalesInvoice $invoice) => [
                 'id' => $invoice->id,
                 'customer_id' => $invoice->customer_id,
                 'total' => $invoice->total,
@@ -136,14 +144,21 @@ class ApiCustomerController extends Controller
         return response()->json(['customers' => $customers]);
     }
 
-    public function getDebts(): JsonResponse
+    public function getDebts(Request $request): JsonResponse
     {
-        $commercial = auth()->user()->commercial;
+        $commercial = $request->user()->commercial;
 
-        $invoices = SalesInvoice::with(['customer', 'items.product', 'payments'])
-            ->where('paid', false)
-            ->whereHas('customer', fn ($query) => $query->where('commercial_id', $commercial->id))
-            ->latest()
+        $invoicesQuery = SalesInvoice::with(['customer', 'items.product', 'payments'])
+            ->where('status', '<>', SalesInvoiceStatus::FullyPaid->value)
+//            ->whereHas('customer', fn ($query) => $query->where('commercial_id', $commercial->id))
+            ->whereDate('created_at', '>=', '2026-03-29');
+
+        if ($request->query('filter') == 'overdue') {
+            $invoicesQuery->whereNotNull('should_be_paid_at')
+                ->whereDate('should_be_paid_at', '<', now()->toDateString());
+        }
+
+        $invoices = $invoicesQuery->latest()
             ->get()
             ->map(fn ($invoice) => [
                 'id' => $invoice->id,
@@ -169,6 +184,20 @@ class ApiCustomerController extends Controller
             ]);
 
         return response()->json($invoices);
+    }
+
+    public function getOverdueDebtsCount(): JsonResponse
+    {
+        $overdueCount = SalesInvoice::where('status', '<>', SalesInvoiceStatus::FullyPaid->value)
+            ->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
+//            ->whereHas('customer', fn ($query) => $query->where('commercial_id', $commercial->id))
+                //TODO create global filter in SalesInvoice
+            ->whereDate('created_at', '>=', '2026-03-29')
+            ->whereNotNull('should_be_paid_at')
+            ->whereDate('should_be_paid_at', '<', now()->toDateString())
+            ->count();
+
+        return response()->json(['overdue_count' => $overdueCount]);
     }
 
     public function getWeeklyDebts(Request $request, SalesInvoiceStatsService $salesInvoiceStatsService): JsonResponse
