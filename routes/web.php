@@ -214,6 +214,7 @@ Route::middleware('auth')->group(function () {
 
     Route::put('products/{product}/update-stock-entries', [ProductController::class, 'updateStockEntries'])->name('products.update-stock-entries');
     Route::post('products/{product}/transform', [ProductController::class, 'transformToVariants'])->name('products.transform');
+    Route::get('stock-entries/{stockEntry}/transfers', [ProductController::class, 'stockEntryTransfers'])->name('stock-entries.transfers');
 
     Route::post('accounts/transfer', [AccountController::class, 'transfer'])->name('accounts.transfer');
     Route::get('accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');

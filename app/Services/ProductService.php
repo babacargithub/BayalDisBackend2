@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Enums\StockEntryTransferType;
 use App\Exceptions\InsufficientStockException;
 use App\Models\CarLoad; // required for decrementStock routing parameter type
 use App\Models\Product;
 use App\Models\StockEntry;
+use App\Models\StockEntryTransfer;
 use Exception;
 use Illuminate\Support\Facades\Cache;
 use JetBrains\PhpStorm\ArrayShape;
@@ -72,13 +74,14 @@ readonly class ProductService
 
     /**
      * Consume warehouse stock for a product in FIFO order (oldest StockEntry first),
-     * decrement StockEntry.quantity_left accordingly, and return the batches consumed
-     * with their locked unit cost (unit_price + transportation_cost + packaging_cost).
+     * record a StockEntryTransfer (Out) for each batch, recompute quantity_left from
+     * the transfer ledger, and return the batches consumed with their locked unit cost.
      *
      * Each entry in the returned array represents one StockEntry batch (or partial batch)
-     * consumed during this operation.
+     * consumed during this operation. The stock_entry_transfer_id is included so the caller
+     * can link the transfer to the CarLoadItem that was created for it.
      *
-     * @return array<int, array{quantity: int, cost_price_per_unit: int}>
+     * @return array<int, array{quantity: int, cost_price_per_unit: int, stock_entry_transfer_id: int}>
      *
      * @throws InsufficientStockException
      */
@@ -107,19 +110,25 @@ readonly class ProductService
 
             $quantityConsumedFromThisBatch = min($stockEntry->quantity_left, $remainingQuantityToDeduct);
 
+            $transfer = StockEntryTransfer::create([
+                'stock_entry_id' => $stockEntry->id,
+                'quantity' => $quantityConsumedFromThisBatch,
+                'transfer_type' => StockEntryTransferType::Out,
+                'transferred_at' => now(),
+            ]);
+
+            // Recompute and persist quantity_left from the transfer ledger,
+            // and keep the in-memory model in sync so the next FIFO iteration
+            // reads the updated value.
+            $stockEntry->updateQuantityLeftFromTransfers();
+
             $consumedBatches[] = [
                 'quantity' => $quantityConsumedFromThisBatch,
                 'cost_price_per_unit' => $stockEntry->total_unit_cost,
+                'stock_entry_transfer_id' => $transfer->id,
             ];
 
-            if ($stockEntry->quantity_left >= $remainingQuantityToDeduct) {
-                $stockEntry->decrement('quantity_left', $remainingQuantityToDeduct);
-                $remainingQuantityToDeduct = 0;
-            } else {
-                $remainingQuantityToDeduct -= $stockEntry->quantity_left;
-                $stockEntry->quantity_left = 0;
-                $stockEntry->save();
-            }
+            $remainingQuantityToDeduct -= $quantityConsumedFromThisBatch;
         }
 
         return $consumedBatches;
@@ -143,9 +152,15 @@ readonly class ProductService
     public function incrementWarehouseStockOnLatestEntry(Product $product, int $quantity): void
     {
         $latestStockEntry = $product->stockEntries()->latest()->firstOrFail();
-        $latestStockEntry->quantity_left += $quantity;
-        $latestStockEntry->save();
-        $latestStockEntry->refresh();
+
+        StockEntryTransfer::create([
+            'stock_entry_id' => $latestStockEntry->id,
+            'quantity' => $quantity,
+            'transfer_type' => StockEntryTransferType::In,
+            'transferred_at' => now(),
+        ]);
+
+        $latestStockEntry->updateQuantityLeftFromTransfers();
     }
 
     /**

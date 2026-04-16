@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\StockEntry;
 use App\Services\CarLoadService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -165,6 +166,24 @@ class ProductController extends Controller
 
             return redirect()->back()->with('error', 'Erreur lors de la mise à jour du stock');
         }
+    }
+
+    public function stockEntryTransfers(StockEntry $stockEntry): JsonResponse
+    {
+        $transfers = $stockEntry->transfers()
+            ->with('carLoadItem.carLoad:id,name')
+            ->orderBy('transferred_at', 'desc')
+            ->get()
+            ->map(fn ($transfer) => [
+                'id' => $transfer->id,
+                'quantity' => $transfer->quantity,
+                'transfer_type' => $transfer->transfer_type->value,
+                'transferred_at' => $transfer->transferred_at,
+                'notes' => $transfer->notes,
+                'car_load_name' => $transfer->carLoadItem?->carLoad?->name,
+            ]);
+
+        return response()->json(['transfers' => $transfers]);
     }
 
     public function transformToVariants(Request $request, Product $product)

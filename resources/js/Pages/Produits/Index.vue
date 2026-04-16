@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 
 const props = defineProps({
     products: Array,
@@ -47,6 +48,11 @@ const selectedProduct = ref(null);
 const stockEntryForm = useForm({
     stock_entries: []
 });
+
+const transfersDialog = ref(false);
+const selectedStockEntryForTransfers = ref(null);
+const stockEntryTransfers = ref([]);
+const loadingTransfers = ref(false);
 
 const transformDialog = ref(false);
 const transformForm = useForm({
@@ -144,6 +150,20 @@ const openStockEntriesDialog = (product) => {
         created_at: entry.created_at
     })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     stockEntriesDialog.value = true;
+};
+
+const openTransfersDialog = async (entry) => {
+    selectedStockEntryForTransfers.value = entry;
+    stockEntryTransfers.value = [];
+    transfersDialog.value = true;
+    loadingTransfers.value = true;
+
+    try {
+        const response = await axios.get(route('stock-entries.transfers', entry.id));
+        stockEntryTransfers.value = response.data.transfers;
+    } finally {
+        loadingTransfers.value = false;
+    }
 };
 
 const openTransformDialog = (product) => {
@@ -524,6 +544,7 @@ const calculateMargin = (price, costPrice) => {
                                 <th>Transport/u</th>
                                 <th>Emballage/u</th>
                                 <th>Valeur du stock</th>
+                                <th>Mouvements</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -545,6 +566,16 @@ const calculateMargin = (price, costPrice) => {
                                 <td>{{ formatPrice(entry.transportation_cost) }}</td>
                                 <td>{{ formatPrice(entry.packaging_cost) }}</td>
                                 <td>{{ formatPrice(entry.quantity_left * entry.unit_price) }}</td>
+                                <td>
+                                    <v-btn
+                                        icon="mdi-swap-horizontal"
+                                        variant="text"
+                                        color="primary"
+                                        size="small"
+                                        title="Voir les mouvements"
+                                        @click="openTransfersDialog(entry)"
+                                    />
+                                </td>
                             </tr>
                         </tbody>
                     </v-table>
@@ -655,6 +686,71 @@ const calculateMargin = (price, costPrice) => {
                     >
                         Transformer
                     </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+        <!-- Stock Entry Transfers Dialog -->
+        <v-dialog v-model="transfersDialog" max-width="800px">
+            <v-card>
+                <v-card-title class="d-flex align-center gap-2">
+                    <v-icon color="primary">mdi-swap-horizontal</v-icon>
+                    Mouvements de stock
+                    <span v-if="selectedStockEntryForTransfers" class="text-body-2 text-medium-emphasis ml-1">
+                        — entrée du {{ selectedStockEntryForTransfers ? new Date(selectedStockEntryForTransfers.created_at).toLocaleDateString('fr-FR') : '' }}
+                        ({{ selectedStockEntryForTransfers?.quantity }} unités à {{ formatPrice(selectedStockEntryForTransfers?.unit_price) }})
+                    </span>
+                </v-card-title>
+
+                <v-card-text>
+                    <div v-if="loadingTransfers" class="d-flex justify-center py-6">
+                        <v-progress-circular indeterminate color="primary" />
+                    </div>
+
+                    <v-alert
+                        v-else-if="!loadingTransfers && stockEntryTransfers.length === 0"
+                        type="info"
+                        variant="tonal"
+                        class="mt-2"
+                    >
+                        Aucun mouvement enregistré pour cette entrée de stock.
+                    </v-alert>
+
+                    <v-table v-else density="compact">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Quantité</th>
+                                <th>Chargement</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="transfer in stockEntryTransfers" :key="transfer.id">
+                                <td class="text-no-wrap">
+                                    {{ new Date(transfer.transferred_at).toLocaleDateString('fr-FR') }}
+                                </td>
+                                <td>
+                                    <v-chip
+                                        :color="transfer.transfer_type === 'out' ? 'orange' : 'green'"
+                                        variant="tonal"
+                                        size="small"
+                                        :prepend-icon="transfer.transfer_type === 'out' ? 'mdi-arrow-right' : 'mdi-arrow-left'"
+                                    >
+                                        {{ transfer.transfer_type === 'out' ? 'Sortie' : 'Retour' }}
+                                    </v-chip>
+                                </td>
+                                <td class="font-weight-medium">{{ transfer.quantity }}</td>
+                                <td>{{ transfer.car_load_name ?? '—' }}</td>
+                                <td class="text-medium-emphasis">{{ transfer.notes ?? '—' }}</td>
+                            </tr>
+                        </tbody>
+                    </v-table>
+                </v-card-text>
+
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="primary" variant="text" @click="transfersDialog = false">Fermer</v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>

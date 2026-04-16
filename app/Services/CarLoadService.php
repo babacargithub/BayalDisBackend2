@@ -7,12 +7,15 @@ use App\Data\CarLoadInventory\ConvertedQuantityDTO;
 use App\Data\CarLoadInventory\InventoryParentProductDTO;
 use App\Enums\CarLoadItemSource;
 use App\Enums\CarLoadStatus;
+use App\Enums\StockEntryTransferType;
 use App\Exceptions\InsufficientStockException;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
 use App\Models\CarLoadInventoryItem;
 use App\Models\CarLoadItem;
 use App\Models\Product;
+use App\Models\StockEntry;
+use App\Models\StockEntryTransfer;
 use App\Models\Team;
 use App\Models\Vente;
 use Carbon\Carbon;
@@ -406,11 +409,66 @@ class CarLoadService
     }
 
     /**
-     * Load items from the warehouse into a car load, consuming StockEntry batches in FIFO order
-     * and locking cost_price_per_unit on each CarLoadItem at load time.
+     * Move a specific quantity from a single StockEntry into a CarLoad.
      *
-     * When a single quantity spans multiple StockEntry batches, multiple CarLoadItem rows are
-     * created (one per batch), each carrying its own cost_price_per_unit.
+     * This is the atomic unit for warehouse-to-car-load stock movement:
+     *   1. Records a StockEntryTransfer (Out) against the given stock entry.
+     *   2. Creates a CarLoadItem with the cost locked at the stock entry's unit cost.
+     *   3. Links the transfer to the new CarLoadItem.
+     *   4. Recomputes and persists quantity_left on the stock entry from the transfer ledger.
+     *
+     * Callers that need to move stock across multiple FIFO batches should call this method
+     * once per batch (see createItemsToCarLoad).
+     *
+     * @throws InsufficientStockException
+     * @throws Throwable
+     */
+    public function moveToCarLoad(
+        StockEntry $stockEntry,
+        int $quantity,
+        CarLoad $carLoad,
+        string $loadedAt,
+        ?string $comment = null
+    ): CarLoadItem {
+        return DB::transaction(function () use ($stockEntry, $quantity, $carLoad, $loadedAt, $comment) {
+            if ($stockEntry->quantity_left < $quantity) {
+                throw new InsufficientStockException(
+                    "Stock insuffisant dans cette entrée de stock. Disponible: {$stockEntry->quantity_left}, Demandé: {$quantity}"
+                );
+            }
+
+            $transfer = StockEntryTransfer::create([
+                'stock_entry_id' => $stockEntry->id,
+                'quantity' => $quantity,
+                'transfer_type' => StockEntryTransferType::Out,
+                'transferred_at' => now(),
+            ]);
+
+            $carLoadItem = $carLoad->items()->create([
+                'product_id' => $stockEntry->product_id,
+                'quantity_loaded' => $quantity,
+                'quantity_left' => $quantity,
+                'cost_price_per_unit' => $stockEntry->total_unit_cost,
+                'loaded_at' => $loadedAt,
+                'comment' => $comment,
+                'source' => CarLoadItemSource::Warehouse,
+            ]);
+
+            $transfer->update(['car_load_item_id' => $carLoadItem->id]);
+
+            // Recompute quantity_left from the full transfer ledger so the cached
+            // column always reflects the authoritative transfer-based balance.
+            $stockEntry->updateQuantityLeftFromTransfers();
+
+            return $carLoadItem;
+        });
+    }
+
+    /**
+     * Load items from the warehouse into a car load, consuming StockEntry batches in FIFO order.
+     *
+     * Calls moveToCarLoad once per FIFO batch so each CarLoadItem carries the cost locked at its
+     * stock entry and every movement is recorded as a StockEntryTransfer.
      *
      * @param  bool  $decrementWarehouseStock  Pass false when the caller has already created
      *                                         StockEntry rows and does not want warehouse stock
@@ -421,8 +479,6 @@ class CarLoadService
     public function createItemsToCarLoad(CarLoad $carLoad, array $items, bool $decrementWarehouseStock = true): CarLoad
     {
         return DB::transaction(function () use ($items, $carLoad, $decrementWarehouseStock) {
-            $productService = app(ProductService::class);
-
             foreach ($items as $item) {
                 $product = Product::findOrFail($item['product_id']);
                 $quantityLoaded = $item['quantity_loaded'];
@@ -430,23 +486,29 @@ class CarLoadService
                 $comment = $item['comment'] ?? null;
 
                 if ($decrementWarehouseStock) {
-                    // Consume warehouse stock in FIFO order and create one CarLoadItem per batch,
-                    // each carrying the exact cost locked at load time.
-                    $consumedBatches = $productService->consumeWarehouseStockInFifoReturningBatchCosts(
-                        $product,
-                        $quantityLoaded
-                    );
+                    $totalAvailableStock = $product->stockEntries()->sum('quantity_left');
 
-                    foreach ($consumedBatches as $batch) {
-                        $carLoad->items()->create([
-                            'product_id' => $product->id,
-                            'quantity_loaded' => $batch['quantity'],
-                            'quantity_left' => $batch['quantity'],
-                            'cost_price_per_unit' => $batch['cost_price_per_unit'],
-                            'loaded_at' => $loadedAt,
-                            'comment' => $comment,
-                            'source' => CarLoadItemSource::Warehouse,
-                        ]);
+                    if ($totalAvailableStock < $quantityLoaded) {
+                        throw new InsufficientStockException(
+                            "Stock insuffisant pour {$product->name}. Stock disponible: {$totalAvailableStock}, Quantité demandée: {$quantityLoaded}"
+                        );
+                    }
+
+                    $stockEntriesOrderedByOldestFirst = $product->stockEntries()
+                        ->where('quantity_left', '>', 0)
+                        ->orderBy('created_at')
+                        ->get();
+
+                    $remainingQuantityToLoad = $quantityLoaded;
+
+                    foreach ($stockEntriesOrderedByOldestFirst as $stockEntry) {
+                        if ($remainingQuantityToLoad <= 0) {
+                            break;
+                        }
+
+                        $quantityFromThisEntry = min($stockEntry->quantity_left, $remainingQuantityToLoad);
+                        $this->moveToCarLoad($stockEntry, $quantityFromThisEntry, $carLoad, $loadedAt, $comment);
+                        $remainingQuantityToLoad -= $quantityFromThisEntry;
                     }
                 } else {
                     // Caller manages stock externally; create a single item without cost tracking.

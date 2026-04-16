@@ -32,6 +32,7 @@ class SalesInvoiceController extends Controller
                 'commercial:id,name',
             ])
             ->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
+            ->whereDate('created_at',">","2026-03-29")
             ->latest()
             ->paginate(5000);
 
