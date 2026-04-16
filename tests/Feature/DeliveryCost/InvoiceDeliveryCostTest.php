@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\DeliveryCost;
 
-use App\Data\SalesInvoice\SalesInvoiceDailySummaryDTO;
+use App\Data\SalesInvoice\DailySalesInvoiceItemDTO;
 use App\Enums\CarLoadExpenseType;
 use App\Enums\CarLoadStatus;
 use App\Enums\SalesInvoiceStatus;
@@ -529,7 +529,7 @@ class InvoiceDeliveryCostTest extends TestCase
         $invoice = $this->createCarLoadInvoice();
         $invoice->load('customer', 'commercial');
 
-        $dto = SalesInvoiceDailySummaryDTO::fromInvoice($invoice->fresh()->load('customer', 'commercial'));
+        $dto = DailySalesInvoiceItemDTO::fromInvoice($invoice->fresh()->load('customer', 'commercial'));
 
         $this->assertSame(30_000, $dto->deliveryCost);
         $this->assertSame(30_000, $dto->toArray()['delivery_cost']);
@@ -540,7 +540,7 @@ class InvoiceDeliveryCostTest extends TestCase
         $invoice = $this->createBackOfficeInvoice();
         $invoice->load('customer', 'commercial');
 
-        $dto = SalesInvoiceDailySummaryDTO::fromInvoice($invoice->fresh()->load('customer', 'commercial'));
+        $dto = DailySalesInvoiceItemDTO::fromInvoice($invoice->fresh()->load('customer', 'commercial'));
 
         $this->assertSame(0, $dto->deliveryCost);
     }

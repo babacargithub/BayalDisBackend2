@@ -1,19 +1,17 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import { Head } from '@inertiajs/vue3'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useForm, router } from '@inertiajs/vue3'
 
 const props = defineProps({
-    summaries: Array,
+    timelineItems: Array,
     dailyTotals: Object,
     commerciaux: Array,
     filters: Object,
-    payments: Object,
 })
 
 const filterDialog = ref(false)
-const selectedTab = ref('factures')
 
 const filterForm = useForm({
     date: props.filters?.date || new Date().toISOString().split('T')[0],
@@ -31,7 +29,6 @@ const applyFilters = () => {
     })
 }
 
-// Apply status filter immediately on button click
 const applyStatusFilter = (status) => {
     filterForm.paid_status = status
     filterForm.get(route('ventes.index'), {
@@ -47,6 +44,11 @@ const formatCurrency = (amount) => {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     }).format(amount || 0)
+}
+
+const formatTime = (dateString) => {
+    if (!dateString) return ''
+    return new Date(dateString).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
 const formatDate = (date) => {
@@ -67,19 +69,19 @@ const getInitials = (name) => {
         .join('')
 }
 
-const getStatusChipColor = (status) => {
+const getInvoiceStatusChipColor = (status) => {
     if (status === 'FULLY_PAID') return 'success'
     if (status === 'PARTIALLY_PAID') return 'warning'
     return 'error'
 }
 
-const getStatusLabel = (status) => {
+const getInvoiceStatusLabel = (status) => {
     if (status === 'FULLY_PAID') return 'Payée'
     if (status === 'PARTIALLY_PAID') return 'Partielle'
     return 'Impayée'
 }
 
-// ─── Invoice items dialog ────────────────────────────────────────────────────
+// ─── Invoice items dialog ─────────────────────────────────────────────────────
 const itemsDialog = ref(false)
 const selectedInvoiceId = ref(null)
 const selectedInvoiceName = ref('')
@@ -156,34 +158,7 @@ const saveProfit = async (item) => {
     }
 }
 
-// ─── Payments tab ─────────────────────────────────────────────────────────────
-const paymentSearch = ref('')
-const paymentMethodFilter = ref('')
-
-const filteredPayments = computed(() => {
-    if (!props.payments?.data) return []
-
-    let filtered = props.payments.data
-
-    if (paymentMethodFilter.value) {
-        filtered = filtered.filter(payment => payment.payment_method === paymentMethodFilter.value)
-    }
-
-    if (paymentSearch.value) {
-        const searchTerm = paymentSearch.value.toLowerCase()
-        filtered = filtered.filter(payment =>
-            payment.customer?.name?.toLowerCase().includes(searchTerm) ||
-            payment.customer?.phone_number?.toLowerCase().includes(searchTerm)
-        )
-    }
-
-    return filtered
-})
-
-const pageTitle = computed(() => {
-    return selectedTab.value === 'encaissements' ? 'Encaissements' : 'Factures'
-})
-
+// ─── Delete payment dialog ────────────────────────────────────────────────────
 const paymentToDelete = ref(null)
 const deletePaymentDialog = ref(false)
 
@@ -197,7 +172,7 @@ const deletePayment = () => {
 
     router.delete(route('sales-invoices.payments.destroy', {
         salesInvoice: paymentToDelete.value.invoice_id,
-        payment: paymentToDelete.value.id,
+        payment: paymentToDelete.value.payment_id,
     }), {
         onSuccess: () => {
             deletePaymentDialog.value = false
@@ -205,59 +180,47 @@ const deletePayment = () => {
         },
     })
 }
-
-const paymentHeaders = [
-    { title: 'Client', key: 'customer.name', align: 'start', sortable: true },
-    { title: 'Date', key: 'created_at', align: 'center', sortable: true },
-    { title: 'Montant Facture', key: 'invoice_total', align: 'end', sortable: true },
-    { title: 'Montant Payé', key: 'amount_paid', align: 'end', sortable: true },
-    { title: 'Reste à Payer', key: 'amount_remaining', align: 'end', sortable: true },
-    { title: 'Mode de Paiement', key: 'payment_method', align: 'center', sortable: true },
-    { title: 'Actions', key: 'actions', align: 'center', sortable: false },
-]
 </script>
 
 <template>
-    <Head :title="pageTitle" />
+    <Head title="Factures & Encaissements" />
 
     <AuthenticatedLayout>
         <template #header>
             <div class="flex justify-between items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                    {{ pageTitle }}
+                    Factures & Encaissements
                 </h2>
                 <div class="flex gap-2 items-center">
-                    <template v-if="selectedTab === 'factures'">
-                        <v-btn-group class="mr-2">
-                            <v-btn
-                                :color="filterForm.paid_status === '' ? 'primary' : undefined"
-                                @click="applyStatusFilter('')"
-                            >
-                                Toutes
-                            </v-btn>
-                            <v-btn
-                                :color="filterForm.paid_status === 'paid' ? 'success' : undefined"
-                                @click="applyStatusFilter('paid')"
-                            >
-                                Payées
-                            </v-btn>
-                            <v-btn
-                                :color="filterForm.paid_status === 'partial' ? 'warning' : undefined"
-                                @click="applyStatusFilter('partial')"
-                            >
-                                Partielles
-                            </v-btn>
-                            <v-btn
-                                :color="filterForm.paid_status === 'unpaid' ? 'error' : undefined"
-                                @click="applyStatusFilter('unpaid')"
-                            >
-                                Impayées
-                            </v-btn>
-                        </v-btn-group>
-                        <v-btn color="secondary" @click="filterDialog = true" prepend-icon="mdi-tune">
-                            Plus de filtres
+                    <v-btn-group class="mr-2">
+                        <v-btn
+                            :color="filterForm.paid_status === '' ? 'primary' : undefined"
+                            @click="applyStatusFilter('')"
+                        >
+                            Toutes
                         </v-btn>
-                    </template>
+                        <v-btn
+                            :color="filterForm.paid_status === 'paid' ? 'success' : undefined"
+                            @click="applyStatusFilter('paid')"
+                        >
+                            Payées
+                        </v-btn>
+                        <v-btn
+                            :color="filterForm.paid_status === 'partial' ? 'warning' : undefined"
+                            @click="applyStatusFilter('partial')"
+                        >
+                            Partielles
+                        </v-btn>
+                        <v-btn
+                            :color="filterForm.paid_status === 'unpaid' ? 'error' : undefined"
+                            @click="applyStatusFilter('unpaid')"
+                        >
+                            Impayées
+                        </v-btn>
+                    </v-btn-group>
+                    <v-btn color="secondary" @click="filterDialog = true" prepend-icon="mdi-tune">
+                        Filtres
+                    </v-btn>
                 </div>
             </div>
         </template>
@@ -265,279 +228,192 @@ const paymentHeaders = [
         <div class="py-8">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <v-card>
-                    <v-tabs v-model="selectedTab" color="primary" align-tabs="center">
-                        <v-tab value="factures">
-                            <v-icon start>mdi-file-document</v-icon>
-                            Factures
-                        </v-tab>
-                        <v-tab value="encaissements">
-                            <v-icon start>mdi-cash-register</v-icon>
-                            Encaissements
-                        </v-tab>
-                    </v-tabs>
 
-                    <v-tabs-window v-model="selectedTab">
-
-                        <!-- ─── Factures Tab ─────────────────────────────── -->
-                        <v-tabs-window-item value="factures">
-
-                            <!-- Summary Cards -->
-                            <v-row class="pa-4 mb-2">
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Total Factures</div>
-                                        <div class="text-h6 font-weight-bold">{{ formatCurrency(dailyTotals?.total_amount) }}</div>
-                                        <div class="text-caption text-grey mt-1">{{ formatNumber(dailyTotals?.invoices_count) }} factures</div>
-                                    </v-card>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Total Encaissements</div>
-                                        <div class="text-h6 font-weight-bold text-success">{{ formatCurrency(dailyTotals?.total_payments) }}</div>
-                                        <div class="text-caption text-grey mt-1">Reste: {{ formatCurrency((dailyTotals?.total_amount ?? 0) - (dailyTotals?.total_payments ?? 0)) }}</div>
-                                    </v-card>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Total Commissions</div>
-                                        <div class="text-h6 font-weight-bold text-deep-purple">{{ formatCurrency(dailyTotals?.total_commissions) }}</div>
-                                        <div class="text-caption text-grey mt-1">Commissions estimées</div>
-                                    </v-card>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Coût Livraison</div>
-                                        <div class="text-h6 font-weight-bold text-orange-darken-2">{{ formatCurrency(dailyTotals?.total_delivery_cost) }}</div>
-                                        <div class="text-caption text-grey mt-1">Coût transport du jour</div>
-                                    </v-card>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Bénéfice Net</div>
-                                        <div class="text-h6 font-weight-bold" :class="(dailyTotals?.net_profit ?? 0) >= 0 ? 'text-success' : 'text-error'">
-                                            {{ formatCurrency(dailyTotals?.net_profit) }}
-                                        </div>
-                                        <div class="text-caption text-grey mt-1">Réalisé − commissions − livraison</div>
-                                    </v-card>
-                                </v-col>
-                            </v-row>
-
-                            <!-- Invoices Table -->
-                            <v-card variant="flat">
-                                <v-table density="compact">
-                                    <thead>
-                                        <tr>
-                                            <th class="text-left">Client</th>
-                                            <th class="text-right">Total</th>
-                                            <th class="text-right">Payé</th>
-                                            <th class="text-right">Reste</th>
-                                            <th class="text-right">Bénéfice</th>
-                                            <th class="text-right">Commission</th>
-                                            <th class="text-right">Coût Livraison</th>
-                                            <th class="text-center">Commercial</th>
-                                            <th class="text-center">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-if="summaries.length === 0">
-                                            <td colspan="9" class="text-center py-8 text-grey">
-                                                <v-icon size="32" class="mb-2 d-block mx-auto">mdi-file-document-outline</v-icon>
-                                                Aucune facture pour cette date
-                                            </td>
-                                        </tr>
-                                        <tr v-for="summary in summaries" :key="summary.invoice_id">
-                                            <!-- Client -->
-                                            <td>
-                                                <div class="font-weight-medium">{{ summary.customer_name }}</div>
-                                                <div class="text-caption text-grey">{{ summary.customer_address }}</div>
-                                            </td>
-                                            <!-- Total -->
-                                            <td class="text-right">{{ formatCurrency(summary.total_amount) }}</td>
-                                            <!-- Payé -->
-                                            <td class="text-right">{{ formatCurrency(summary.total_payments) }}</td>
-                                            <!-- Reste -->
-                                            <td class="text-right">
-                                                <span :class="summary.total_remaining > 0 ? 'text-error font-weight-medium' : 'text-success'">
-                                                    {{ formatCurrency(summary.total_remaining) }}
-                                                </span>
-                                            </td>
-                                            <!-- Bénéfice -->
-                                            <td class="text-right">{{ formatCurrency(summary.total_estimated_profit) }}</td>
-                                            <!-- Commission -->
-                                            <td class="text-right text-deep-purple">
-                                                {{ formatCurrency(summary.estimated_commercial_commission) }}
-                                            </td>
-                                            <!-- Coût Livraison -->
-                                            <td class="text-right text-orange-darken-2">
-                                                {{ summary.delivery_cost != null ? formatCurrency(summary.delivery_cost) : '—' }}
-                                            </td>
-                                            <!-- Commercial (initials) -->
-                                            <td class="text-center">
-                                                <v-tooltip v-if="summary.commercial_name" :text="summary.commercial_name">
-                                                    <template #activator="{ props: tooltipProps }">
-                                                        <v-avatar
-                                                            v-bind="tooltipProps"
-                                                            size="28"
-                                                            color="deep-purple"
-                                                            class="text-white"
-                                                            style="font-size: 10px; cursor: default"
-                                                        >
-                                                            {{ getInitials(summary.commercial_name) }}
-                                                        </v-avatar>
-                                                    </template>
-                                                </v-tooltip>
-                                                <span v-else class="text-grey">—</span>
-                                            </td>
-                                            <!-- Actions -->
-                                            <td>
-                                                <div class="d-flex gap-1 justify-center">
-                                                    <v-btn
-                                                        icon="mdi-eye"
-                                                        variant="text"
-                                                        color="primary"
-                                                        size="small"
-                                                        density="compact"
-                                                        title="Voir les articles"
-                                                        @click="showInvoice(summary)"
-                                                    />
-                                                    <v-btn
-                                                        icon="mdi-file-pdf-box"
-                                                        variant="text"
-                                                        color="secondary"
-                                                        size="small"
-                                                        density="compact"
-                                                        title="Télécharger PDF"
-                                                        :href="route('sales-invoices.pdf', summary.invoice_id)"
-                                                        target="_blank"
-                                                    />
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </v-table>
+                    <!-- Summary Cards -->
+                    <v-row class="pa-4 mb-2">
+                        <v-col cols="12" md="3">
+                            <v-card elevation="1" class="pa-4">
+                                <div class="text-caption text-grey-darken-1 mb-1">Total Factures</div>
+                                <div class="text-h6 font-weight-bold">{{ formatCurrency(dailyTotals?.total_amount) }}</div>
+                                <div class="text-caption text-grey mt-1">{{ formatNumber(dailyTotals?.invoices_count) }} factures</div>
                             </v-card>
-                        </v-tabs-window-item>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-card elevation="1" class="pa-4">
+                                <div class="text-caption text-grey-darken-1 mb-1">Total Encaissements</div>
+                                <div class="text-h6 font-weight-bold text-success">{{ formatCurrency(dailyTotals?.total_payments) }}</div>
+                                <div class="text-caption text-grey mt-1">Reste: {{ formatCurrency((dailyTotals?.total_amount ?? 0) - (dailyTotals?.total_payments ?? 0)) }}</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-card elevation="1" class="pa-4">
+                                <div class="text-caption text-grey-darken-1 mb-1">Total Commissions</div>
+                                <div class="text-h6 font-weight-bold text-deep-purple">{{ formatCurrency(dailyTotals?.total_commissions) }}</div>
+                                <div class="text-caption text-grey mt-1">Commissions estimées</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-card elevation="1" class="pa-4">
+                                <div class="text-caption text-grey-darken-1 mb-1">Bénéfice Net</div>
+                                <div
+                                    class="text-h6 font-weight-bold"
+                                    :class="(dailyTotals?.net_profit ?? 0) >= 0 ? 'text-success' : 'text-error'"
+                                >
+                                    {{ formatCurrency(dailyTotals?.net_profit) }}
+                                </div>
+                                <div class="text-caption text-grey mt-1">Réalisé − commissions − livraison</div>
+                            </v-card>
+                        </v-col>
+                    </v-row>
 
-                        <!-- ─── Encaissements Tab ────────────────────────── -->
-                        <v-tabs-window-item value="encaissements">
-                            <!-- Payment Statistics Cards -->
-                            <v-row class="pa-4 mb-2">
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Encaissements du Jour</div>
-                                        <div class="text-h6 font-weight-bold text-success">{{ formatCurrency(payments?.statistics?.today_total) }}</div>
-                                        <div class="text-caption text-grey mt-1">{{ formatNumber(payments?.statistics?.today_count) }} transactions</div>
-                                    </v-card>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Total Semaine</div>
-                                        <div class="text-h6 font-weight-bold">{{ formatCurrency(payments?.statistics?.week_total) }}</div>
-                                        <div class="text-caption text-grey mt-1">Cumul hebdomadaire</div>
-                                    </v-card>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Total Mois</div>
-                                        <div class="text-h6 font-weight-bold">{{ formatCurrency(payments?.statistics?.month_total) }}</div>
-                                        <div class="text-caption text-grey mt-1">Cumul mensuel</div>
-                                    </v-card>
-                                </v-col>
-                                <v-col cols="12" md="3">
-                                    <v-card elevation="1" class="pa-4">
-                                        <div class="text-caption text-grey-darken-1 mb-1">Moyenne par Transaction</div>
-                                        <div class="text-h6 font-weight-bold">
-                                            {{ formatCurrency(payments?.statistics?.today_count ? (payments?.statistics?.today_total / payments?.statistics?.today_count) : 0) }}
-                                        </div>
-                                        <div class="text-caption text-grey mt-1">Aujourd'hui</div>
-                                    </v-card>
-                                </v-col>
-                            </v-row>
+                    <!-- Unified Timeline Table -->
+                    <v-card variant="flat">
+                        <v-table density="compact">
+                            <thead>
+                                <tr>
+                                    <th class="text-left" style="width: 110px">Type</th>
+                                    <th class="text-left">Client</th>
+                                    <th class="text-center" style="width: 70px">Heure</th>
+                                    <th class="text-right">Montant</th>
+                                    <th class="text-right">Payé</th>
+                                    <th class="text-right">Reste</th>
+                                    <th class="text-center">Statut / Mode</th>
+                                    <th class="text-center">Commercial</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-if="timelineItems.length === 0">
+                                    <td colspan="9" class="text-center py-8 text-grey">
+                                        <v-icon size="32" class="mb-2 d-block mx-auto">mdi-file-document-outline</v-icon>
+                                        Aucune facture ni encaissement pour cette date
+                                    </td>
+                                </tr>
 
-                            <!-- Search and Filter Section -->
-                            <div class="px-4 pb-4">
-                                <v-row>
-                                    <v-col cols="12" md="4">
-                                        <v-text-field
-                                            v-model="paymentSearch"
-                                            prepend-inner-icon="mdi-magnify"
-                                            label="Rechercher par client"
-                                            hide-details
-                                            density="compact"
-                                            variant="outlined"
-                                        />
-                                    </v-col>
-                                    <v-col cols="12" md="4">
-                                        <v-select
-                                            v-model="paymentMethodFilter"
-                                            :items="[
-                                                { title: 'Tous', value: '' },
-                                                { title: 'Cash', value: 'Cash' },
-                                                { title: 'Wave', value: 'Wave' },
-                                                { title: 'Om', value: 'Om' },
-                                            ]"
-                                            label="Mode de paiement"
-                                            hide-details
-                                            density="compact"
-                                            variant="outlined"
-                                        />
-                                    </v-col>
-                                </v-row>
-                            </div>
+                                <template v-for="item in timelineItems" :key="item.row_type + '-' + (item.invoice_id ?? item.payment_id)">
 
-                            <!-- Payments Table -->
-                            <v-data-table
-                                :headers="paymentHeaders"
-                                :items="filteredPayments"
-                                class="elevation-1"
-                            >
-                                <template #item.customer.name="{ item }">
-                                    <div>
-                                        <div class="font-weight-medium">{{ item.customer?.name }}</div>
-                                        <div class="text-caption text-grey">
-                                            {{ item.customer?.phone_number }}
-                                            <template v-if="item.customer?.address">
-                                                • {{ item.customer?.address }}
-                                            </template>
-                                        </div>
-                                    </div>
+                                    <!-- ── Invoice row ── -->
+                                    <tr v-if="item.row_type === 'invoice'">
+                                        <td>
+                                            <v-chip
+                                                size="small"
+                                                :color="item.status === 'FULLY_PAID' ? 'success' : item.status === 'PARTIALLY_PAID' ? 'warning' : 'primary'"
+                                                variant="tonal"
+                                                prepend-icon="mdi-file-document"
+                                            >
+                                                Facture
+                                            </v-chip>
+                                        </td>
+                                        <td>
+                                            <div class="font-weight-medium">{{ item.customer_name }}</div>
+                                            <div class="text-caption text-grey">{{ item.customer_address }}</div>
+                                        </td>
+                                        <td class="text-center text-caption text-grey">
+                                            {{ formatTime(item.created_at) }}
+                                        </td>
+                                        <td class="text-right">{{ formatCurrency(item.total_amount) }}</td>
+                                        <td class="text-right">{{ formatCurrency(item.total_payments) }}</td>
+                                        <td class="text-right">
+                                            <span :class="item.total_remaining > 0 ? 'text-error font-weight-medium' : 'text-success'">
+                                                {{ formatCurrency(item.total_remaining) }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <v-chip
+                                                size="small"
+                                                :color="getInvoiceStatusChipColor(item.status)"
+                                            >
+                                                {{ getInvoiceStatusLabel(item.status) }}
+                                            </v-chip>
+                                        </td>
+                                        <td class="text-center">
+                                            <v-tooltip v-if="item.commercial_name" :text="item.commercial_name">
+                                                <template #activator="{ props: tooltipProps }">
+                                                    <v-avatar
+                                                        v-bind="tooltipProps"
+                                                        size="28"
+                                                        color="deep-purple"
+                                                        class="text-white"
+                                                        style="font-size: 10px; cursor: default"
+                                                    >
+                                                        {{ getInitials(item.commercial_name) }}
+                                                    </v-avatar>
+                                                </template>
+                                            </v-tooltip>
+                                            <span v-else class="text-grey">—</span>
+                                        </td>
+                                        <td>
+                                            <div class="d-flex gap-1 justify-center">
+                                                <v-btn
+                                                    icon="mdi-eye"
+                                                    variant="text"
+                                                    color="primary"
+                                                    size="small"
+                                                    density="compact"
+                                                    title="Voir les articles"
+                                                    @click="showInvoice(item)"
+                                                />
+                                                <v-btn
+                                                    icon="mdi-file-pdf-box"
+                                                    variant="text"
+                                                    color="secondary"
+                                                    size="small"
+                                                    density="compact"
+                                                    title="Télécharger PDF"
+                                                    :href="route('sales-invoices.pdf', item.invoice_id)"
+                                                    target="_blank"
+                                                />
+                                            </div>
+                                        </td>
+                                    </tr>
+
+                                    <!-- ── Past-invoice payment row ── -->
+                                    <tr v-else-if="item.row_type === 'payment'">
+                                        <td>
+                                            <v-chip
+                                                size="small"
+                                                color="teal"
+                                                variant="outlined"
+                                                prepend-icon="mdi-cash-multiple"
+                                            >
+                                                Encaissé
+                                            </v-chip>
+                                        </td>
+                                        <td>
+                                            <div class="font-weight-medium">{{ item.customer_name }}</div>
+                                            <div class="text-caption text-grey">
+                                                Facture du {{ formatDate(item.invoice_date) }}
+                                            </div>
+                                        </td>
+                                        <td class="text-center text-caption text-grey">
+                                            {{ formatTime(item.created_at) }}
+                                        </td>
+                                        <td class="text-right text-success font-weight-medium">
+                                            {{ formatCurrency(item.payment_amount) }}
+                                        </td>
+                                        <td class="text-right">{{ formatCurrency(item.amount_paid) }}</td>
+                                        <td class="text-right">
+                                            <span :class="item.amount_remaining > 0 ? 'text-error font-weight-medium' : 'text-success'">
+                                                {{ formatCurrency(item.amount_remaining) }}
+                                            </span>
+                                        </td>
+                                        <td class="text-center">
+                                            <v-chip size="small" color="teal" variant="tonal">
+                                                {{ item.payment_method }}
+                                            </v-chip>
+                                        </td>
+                                        <td class="text-center text-grey">—</td>
+                                        <td>
+                                            <div class="d-flex justify-center">
+
+                                            </div>
+                                        </td>
+                                    </tr>
+
                                 </template>
-
-                                <template #item.created_at="{ item }">
-                                    <div class="text-center">{{ formatDate(item.created_at) }}</div>
-                                </template>
-
-                                <template #item.invoice_total="{ item }">
-                                    {{ formatCurrency(item.invoice_total) }}
-                                </template>
-
-                                <template #item.amount_paid="{ item }">
-                                    <span class="text-success">{{ formatCurrency(item.amount_paid) }}</span>
-                                </template>
-
-                                <template #item.amount_remaining="{ item }">
-                                    <span :class="item.amount_remaining > 0 ? 'text-error' : 'text-success'">
-                                        {{ formatCurrency(item.amount_remaining) }}
-                                    </span>
-                                </template>
-
-                                <template #item.payment_method="{ item }">
-                                    <v-chip size="small">{{ item.payment_method }}</v-chip>
-                                </template>
-
-                                <template #item.actions="{ item }">
-                                    <v-btn icon="mdi-delete" variant="text" color="error" @click="confirmDeletePayment(item)" />
-                                </template>
-
-                                <template #no-data>
-                                    <div class="d-flex align-center justify-center pa-4">
-                                        <v-icon color="grey" class="mr-2">mdi-alert-circle-outline</v-icon>
-                                        Aucun encaissement trouvé
-                                    </div>
-                                </template>
-                            </v-data-table>
-                        </v-tabs-window-item>
-                    </v-tabs-window>
+                            </tbody>
+                        </v-table>
+                    </v-card>
                 </v-card>
             </div>
         </div>
@@ -580,8 +456,8 @@ const paymentHeaders = [
                 <v-card-text>
                     Êtes-vous sûr de vouloir supprimer cet encaissement ? Cette action est irréversible.
                     <div v-if="paymentToDelete" class="mt-4">
-                        <strong>Client :</strong> {{ paymentToDelete.customer?.name }}<br />
-                        <strong>Montant :</strong> {{ formatCurrency(paymentToDelete.amount_paid) }}<br />
+                        <strong>Client :</strong> {{ paymentToDelete.customer_name }}<br />
+                        <strong>Montant :</strong> {{ formatCurrency(paymentToDelete.payment_amount) }}<br />
                         <strong>Date :</strong> {{ formatDate(paymentToDelete.created_at) }}
                     </div>
                 </v-card-text>

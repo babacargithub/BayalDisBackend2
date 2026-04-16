@@ -10,7 +10,7 @@ use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
-use App\Services\SalesInvoiceDailySummaryService;
+use App\Services\DailySalesInvoicesService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -30,7 +30,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    private SalesInvoiceDailySummaryService $service;
+    private DailySalesInvoicesService $service;
 
     private Customer $defaultCustomer;
 
@@ -42,7 +42,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = app(SalesInvoiceDailySummaryService::class);
+        $this->service = app(DailySalesInvoicesService::class);
 
         $team = Team::create([
             'name' => 'Team '.uniqid(),
@@ -124,14 +124,14 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $this->makeInvoiceOnDate($today);
         $this->makeInvoiceOnDate($yesterday);
 
-        $summaries = $this->service->getDailySummaries($today, null, null);
+        $summaries = $this->service->getDailySales($today, null, null);
 
         $this->assertCount(2, $summaries);
     }
 
     public function test_returns_empty_collection_when_no_invoices_on_date(): void
     {
-        $summaries = $this->service->getDailySummaries(Carbon::today(), null, null);
+        $summaries = $this->service->getDailySales(Carbon::today(), null, null);
 
         $this->assertEmpty($summaries);
     }
@@ -159,7 +159,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $saleInv->created_at = Carbon::today()->setTime(12, 0);
         $saleInv->save();
 
-        $summaries = $this->service->getDailySummaries(Carbon::today(), $this->defaultCommercial->id, null);
+        $summaries = $this->service->getDailySales(Carbon::today(), $this->defaultCommercial->id, null);
 
         $this->assertCount(1, $summaries);
         $this->assertSame($invoiceForDefaultCommercial->id, $summaries->first()->invoiceId);
@@ -175,7 +175,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $this->makeInvoiceOnDate(Carbon::today(), SalesInvoiceStatus::PartiallyPaid);
         $this->makeInvoiceOnDate(Carbon::today(), SalesInvoiceStatus::Draft);
 
-        $summaries = $this->service->getDailySummaries(Carbon::today(), null, 'paid');
+        $summaries = $this->service->getDailySales(Carbon::today(), null, 'paid');
 
         $this->assertCount(1, $summaries);
         $this->assertSame($paidInvoice->id, $summaries->first()->invoiceId);
@@ -187,7 +187,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $partialInvoice = $this->makeInvoiceOnDate(Carbon::today(), SalesInvoiceStatus::PartiallyPaid);
         $this->makeInvoiceOnDate(Carbon::today(), SalesInvoiceStatus::Draft);
 
-        $summaries = $this->service->getDailySummaries(Carbon::today(), null, 'partial');
+        $summaries = $this->service->getDailySales(Carbon::today(), null, 'partial');
 
         $this->assertCount(1, $summaries);
         $this->assertSame($partialInvoice->id, $summaries->first()->invoiceId);
@@ -199,7 +199,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $this->makeInvoiceOnDate(Carbon::today(), SalesInvoiceStatus::PartiallyPaid);
         $unpaidInvoice = $this->makeInvoiceOnDate(Carbon::today(), SalesInvoiceStatus::Draft);
 
-        $summaries = $this->service->getDailySummaries(Carbon::today(), null, 'unpaid');
+        $summaries = $this->service->getDailySales(Carbon::today(), null, 'unpaid');
 
         $this->assertCount(1, $summaries);
         $this->assertSame($unpaidInvoice->id, $summaries->first()->invoiceId);
@@ -221,7 +221,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
             estimatedCommercialCommission: 200,
         );
 
-        $summaries = $this->service->getDailySummaries(Carbon::today(), null, null);
+        $summaries = $this->service->getDailySales(Carbon::today(), null, null);
 
         $this->assertCount(1, $summaries);
         $dto = $summaries->first();
@@ -248,7 +248,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $invoiceWithNoCommercial->created_at = Carbon::today()->setTime(12, 0);
         $invoiceWithNoCommercial->save();
 
-        $summaries = $this->service->getDailySummaries(Carbon::today(), null, null);
+        $summaries = $this->service->getDailySales(Carbon::today(), null, null);
 
         $this->assertCount(1, $summaries);
         $this->assertNull($summaries->first()->commercialName);
@@ -258,7 +258,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
     {
         $this->makeInvoiceOnDate(Carbon::today());
 
-        $dto = $this->service->getDailySummaries(Carbon::today(), null, null)->first();
+        $dto = $this->service->getDailySales(Carbon::today(), null, null)->first();
         $array = $dto->toArray();
 
         foreach ([
@@ -286,7 +286,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $invoiceB = $this->makeInvoiceOnDate($today);
         $this->setInvoiceStoredTotals($invoiceB, 6_000, 6_000, 1_200, 1_200, 120);
 
-        $summaries = $this->service->getDailySummaries($today, null, null);
+        $summaries = $this->service->getDailySales($today, null, null);
         $totals = $this->service->computeDailyTotals($summaries);
 
         $this->assertSame(2, $totals->invoicesCount);
@@ -380,7 +380,7 @@ class SalesInvoiceDailySummaryServiceTest extends TestCase
         $invoiceB = $this->makeInvoiceOnDate($today);
         $this->setInvoiceStoredTotals($invoiceB, 3_000, 1_000, 600, 200, 30);
 
-        $summaries = $this->service->getDailySummaries($today, null, null);
+        $summaries = $this->service->getDailySales($today, null, null);
         $totals = $this->service->computeDailyTotals($summaries);
 
         // net_profit = (1_000 + 200) − (100 + 30) − 0 = 1_200 − 130 = 1_070

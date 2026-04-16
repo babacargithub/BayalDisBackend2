@@ -33,20 +33,26 @@ readonly class SalesInvoicesDailyTotalsDTO
     }
 
     /**
-     * Build the totals DTO from a collection of individual summary DTOs.
+     * Build the totals DTO from a collection of timeline item DTOs.
      *
-     * @param  Collection<int, SalesInvoiceDailySummaryDTO>  $summaries
+     * Only invoice rows contribute to the totals; payment rows are skipped
+     * so that collecting a past-invoice payment does not double-count revenue.
+     *
+     * @param  Collection<int, DailySalesInvoiceItemDTO>  $timelineItems
      */
-    public static function fromSummaries(Collection $summaries): self
+    public static function fromSummaries(Collection $timelineItems): self
     {
+        $invoiceItems = $timelineItems->filter(fn (DailySalesInvoiceItemDTO $item) => $item->isInvoice());
+        $paymentItems = $timelineItems->filter(fn (DailySalesInvoiceItemDTO $item) => ! $item->isInvoice());
+
         return new self(
-            invoicesCount: $summaries->count(),
-            totalAmount: $summaries->sum('totalAmount'),
-            totalPayments: $summaries->sum('totalPayments'),
-            totalCommissions: $summaries->sum('estimatedCommercialCommission'),
-            totalEstimatedProfit: $summaries->sum('totalEstimatedProfit'),
-            totalRealizedProfit: $summaries->sum('totalRealizedProfit'),
-            totalDeliveryCost: $summaries->sum('deliveryCost'),
+            invoicesCount: $invoiceItems->count(),
+            totalAmount: (int) $invoiceItems->sum('totalAmount'),
+            totalPayments: (int) $invoiceItems->sum('totalPayments') + (int) $paymentItems->sum('paymentAmount'),
+            totalCommissions: (int) $invoiceItems->sum('estimatedCommercialCommission'),
+            totalEstimatedProfit: (int) $invoiceItems->sum('totalEstimatedProfit'),
+            totalRealizedProfit: (int) $invoiceItems->sum('totalRealizedProfit') + (int) $paymentItems->sum('paymentRealizedProfit'),
+            totalDeliveryCost: (int) $invoiceItems->sum('deliveryCost'),
         );
     }
 

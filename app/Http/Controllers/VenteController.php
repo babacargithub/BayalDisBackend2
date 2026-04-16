@@ -7,8 +7,7 @@ use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Vente;
-use App\Services\PaymentService;
-use App\Services\SalesInvoiceDailySummaryService;
+use App\Services\DailySalesInvoicesService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -20,8 +19,7 @@ use Inertia\Response;
 class VenteController extends Controller
 {
     public function __construct(
-        private readonly PaymentService $paymentService,
-        private readonly SalesInvoiceDailySummaryService $dailySummaryService,
+        private readonly DailySalesInvoicesService $dailySummaryService,
     ) {}
 
     public function index(Request $request): Response
@@ -30,21 +28,18 @@ class VenteController extends Controller
         $commercialId = $request->filled('commercial_id') ? (int) $request->commercial_id : null;
         $paidStatus = $request->filled('paid_status') ? $request->paid_status : null;
 
-        $summaries = $this->dailySummaryService->getDailySummaries($date, $commercialId, $paidStatus);
-        $dailyTotals = $this->dailySummaryService->computeDailyTotals($summaries);
+        $timelineItems = $this->dailySummaryService->getDailyTimeline($date, $commercialId, $paidStatus);
+        $dailyTotals = $this->dailySummaryService->computeDailyTotals($timelineItems);
 
-        $payments = $this->paymentService->getTodayPayments();
-        $paymentStats = $this->paymentService->getPaymentStatistics();
-
+        /** @noinspection PhpUndefinedMethodInspection */
         return Inertia::render('Ventes/Index', [
-            'summaries' => $summaries->map->toArray()->values(),
+            'timelineItems' => $timelineItems->map->toArray()->values(),
             'dailyTotals' => $dailyTotals->toArray(),
-            'filters' => $request->only(['date', 'paid_status', 'commercial_id']),
+            'filters' => array_merge(
+                $request->only(['date', 'paid_status', 'commercial_id']),
+                ['date' => $date->toDateString()],
+            ),
             'commerciaux' => Commercial::select(['id', 'name'])->orderBy('name')->get(),
-            'payments' => [
-                'data' => $payments,
-                'statistics' => $paymentStats,
-            ],
         ]);
     }
 
