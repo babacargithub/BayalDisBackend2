@@ -11,6 +11,7 @@ use App\Data\Commission\DailyCommissionSummaryData;
 use App\Data\Vente\VenteStatsFilter;
 use App\Models\CarLoad;
 use App\Models\Commercial;
+use App\Models\CommercialObjectiveTier;
 use App\Models\CommercialWorkPeriod;
 use App\Models\CommissionPaymentLine;
 use App\Models\CommissionPeriodSetting;
@@ -198,12 +199,20 @@ readonly class DailyCommissionService
             }
 
             // --- Objective bonus (daily encaissement vs period tiers) ---
+            // Falls back to global tiers when no tiers are defined for the work period.
             $dailyEncaissement = $paymentsOnWorkDay->sum('amount');
 
-            $highestAchievedTier = $workPeriod->objectiveTiers()
-                ->where('ca_threshold', '<=', $dailyEncaissement)
-                ->orderByDesc('tier_level')
-                ->first();
+            $periodHasTiers = $workPeriod->objectiveTiers()->exists();
+
+            $highestAchievedTier = $periodHasTiers
+                ? $workPeriod->objectiveTiers()
+                    ->where('ca_threshold', '<=', $dailyEncaissement)
+                    ->orderByDesc('tier_level')
+                    ->first()
+                : CommercialObjectiveTier::global()
+                    ->where('ca_threshold', '<=', $dailyEncaissement)
+                    ->orderByDesc('tier_level')
+                    ->first();
 
             $objectiveBonus = $highestAchievedTier?->bonus_amount ?? 0;
             $achievedTierLevel = $highestAchievedTier?->tier_level;
@@ -1097,10 +1106,17 @@ readonly class DailyCommissionService
             return null;
         }
 
-        $nextTier = $workPeriod->objectiveTiers()
-            ->where('ca_threshold', '>', $currentDailyEncaissement)
-            ->orderBy('ca_threshold')
-            ->first();
+        $periodHasTiers = $workPeriod->objectiveTiers()->exists();
+
+        $nextTier = $periodHasTiers
+            ? $workPeriod->objectiveTiers()
+                ->where('ca_threshold', '>', $currentDailyEncaissement)
+                ->orderBy('ca_threshold')
+                ->first()
+            : CommercialObjectiveTier::global()
+                ->where('ca_threshold', '>', $currentDailyEncaissement)
+                ->orderBy('ca_threshold')
+                ->first();
 
         if ($nextTier === null) {
             return null;

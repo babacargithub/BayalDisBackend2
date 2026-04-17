@@ -110,6 +110,55 @@
                                 </tbody>
                             </v-table>
                         </v-card>
+
+                        <!-- Global objective tiers card -->
+                        <v-card class="mt-4">
+                            <v-card-title class="d-flex align-center justify-space-between">
+                                <span>Paliers objectif CA globaux</span>
+                                <v-btn color="primary" size="small" @click="openGlobalTierDialog">
+                                    <v-icon size="small" class="mr-1">mdi-plus</v-icon>
+                                    Ajouter un palier
+                                </v-btn>
+                            </v-card-title>
+                            <v-card-subtitle class="pb-2">
+                                Ces paliers s'appliquent par défaut à tous les commerciaux. Ils sont ignorés dès qu'un commercial a ses propres paliers définis sur sa période de travail.
+                            </v-card-subtitle>
+
+                            <v-table v-if="globalObjectiveTiers.length > 0" density="compact">
+                                <thead>
+                                    <tr>
+                                        <th>Palier</th>
+                                        <th class="text-right">Seuil CA (XOF)</th>
+                                        <th class="text-right">Bonus (XOF)</th>
+                                        <th class="text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="tier in globalObjectiveTiers" :key="tier.id">
+                                        <td>{{ tier.tier_level }}</td>
+                                        <td class="text-right">{{ formatCurrency(tier.ca_threshold) }}</td>
+                                        <td class="text-right">{{ formatCurrency(tier.bonus_amount) }}</td>
+                                        <td class="text-center">
+                                            <v-btn
+                                                icon="mdi-pencil"
+                                                size="x-small"
+                                                variant="text"
+                                                color="primary"
+                                                @click="openEditGlobalTierDialog(tier)"
+                                            />
+                                            <v-btn
+                                                icon="mdi-delete"
+                                                size="x-small"
+                                                variant="text"
+                                                color="error"
+                                                @click="deleteGlobalTier(tier)"
+                                            />
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </v-table>
+                            <div v-else class="text-grey text-caption pa-4">Aucun palier global défini.</div>
+                        </v-card>
                     </v-tabs-window-item>
 
                     <!-- ── TAB: NOUVEAUX CLIENTS ── -->
@@ -617,6 +666,48 @@
             </v-card>
         </v-dialog>
 
+        <!-- Dialog: Add / Edit global objective tier -->
+        <v-dialog v-model="globalTierDialog" max-width="420px" persistent>
+            <v-card>
+                <v-card-title>{{ globalTierEditingId ? 'Modifier le palier objectif global' : 'Ajouter un palier objectif global' }}</v-card-title>
+                <v-card-text>
+                    <v-text-field
+                        v-model.number="globalTierForm.tier_level"
+                        label="Niveau du palier"
+                        type="number"
+                        min="1"
+                        required
+                        :error-messages="globalTierForm.errors.tier_level"
+                    />
+                    <v-text-field
+                        v-model.number="globalTierForm.ca_threshold"
+                        label="Seuil CA (XOF)"
+                        type="number"
+                        min="0"
+                        suffix="XOF"
+                        required
+                        :error-messages="globalTierForm.errors.ca_threshold"
+                    />
+                    <v-text-field
+                        v-model.number="globalTierForm.bonus_amount"
+                        label="Montant du bonus"
+                        type="number"
+                        min="0"
+                        suffix="XOF"
+                        required
+                        :error-messages="globalTierForm.errors.bonus_amount"
+                    />
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn color="error" @click="globalTierDialog = false">Annuler</v-btn>
+                    <v-btn color="primary" :loading="globalTierForm.processing" @click="saveGlobalTier">
+                        {{ globalTierEditingId ? 'Enregistrer' : 'Ajouter' }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <!-- Dialog: Add objective tier -->
         <v-dialog v-model="tierDialog" max-width="420px" persistent>
             <v-card>
@@ -763,6 +854,7 @@ const props = defineProps({
     categoryRates: { type: Array, default: () => [] },
     workPeriods: { type: Array, default: () => [] },
     newCustomerCommissionSettings: { type: Array, default: () => [] },
+    globalObjectiveTiers: { type: Array, default: () => [] },
 });
 
 const activeTab = ref('general');
@@ -902,6 +994,44 @@ function saveWorkPeriod() {
     workPeriodForm.post(route('commissions.work-periods.store'), {
         onSuccess: () => { workPeriodDialog.value = false; },
     });
+}
+
+// ─── Global tier dialog ───────────────────────────────────────────────────────
+
+const globalTierDialog = ref(false);
+const globalTierEditingId = ref(null);
+const globalTierForm = useForm({ tier_level: 1, ca_threshold: 0, bonus_amount: 0 });
+
+function openGlobalTierDialog() {
+    globalTierEditingId.value = null;
+    globalTierForm.reset();
+    globalTierForm.tier_level = (props.globalObjectiveTiers.length ?? 0) + 1;
+    globalTierDialog.value = true;
+}
+
+function openEditGlobalTierDialog(tier) {
+    globalTierEditingId.value = tier.id;
+    globalTierForm.tier_level = tier.tier_level;
+    globalTierForm.ca_threshold = tier.ca_threshold;
+    globalTierForm.bonus_amount = tier.bonus_amount;
+    globalTierForm.clearErrors();
+    globalTierDialog.value = true;
+}
+
+function saveGlobalTier() {
+    if (globalTierEditingId.value) {
+        globalTierForm.put(route('commissions.global-tiers.update', globalTierEditingId.value), {
+            onSuccess: () => { globalTierDialog.value = false; },
+        });
+    } else {
+        globalTierForm.post(route('commissions.global-tiers.store'), {
+            onSuccess: () => { globalTierDialog.value = false; },
+        });
+    }
+}
+
+function deleteGlobalTier(tier) {
+    router.delete(route('commissions.global-tiers.destroy', tier.id), { preserveScroll: true });
 }
 
 // ─── Tier dialog ──────────────────────────────────────────────────────────────

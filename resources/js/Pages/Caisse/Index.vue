@@ -113,6 +113,18 @@
                     </div>
                 </div>
 
+                <!-- Reconciliation Calculator Button -->
+                <div class="flex justify-end mb-3">
+                    <v-btn
+                        color="teal"
+                        variant="tonal"
+                        @click="reconciliationDialog = true"
+                    >
+                        <v-icon start>mdi-calculator-variant</v-icon>
+                        Vérification physique
+                    </v-btn>
+                </div>
+
                 <v-card class="overflow-x-auto">
                     <v-data-table
                         :headers="[
@@ -686,6 +698,131 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+        <!-- Reconciliation Calculator Dialog -->
+        <v-dialog v-model="reconciliationDialog" max-width="520px">
+            <v-card>
+                <v-card-title class="text-h6 pt-5 px-6 flex items-center gap-2">
+                    <v-icon color="teal">mdi-calculator-variant</v-icon>
+                    Vérification physique des caisses
+                </v-card-title>
+                <v-card-text class="px-6">
+                    <p class="text-sm text-medium-emphasis mb-4">
+                        Saisissez les soldes physiques de chaque compte. Le total sera comparé automatiquement au solde des caisses.
+                    </p>
+
+                    <div class="space-y-3">
+                        <v-text-field
+                            v-model.number="physicalAmounts.waveAccount"
+                            label="Wave Account"
+                            type="number"
+                            min="0"
+                            variant="outlined"
+                            density="compact"
+                            prepend-inner-icon="mdi-cellphone-wireless"
+                            hide-details
+                        />
+                        <v-text-field
+                            v-model.number="physicalAmounts.waveBusinessAccount"
+                            label="Wave Business Account"
+                            type="number"
+                            min="0"
+                            variant="outlined"
+                            density="compact"
+                            prepend-inner-icon="mdi-store"
+                            hide-details
+                        />
+                        <v-text-field
+                            v-model.number="physicalAmounts.orangeMoneyAccount"
+                            label="Orange Money Account"
+                            type="number"
+                            min="0"
+                            variant="outlined"
+                            density="compact"
+                            prepend-inner-icon="mdi-cellphone"
+                            hide-details
+                        />
+                        <v-text-field
+                            v-model.number="physicalAmounts.cashInHand"
+                            label="Cash"
+                            type="number"
+                            min="0"
+                            variant="outlined"
+                            density="compact"
+                            prepend-inner-icon="mdi-cash"
+                            hide-details
+                        />
+                        <v-divider class="my-1" />
+                        <v-text-field
+                            v-model.number="physicalAmounts.totalDebtsOwedToOthers"
+                            label="Dettes (argent présent mais dû à d'autres)"
+                            type="number"
+                            min="0"
+                            variant="outlined"
+                            density="compact"
+                            prepend-inner-icon="mdi-account-arrow-right"
+                            color="error"
+                            hide-details
+                        />
+                    </div>
+
+                    <v-divider class="my-4" />
+
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between items-center">
+                            <span class="text-medium-emphasis">Total brut :</span>
+                            <span class="font-semibold">{{ formatAmount(physicalGrossTotal) }}</span>
+                        </div>
+                        <div v-if="physicalAmounts.totalDebtsOwedToOthers > 0" class="flex justify-between items-center text-error">
+                            <span>Dettes à déduire :</span>
+                            <span class="font-semibold">− {{ formatAmount(physicalAmounts.totalDebtsOwedToOthers) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center border-t pt-2">
+                            <span class="text-medium-emphasis">Total physique net :</span>
+                            <span class="font-semibold text-base">{{ formatAmount(physicalReconciliationTotal) }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-medium-emphasis">Solde caisses (système) :</span>
+                            <span class="font-semibold text-base">{{ formatAmount(totalCaissesBalance) }}</span>
+                        </div>
+                    </div>
+
+                    <v-alert
+                        v-if="physicalGrossTotal > 0"
+                        :type="reconciliationGap === 0 ? 'success' : 'error'"
+                        variant="tonal"
+                        class="mt-4"
+                        :icon="reconciliationGap === 0 ? 'mdi-check-circle' : 'mdi-alert-circle'"
+                    >
+                        <template v-if="reconciliationGap === 0">
+                            Tout est équilibré — le total physique correspond au solde du système.
+                        </template>
+                        <template v-else-if="reconciliationGap > 0">
+                            Surplus physique de <strong>{{ formatAmount(reconciliationGap) }}</strong> — l'argent physique dépasse le système.
+                        </template>
+                        <template v-else>
+                            Manque physique de <strong>{{ formatAmount(Math.abs(reconciliationGap)) }}</strong> — l'argent physique est inférieur au système.
+                        </template>
+                    </v-alert>
+                </v-card-text>
+                <v-card-actions class="px-6 pb-5">
+                    <v-btn
+                        variant="text"
+                        color="secondary"
+                        @click="resetReconciliationAmounts"
+                    >
+                        Réinitialiser
+                    </v-btn>
+                    <v-spacer />
+                    <v-btn
+                        color="teal"
+                        variant="flat"
+                        @click="reconciliationDialog = false"
+                    >
+                        Fermer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
@@ -704,6 +841,42 @@ const props = defineProps({
 });
 
 const balanceDifference = computed(() => props.totalCaissesBalance - props.totalAccountsBalance);
+
+// ─── Physical reconciliation calculator ───────────────────────────────────
+const reconciliationDialog = ref(false);
+
+const physicalAmounts = ref({
+    waveAccount: null,
+    waveBusinessAccount: null,
+    orangeMoneyAccount: null,
+    cashInHand: null,
+    totalDebtsOwedToOthers: null,
+});
+
+const physicalGrossTotal = computed(() =>
+    (physicalAmounts.value.waveAccount || 0) +
+    (physicalAmounts.value.waveBusinessAccount || 0) +
+    (physicalAmounts.value.orangeMoneyAccount || 0) +
+    (physicalAmounts.value.cashInHand || 0)
+);
+
+const physicalReconciliationTotal = computed(() =>
+    physicalGrossTotal.value - (physicalAmounts.value.totalDebtsOwedToOthers || 0)
+);
+
+const reconciliationGap = computed(() =>
+    physicalReconciliationTotal.value - props.totalCaissesBalance
+);
+
+const resetReconciliationAmounts = () => {
+    physicalAmounts.value = {
+        waveAccount: null,
+        waveBusinessAccount: null,
+        orangeMoneyAccount: null,
+        cashInHand: null,
+        totalDebtsOwedToOthers: null,
+    };
+};
 
 // ─── Sortie de caisse ──────────────────────────────────────────────────────
 const sortieDeCaisseDialog = ref(false);

@@ -106,12 +106,25 @@ class CommissionController extends Controller
                     ])->values(),
             ]);
 
+        $globalObjectiveTiers = CommercialObjectiveTier::global()
+            ->orderBy('tier_level')
+            ->get()
+            ->map(fn (CommercialObjectiveTier $tier): array => [
+                'id' => $tier->id,
+                'tier_level' => $tier->tier_level,
+                'ca_threshold' => $tier->ca_threshold,
+                // TODO make this dynamic later
+                'is_mandatory' => false,
+                'bonus_amount' => $tier->bonus_amount,
+            ])->values();
+
         return Inertia::render('Commissions/Index', [
             'productCategories' => $productCategories,
             'commerciaux' => $commerciauxData,
             'categoryRates' => $categoryRates,
             'workPeriods' => $workPeriods,
             'newCustomerCommissionSettings' => $newCustomerCommissionSettings,
+            'globalObjectiveTiers' => $globalObjectiveTiers,
         ]);
     }
 
@@ -199,6 +212,76 @@ class CommissionController extends Controller
         $workPeriod->delete();
 
         return redirect()->back()->with('success', 'Période supprimée.');
+    }
+
+    // ─── Global objective tiers ────────────────────────────────────────────────
+
+    public function storeGlobalTier(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'tier_level' => 'required|integer|min:1',
+            'ca_threshold' => 'required|integer|min:0',
+            'bonus_amount' => 'required|integer|min:0',
+        ]);
+
+        $tierLevelAlreadyExists = CommercialObjectiveTier::global()
+            ->where('tier_level', $validated['tier_level'])
+            ->exists();
+
+        if ($tierLevelAlreadyExists) {
+            return redirect()->back()
+                ->withErrors(['error' => 'Un palier global de ce niveau existe déjà.']);
+        }
+
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => null,
+            'is_global' => true,
+            'tier_level' => $validated['tier_level'],
+            'ca_threshold' => $validated['ca_threshold'],
+            'bonus_amount' => $validated['bonus_amount'],
+        ]);
+
+        return redirect()->back()->with('success', 'Palier global créé.');
+    }
+
+    public function updateGlobalTier(Request $request, CommercialObjectiveTier $tier): RedirectResponse
+    {
+        if (! $tier->is_global) {
+            return redirect()->back()
+                ->withErrors(['error' => 'Ce palier n\'est pas un palier global.']);
+        }
+
+        $validated = $request->validate([
+            'tier_level' => 'required|integer|min:1',
+            'ca_threshold' => 'required|integer|min:0',
+            'bonus_amount' => 'required|integer|min:0',
+        ]);
+
+        $tierLevelTakenByAnotherGlobalTier = CommercialObjectiveTier::global()
+            ->where('tier_level', $validated['tier_level'])
+            ->where('id', '!=', $tier->id)
+            ->exists();
+
+        if ($tierLevelTakenByAnotherGlobalTier) {
+            return redirect()->back()
+                ->withErrors(['error' => 'Un autre palier global de ce niveau existe déjà.']);
+        }
+
+        $tier->update($validated);
+
+        return redirect()->back()->with('success', 'Palier global mis à jour.');
+    }
+
+    public function destroyGlobalTier(CommercialObjectiveTier $tier): RedirectResponse
+    {
+        if (! $tier->is_global) {
+            return redirect()->back()
+                ->withErrors(['error' => 'Ce palier n\'est pas un palier global.']);
+        }
+
+        $tier->delete();
+
+        return redirect()->back()->with('success', 'Palier global supprimé.');
     }
 
     // ─── Objective tiers ───────────────────────────────────────────────────────
@@ -298,6 +381,7 @@ class CommissionController extends Controller
 
         return redirect()->back()->with('success', 'Commissions journalières recalculées.');
     }
+
     public function recomputeCommissionsForWorkDay(CommercialWorkPeriod $workPeriod, string $workDay): RedirectResponse
     {
         try {

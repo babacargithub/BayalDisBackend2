@@ -130,6 +130,9 @@ Route::middleware('auth')->group(function () {
         Route::delete('/category-rates/{categoryRate}', [CommissionController::class, 'destroyCategoryRate'])->name('category-rates.destroy');
         Route::post('/work-periods', [CommissionController::class, 'storeWorkPeriod'])->name('work-periods.store');
         Route::delete('/work-periods/{workPeriod}', [CommissionController::class, 'destroyWorkPeriod'])->name('work-periods.destroy');
+        Route::post('/global-tiers', [CommissionController::class, 'storeGlobalTier'])->name('global-tiers.store');
+        Route::put('/global-tiers/{tier}', [CommissionController::class, 'updateGlobalTier'])->name('global-tiers.update');
+        Route::delete('/global-tiers/{tier}', [CommissionController::class, 'destroyGlobalTier'])->name('global-tiers.destroy');
         Route::post('/work-periods/{workPeriod}/tiers', [CommissionController::class, 'storeTier'])->name('tiers.store');
         Route::delete('/tiers/{tier}', [CommissionController::class, 'destroyTier'])->name('tiers.destroy');
         Route::post('/work-periods/{workPeriod}/penalties', [CommissionController::class, 'storePenalty'])->name('penalties.store');
