@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\SalesInvoice\DailySalesInvoiceItemDTO;
 use App\Data\SalesInvoice\SalesInvoicesDailyTotalsDTO;
 use App\Enums\SalesInvoiceStatus;
+use App\Models\BeatStop;
 use App\Models\Payment;
 use App\Models\SalesInvoice;
 use Carbon\Carbon;
@@ -35,12 +36,24 @@ class DailySalesInvoicesService
         Carbon $date,
         ?int $commercialId,
         ?string $paidStatus,
+        ?int $beatId = null,
     ): Collection {
-        $invoiceItems = $this->getDailySales($date, $commercialId, $paidStatus);
+        $beatCustomerIds = $this->resolveBeatCustomerIds($beatId);
 
-        $pastInvoicePaymentItems = Payment::with(['salesInvoice.customer'])
+        $invoiceItems = $this->getDailySales($date, $commercialId, $paidStatus, $beatCustomerIds);
+
+        $pastInvoicePaymentQuery = Payment::with(['salesInvoice.customer'])
             ->whereDate('created_at', $date)
-            ->whereHas('salesInvoice', fn ($query) => $query->whereDate('created_at', '<>', $date))
+            ->whereHas('salesInvoice', fn ($query) => $query->whereDate('created_at', '<>', $date));
+
+        if ($beatCustomerIds !== null) {
+            $pastInvoicePaymentQuery->whereHas(
+                'salesInvoice',
+                fn ($query) => $query->whereIn('customer_id', $beatCustomerIds)
+            );
+        }
+
+        $pastInvoicePaymentItems = $pastInvoicePaymentQuery
             ->get()
             ->map(fn (Payment $payment) => DailySalesInvoiceItemDTO::fromPayment($payment));
 
@@ -48,6 +61,24 @@ class DailySalesInvoicesService
             ->concat($pastInvoicePaymentItems)
             ->sortByDesc('sortKey')
             ->values();
+    }
+
+    /**
+     * Return the customer IDs belonging to the given beat's template stops,
+     * or null when no beat filter is active.
+     *
+     * @return int[]|null
+     */
+    private function resolveBeatCustomerIds(?int $beatId): ?array
+    {
+        if ($beatId === null) {
+            return null;
+        }
+
+        return BeatStop::where('beat_id', $beatId)
+            ->whereNull('visit_date')
+            ->pluck('customer_id')
+            ->all();
     }
 
     /**
@@ -60,10 +91,14 @@ class DailySalesInvoicesService
      *
      * @return Collection<int, DailySalesInvoiceItemDTO>
      */
+    /**
+     * @param  int[]|null  $beatCustomerIds  Pre-resolved customer IDs for a beat filter, or null for no beat filter.
+     */
     public function getDailySales(
         Carbon $date,
         ?int $commercialId,
         ?string $paidStatus,
+        ?array $beatCustomerIds = null,
     ): Collection {
         $query = SalesInvoice::query()
             ->with([
@@ -78,6 +113,10 @@ class DailySalesInvoicesService
 
         if ($paidStatus !== null) {
             $query->where('status', $this->resolveStatusFilter($paidStatus));
+        }
+
+        if ($beatCustomerIds !== null) {
+            $query->whereIn('customer_id', $beatCustomerIds);
         }
 
         return $query

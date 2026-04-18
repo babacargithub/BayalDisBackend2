@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import { Link, router } from '@inertiajs/vue3';
 
 const drawer = ref(true);
@@ -31,7 +30,7 @@ const menuItems = [
         isDropdown: true,
         items: [
             { name: 'Ventes du jour', route: 'ventes.index', icon: 'mdi-cash-register' },
-            { name: 'Factures clients', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
+            { name: 'Dettes clients', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
         ]
     },
     {
@@ -40,11 +39,11 @@ const menuItems = [
         isDropdown: true,
         items: [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
-            { name: 'Secteurs', route: 'sectors.index', icon: 'mdi-map-marker-multiple' },
-            { name: 'Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
+            { name: 'Beats', route: 'beats.index', icon: 'mdi-map-marker-check' },
             { name: 'Activités', route: 'clients.activity-map', icon: 'mdi-map-marker-star' },
+            { name: 'Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
             { name: 'Analyse de zones', route: 'clients.area-analysis', icon: 'mdi-map-search' },
-            { name: 'Visites Clients', route: 'visits.index', icon: 'mdi-map-marker-check' },
+            { name: 'Secteurs', route: 'sectors.index', icon: 'mdi-map-marker-multiple' },
             { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
             { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
             { name: 'Catégories client', route: 'customer-categories.index', icon: 'mdi-folder-account' },
@@ -58,8 +57,8 @@ const menuItems = [
         isDropdown: true,
         items: [
             { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
-            { name: 'Équipes', route: 'teams.index', icon: 'mdi-account-group' },
             { name: 'Commissions', route: 'commissions.index', icon: 'mdi-cash-check' },
+            { name: 'Équipes', route: 'teams.index', icon: 'mdi-account-group' },
         ]
     },
     {
@@ -77,10 +76,10 @@ const menuItems = [
         icon: 'mdi-warehouse',
         isDropdown: true,
         items: [
+            { name: 'Chargements Véhicule', route: 'car-loads.index', icon: 'mdi-car' },
             { name: 'Produits', route: 'produits.index', icon: 'mdi-package-variant-closed' },
             { name: 'Catégories', route: 'product-categories.index', icon: 'mdi-tag-multiple' },
             { name: 'Factures Achats', route: 'purchase-invoices.index', icon: 'mdi-file-document-outline' },
-            { name: 'Chargements Véhicule', route: 'car-loads.index', icon: 'mdi-car' },
             { name: 'Fournisseurs', route: 'suppliers.index', icon: 'mdi-handshake' },
             { name: 'Véhicules', route: 'vehicles.index', icon: 'mdi-truck' },
         ]
@@ -215,10 +214,6 @@ const ensureActiveGroupIsOpen = () => {
 </template>
 
 <style scoped>
-:deep(.v-list-group__items .v-list-item--active) {
-    background-color: red !important;
-    color: white !important;
-}
 
 :deep(.v-list-group__items .v-list-item) {
     padding-left: 28px !important;

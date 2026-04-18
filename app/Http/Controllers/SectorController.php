@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\DayOfWeek;
+use App\Models\Beat;
+use App\Models\BeatStop;
 use App\Models\Customer;
-use App\Models\CustomerVisit;
 use App\Models\Ligne;
 use App\Models\Sector;
-use App\Models\VisitBatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -87,96 +88,80 @@ class SectorController extends Controller
         return redirect()->back()->with('success', 'Client retiré du secteur avec succès');
     }
 
-    public function getVisitBatches(Sector $sector)
+    public function getBeats(Sector $sector)
     {
-        $visitBatches = $sector->visitBatches()
-            ->with(['commercial:id,name', 'visits'])
+        $beats = $sector->beats()
+            ->with(['commercial:id,name'])
+            ->withCount(['stops as template_stops_count' => function ($query) {
+                $query->whereNull('visit_date');
+            }])
             ->latest()
             ->get()
-            ->map(function ($batch) {
-                $totalVisits = $batch->visits->count();
-                $completedVisits = $batch->visits->where('status', CustomerVisit::STATUS_COMPLETED)->count();
-                $cancelledVisits = $batch->visits->where('status', CustomerVisit::STATUS_PLANNED)->count();
-                $pendingVisits = $totalVisits - $completedVisits - $cancelledVisits;
-
-                $progressPercentage = $totalVisits > 0
-                    ? round(($completedVisits / $totalVisits) * 100)
-                    : 0;
-
+            ->map(function (Beat $beat) {
                 return [
-                    'id' => $batch->id,
-                    'name' => $batch->name,
-                    'visit_date' => $batch->visit_date,
-                    'commercial' => $batch->commercial,
-                    'total_visits' => $totalVisits,
-                    'completed_visits' => $completedVisits,
-                    'cancelled_visits' => $cancelledVisits,
-                    'pending_visits' => $pendingVisits,
-                    'progress_percentage' => $progressPercentage,
-                    'created_at' => $batch->created_at->format('Y-m-d H:i:s'),
+                    'id' => $beat->id,
+                    'name' => $beat->name,
+                    'day_of_week' => $beat->day_of_week?->value,
+                    'day_of_week_label' => $beat->day_of_week?->label(),
+                    'commercial' => $beat->commercial,
+                    'total_stops' => $beat->template_stops_count,
+                    'created_at' => $beat->created_at->format('Y-m-d H:i:s'),
                 ];
             });
 
-        return response()->json($visitBatches);
+        return response()->json($beats);
     }
 
-    public function createVisitBatch(Request $request, Sector $sector)
+    public function createBeat(Request $request, Sector $sector)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'visit_date' => 'required|date',
+            'day_of_week' => 'required|string|in:'.implode(',', array_column(DayOfWeek::cases(), 'value')),
             'commercial_id' => 'required|exists:commercials,id',
         ], [
-            'name.required' => 'Le nom du lot est obligatoire',
+            'name.required' => 'Le nom du beat est obligatoire',
             'name.max' => 'Le nom ne doit pas dépasser 255 caractères',
-            'visit_date.required' => 'La date de visite est obligatoire',
-            'visit_date.date' => 'La date de visite n\'est pas valide',
+            'day_of_week.required' => 'Le jour de la semaine est obligatoire',
+            'day_of_week.in' => 'Le jour sélectionné n\'est pas valide',
             'commercial_id.required' => 'Le commercial est obligatoire',
             'commercial_id.exists' => 'Le commercial sélectionné n\'existe pas',
         ]);
 
         DB::beginTransaction();
 
-        // Create the visit batch
-        $visitBatch = VisitBatch::create([
+        $beat = Beat::create([
             'name' => $validated['name'],
-            'visit_date' => $validated['visit_date'],
+            'day_of_week' => $validated['day_of_week'],
             'commercial_id' => $validated['commercial_id'],
             'sector_id' => $sector->id,
         ]);
 
-        // Add all customers from the sector to the visit batch
+        // Add all non-prospect customers of the sector as template stops
         $customerIds = $sector->customers()->where('is_prospect', false)->pluck('customers.id');
         foreach ($customerIds as $customerId) {
-            $visitBatch->visits()->create([
+            $beat->templateStops()->create([
                 'customer_id' => $customerId,
-                'visit_planned_at' => $validated['visit_date'],
-                'status' => CustomerVisit::STATUS_PLANNED,
+                'status' => BeatStop::STATUS_PLANNED,
             ]);
         }
 
         DB::commit();
 
-        // Return the newly created batch with its details
-        $batch = $visitBatch->load(['commercial:id,name', 'visits']);
-        $totalVisits = $batch->visits->count();
+        $loadedBeat = $beat->load(['commercial:id,name', 'stops']);
+        $totalStops = $loadedBeat->stops->count();
 
         return response()->json([
-            'message' => 'Visites créées avec succès !',
+            'message' => 'Beat créé avec succès !',
             'data' => [
-                'id' => $batch->id,
-                'name' => $batch->name,
-                'visit_date' => $batch->visit_date,
-                'commercial' => $batch->commercial,
-                'total_visits' => $totalVisits,
-                'completed_visits' => 0,
-                'cancelled_visits' => 0,
-                'pending_visits' => $totalVisits,
-                'progress_percentage' => 0,
-                'created_at' => $batch->created_at->format('Y-m-d H:i:s'),
+                'id' => $loadedBeat->id,
+                'name' => $loadedBeat->name,
+                'day_of_week' => $loadedBeat->day_of_week?->value,
+                'day_of_week_label' => $loadedBeat->day_of_week?->label(),
+                'commercial' => $loadedBeat->commercial,
+                'total_stops' => $totalStops,
+                'created_at' => $loadedBeat->created_at->format('Y-m-d H:i:s'),
             ],
         ]);
-
     }
 
     public function getCustomersForMap(Sector $sector)

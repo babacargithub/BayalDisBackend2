@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Beat;
 use App\Models\CarLoad;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -27,18 +28,22 @@ class VenteController extends Controller
         $date = $request->filled('date') ? Carbon::parse($request->date) : today();
         $commercialId = $request->filled('commercial_id') ? (int) $request->commercial_id : null;
         $paidStatus = $request->filled('paid_status') ? $request->paid_status : null;
+        $beatId = $request->filled('beat_id') ? (int) $request->beat_id : null;
 
-        $timelineItems = $this->dailySummaryService->getDailyTimeline($date, $commercialId, $paidStatus);
+        $timelineItems = $this->dailySummaryService->getDailyTimeline($date, $commercialId, $paidStatus, $beatId);
         $dailyTotals = $this->dailySummaryService->computeDailyTotals($timelineItems);
+
+        $activeBeat = $beatId !== null ? Beat::select('id', 'name')->find($beatId) : null;
 
         /** @noinspection PhpUndefinedMethodInspection */
         return Inertia::render('Ventes/Index', [
             'timelineItems' => $timelineItems->map->toArray()->values(),
             'dailyTotals' => $dailyTotals->toArray(),
             'filters' => array_merge(
-                $request->only(['date', 'paid_status', 'commercial_id']),
+                $request->only(['date', 'paid_status', 'commercial_id', 'beat_id']),
                 ['date' => $date->toDateString()],
             ),
+            'activeBeat' => $activeBeat ? ['id' => $activeBeat->id, 'name' => $activeBeat->name] : null,
             'commerciaux' => Commercial::select(['id', 'name'])->orderBy('name')->get(),
         ]);
     }

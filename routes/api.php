@@ -9,7 +9,7 @@ use App\Http\Controllers\Api\ApiSalesInvoiceController;
 use App\Http\Controllers\Api\ApiVersementController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CustomerVisitController as ApiCustomerVisitController;
-use App\Http\Controllers\CustomerVisitController;
+use App\Http\Controllers\BeatController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
 use Illuminate\Support\Facades\Route;
@@ -66,14 +66,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('ventes/{vente}/pay', [ApiSalesInvoiceController::class, 'paySalesInvoice']);
         Route::get('activity_report', [ApiSalesInvoiceController::class, 'getActivityReport']);
 
-        // Customer Visits
-        Route::get('visits', [ApiCustomerVisitController::class, 'getVisitBatches']);
-        Route::get('visits/today', [ApiCustomerVisitController::class, 'getTodayVisits']);
-        Route::get('visits/{visitBatch}/details', [ApiCustomerVisitController::class, 'getVisitBatchDetails']);
-        Route::post('visits/{customerVisit}/complete', [ApiCustomerVisitController::class, 'completeVisit']);
-        Route::post('visits/{customerVisit}/cancel', [ApiCustomerVisitController::class, 'cancelVisit']);
-        Route::put('visits/{customerVisit}', [ApiCustomerVisitController::class, 'updateVisit']);
-        Route::post('visits/complete-from-mobile', [CustomerVisitController::class, 'completeFromMobile']);
+        // Beats
+        Route::get('beats', [ApiCustomerVisitController::class, 'getBeats']);
+        Route::get('beats/today', [ApiCustomerVisitController::class, 'getTodayStops']);
+        Route::get('beats/{beat}/details', [ApiCustomerVisitController::class, 'getBeatDetails']);
+        Route::post('beats/{beatStop}/complete', [ApiCustomerVisitController::class, 'completeBeatStop']);
+        Route::post('beats/{beatStop}/cancel', [ApiCustomerVisitController::class, 'cancelBeatStop']);
+        Route::put('beats/{beatStop}', [ApiCustomerVisitController::class, 'updateBeatStop']);
+        Route::post('beats/complete-from-mobile', [BeatController::class, 'completeFromMobile']);
 
         // Misc
         Route::get('customer-categories', [ApiCustomerController::class, 'getCustomerCategories']);

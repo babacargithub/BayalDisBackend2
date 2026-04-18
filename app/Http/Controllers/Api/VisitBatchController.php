@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\VisitBatch;
+use App\Models\Beat;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -11,7 +11,7 @@ class VisitBatchController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $batches = VisitBatch::with('visits.customer')
+        $batches = Beat::with('visits.customer')
             ->where('commercial_id', $request->user()->commercial->id)
             ->latest()
             ->get()
@@ -42,7 +42,7 @@ class VisitBatchController extends Controller
             'visit_date.date' => 'La date de visite n\'est pas valide',
         ]);
 
-        $batch = VisitBatch::create([
+        $batch = Beat::create([
             ...$validated,
             'commercial_id' => $request->user()->commercial->id,
         ]);
@@ -53,7 +53,7 @@ class VisitBatchController extends Controller
         ], 201);
     }
 
-    public function show(VisitBatch $visitBatch): JsonResponse
+    public function show(Beat $visitBatch): JsonResponse
     {
         return response()->json([
             'data' => [
@@ -81,7 +81,7 @@ class VisitBatchController extends Controller
         ]);
     }
 
-    public function update(Request $request, VisitBatch $visitBatch): JsonResponse
+    public function update(Request $request, Beat $visitBatch): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -102,7 +102,7 @@ class VisitBatchController extends Controller
         ]);
     }
 
-    public function destroy(VisitBatch $visitBatch): JsonResponse
+    public function destroy(Beat $visitBatch): JsonResponse
     {
         $visitBatch->delete();
 
@@ -110,4 +110,4 @@ class VisitBatchController extends Controller
             'message' => 'Lot de visites supprimé avec succès',
         ]);
     }
-} 
+}

@@ -2,8 +2,7 @@
 
 namespace App\Http\Resources;
 
-use App\Models\Customer;
-use App\Models\CustomerVisit;
+use App\Models\BeatStop;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,7 +15,7 @@ class CustomerVisitResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        /** @var $this CustomerVisit */
+        /** @var $this BeatStop */
         return [
             'id' => $this->id,
             'customer_id' => $this->customer_id,
@@ -29,7 +28,7 @@ class CustomerVisitResource extends JsonResource
             'notes' => $this->notes,
             'gps_coordinates' => $this->customer->gps_coordinates,
             'resulted_in_sale' => $this->resulted_in_sale,
-            "customer_debt" => $this->customer->salesInvoices->sum("total_remaining"),
+            'customer_debt' => $this->customer->salesInvoices->sum('total_remaining'),
         ];
     }
 }

@@ -75,7 +75,7 @@ class Customer extends Model
     public function getLastVisitAttribute()
     {
         // Check for last completed or cancelled visit
-        $lastVisit = $this->visits()
+        $lastVisit = $this->beatStops()
             ->whereIn('status', ['completed', 'cancelled'])
             ->latest('visited_at')
             ->first();
@@ -97,9 +97,9 @@ class Customer extends Model
         return $this->created_at;
     }
 
-    public function visits()
+    public function beatStops(): HasMany
     {
-        return $this->hasMany(CustomerVisit::class);
+        return $this->hasMany(BeatStop::class);
     }
 
     public function category(): BelongsTo

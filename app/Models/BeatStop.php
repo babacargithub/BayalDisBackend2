@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use JetBrains\PhpStorm\ArrayShape;
 
-class CustomerVisit extends Model
+class BeatStop extends Model
 {
     const STATUS_PLANNED = 'planned';
     const STATUS_COMPLETED = 'completed';
@@ -14,7 +14,8 @@ class CustomerVisit extends Model
 
     protected $fillable = [
         'customer_id',
-        'visit_batch_id',
+        'beat_id',
+        'visit_date',
         'visit_planned_at',
         'visited_at',
         'status',
@@ -24,6 +25,7 @@ class CustomerVisit extends Model
     ];
 
     protected $casts = [
+        'visit_date' => 'date',
         'visit_planned_at' => 'datetime',
         'visited_at' => 'datetime',
         'resulted_in_sale' => 'boolean',
@@ -34,9 +36,9 @@ class CustomerVisit extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function visitBatch(): BelongsTo
+    public function beat(): BelongsTo
     {
-        return $this->belongsTo(VisitBatch::class);
+        return $this->belongsTo(Beat::class);
     }
 
     /**

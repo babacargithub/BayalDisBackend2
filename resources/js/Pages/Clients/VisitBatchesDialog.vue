@@ -2,36 +2,24 @@
   <v-dialog v-model="dialog" max-width="900px">
     <v-card>
       <v-card-title class="text-h5 grey lighten-2">
-        Lots de visite - {{ sector.name }}
+        Beats - {{ sector.name }}
         <v-spacer></v-spacer>
         <v-btn color="primary" @click="showCreateDialog">
           <v-icon left>mdi-plus</v-icon>
-         Nouvelle visite
+          Nouveau beat
         </v-btn>
       </v-card-title>
 
       <v-card-text class="pt-4">
         <v-data-table
           :headers="headers"
-          :items="visitBatches"
+          :items="beats"
           :loading="loading"
-          no-data-text="Aucun lot de visite trouvé"
+          no-data-text="Aucun beat trouvé"
           class="elevation-1"
         >
-          <template v-slot:item.progress_percentage="{ item }">
-            <v-progress-linear
-              :value="item.progress_percentage"
-              height="20"
-              :color="getProgressColor(item.progress_percentage)"
-            >
-              <template v-slot:default="{ value }">
-                <strong>{{ value }}%</strong>
-              </template>
-            </v-progress-linear>
-          </template>
-
-          <template v-slot:item.visit_date="{ item }">
-            {{ formatDate(item.visit_date) }}
+          <template v-slot:item.day_of_week_label="{ item }">
+            {{ item.day_of_week_label }}
           </template>
 
           <template v-slot:item.created_at="{ item }">
@@ -57,33 +45,32 @@
       </v-card-actions>
     </v-card>
 
-    <!-- Create Visit Batch Dialog -->
+    <!-- Create Beat Dialog -->
     <v-dialog v-model="createDialog" max-width="500px">
       <v-card>
         <v-card-title class="text-h5 grey lighten-2">
-          Nouveau lot de visite
+          Nouveau beat
         </v-card-title>
 
         <v-card-text class="pt-4">
           <v-form ref="form" v-model="valid">
             <v-text-field
               v-model="newBatch.name"
-              label="Nom du lot"
+              label="Nom du beat"
               :error-messages="errors.name"
               :rules="[v => !!v || 'Le nom est obligatoire']"
               required
             ></v-text-field>
-            <v-text-field
-              v-model="newBatch.visit_date"
-              label="Date de visite"
-              type="date"
-              :error-messages="errors.visit_date"
-              :rules="[v => !!v || 'La date est obligatoire']"
+            <v-select
+              v-model="newBatch.day_of_week"
+              :items="daysOfWeek"
+              item-title="label"
+              item-value="value"
+              label="Jour de la semaine"
+              :error-messages="errors.day_of_week"
+              :rules="[v => !!v || 'Le jour est obligatoire']"
               required
-            ></v-text-field>
-
-          
-
+            ></v-select>
             <v-select
               v-model="newBatch.commercial_id"
               :items="commercials"
@@ -107,7 +94,7 @@
             color="primary"
             :loading="creating"
             :disabled="!valid || creating"
-            @click="createVisitBatch"
+            @click="createBeat"
           >
             Créer
           </v-btn>
@@ -138,25 +125,29 @@ export default {
       loadingCommercials: false,
       creating: false,
       valid: false,
-      visitBatches: [],
+      beats: [],
       commercials: [],
       errors: {},
+      daysOfWeek: [
+        { value: 'monday', label: 'Lundi' },
+        { value: 'tuesday', label: 'Mardi' },
+        { value: 'wednesday', label: 'Mercredi' },
+        { value: 'thursday', label: 'Jeudi' },
+        { value: 'friday', label: 'Vendredi' },
+        { value: 'saturday', label: 'Samedi' },
+        { value: 'sunday', label: 'Dimanche' },
+      ],
       newBatch: {
         name: '',
-        visit_date: '',
+        day_of_week: null,
         commercial_id: null
       },
       headers: [
         { text: 'Nom', value: 'name' },
         { text: 'Commercial', value: 'commercial.name' },
-        { text: 'Date de visite', value: 'visit_date' },
-        { text: 'Progrès', value: 'progress_percentage' },
-        { text: 'Visites totales', value: 'total_visits' },
-        { text: 'Complétées', value: 'completed_visits' },
-        { text: 'Annulées', value: 'cancelled_visits' },
-        { text: 'En attente', value: 'pending_visits' },
-        { text: 'Créé le', value: 'created_at' },
-        { text: 'Statut', value: 'status' }
+        { text: 'Jour', value: 'day_of_week_label' },
+        { text: 'Clients', value: 'total_stops' },
+        { text: 'Créé le', value: 'created_at' }
       ]
     }
   },
@@ -168,7 +159,7 @@ export default {
     dialog(val) {
       this.$emit('update:modelValue', val)
       if (val) {
-        this.loadVisitBatches()
+        this.loadBeats()
       }
     },
     createDialog(val) {
@@ -192,28 +183,28 @@ export default {
 
     getStatusColor(item) {
       if (item.progress_percentage === 100) return 'success'
-      if (item.cancelled_visits === item.total_visits) return 'error'
+      if (item.cancelled_stops === item.total_stops) return 'error'
       if (item.progress_percentage > 0) return 'warning'
       return 'grey'
     },
 
     getStatusText(item) {
       if (item.progress_percentage === 100) return 'Terminé'
-      if (item.cancelled_visits === item.total_visits) return 'Annulé'
+      if (item.cancelled_stops === item.total_stops) return 'Annulé'
       if (item.progress_percentage > 0) return 'En cours'
       return 'Planifié'
     },
 
-    async loadVisitBatches() {
+    async loadBeats() {
       this.loading = true
       try {
-        const response = await axios.get(`/sectors/${this.sector.id}/visit-batches`)
-        this.visitBatches = response.data
+        const response = await axios.get(`/sectors/${this.sector.id}/beats`)
+        this.beats = response.data
       } catch (error) {
         Swal.fire({
           icon: 'error',
           title: 'Erreur',
-          text: 'Impossible de charger les lots de visite'
+          text: 'Impossible de charger les beats'
         })
       }
       this.loading = false
@@ -223,7 +214,7 @@ export default {
       this.errors = {}
       this.newBatch = {
         name: '',
-        visit_date: new Date().toISOString().substr(0, 10),
+        day_of_week: null,
         commercial_id: null
       }
       this.createDialog = true
@@ -251,15 +242,15 @@ export default {
       this.loadingCommercials = false
     },
 
-    async createVisitBatch() {
+    async createBeat() {
       if (!this.$refs.form.validate()) return
 
       this.creating = true
       this.errors = {}
 
       try {
-        const response = await axios.post(`/sectors/${this.sector.id}/visit-batches`, this.newBatch)
-        this.visitBatches.unshift(response.data.data)
+        const response = await axios.post(`/sectors/${this.sector.id}/beats`, this.newBatch)
+        this.beats.unshift(response.data.data)
         this.createDialog = false
         Swal.fire({
           icon: 'success',
@@ -273,7 +264,7 @@ export default {
           Swal.fire({
             icon: 'error',
             title: 'Erreur',
-            text: error.response?.data?.message || 'Impossible de créer le lot de visite'
+            text: error.response?.data?.message || 'Impossible de créer le beat'
           })
         }
       }

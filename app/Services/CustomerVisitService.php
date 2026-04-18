@@ -2,83 +2,72 @@
 
 namespace App\Services;
 
+use App\Enums\DayOfWeek;
+use App\Models\Beat;
+use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
-use App\Models\CustomerVisit;
-use App\Models\VisitBatch;
 use Illuminate\Support\Facades\DB;
 
 class CustomerVisitService
 {
-    /**
-     * Get visit batches for a commercial
-     */
-    public function getVisitBatches(Commercial $commercial, int $perPage = 20)
+    public function getBeats(Commercial $commercial, int $perPage = 20)
     {
-        $batches = VisitBatch::latest()
-            ->paginate($perPage)->map(function (VisitBatch $batch) {
-                /**
-                 * visitsCount: json['visits_count'],
-                 * completedCount: json['completed_count'],
-                 * pendingCount: json['pending_count'],
-                 */
+        return Beat::where('commercial_id', $commercial->id)
+            ->latest()
+            ->paginate($perPage)
+            ->map(function (Beat $beat) {
+                $templateStopsCount = $beat->templateStops()->count();
+
                 return [
-                    'id' => $batch->id,
-                    'name' => $batch->name,
-                    'visit_date' => $batch->visit_date,
-                    'visits' => [],
-                    'visits_count' => $batch->visits->count(),
-                    'pending_count' => $batch->visits->where('status', 'planned')->count(),
-                    'completed_count' => $batch->visits->where('status', 'completed')->count(),
-                    'created_at' => $batch->created_at,
+                    'id' => $beat->id,
+                    'name' => $beat->name,
+                    'day_of_week' => $beat->day_of_week?->value,
+                    'day_of_week_label' => $beat->day_of_week?->label(),
+                    'template_stops_count' => $templateStopsCount,
+                    'created_at' => $beat->created_at,
                 ];
             });
-
-        return $batches;
     }
 
-    /**
-     * Get today's visits for a commercial
-     */
-    public function getTodayVisits(Commercial $commercial): array
+    public function getTodayStops(Commercial $commercial): array
     {
-        $visits = VisitBatch::whereDate('visit_date', today())
-            ->with(['visits' => function ($query) {
-                $query->select('id', 'visit_batch_id', 'customer_id', 'status', 'visit_planned_at', 'visit_completed_at', 'notes', 'gps_coordinates')
-                    ->with(['customer:id,name,phone_number,address']);
-            }])
-            ->get()
-            ->pluck('visits')
-            ->flatten();
+        $today = now();
+        $todayDayOfWeek = DayOfWeek::fromCarbon($today);
+
+        $beatsForToday = Beat::where('commercial_id', $commercial->id)
+            ->forDayOfWeek($todayDayOfWeek)
+            ->get();
+
+        $allTodayStops = collect();
+
+        foreach ($beatsForToday as $beat) {
+            $stops = $beat->getOrGenerateStopsForDate($today);
+            $allTodayStops = $allTodayStops->merge($stops);
+        }
 
         return [
-            'visits' => $visits,
-            'total' => $visits->count(),
-            'completed' => $visits->where('status', 'completed')->count(),
-            'pending' => $visits->where('status', 'planned')->count(),
-            'cancelled' => $visits->where('status', 'cancelled')->count(),
+            'stops' => $allTodayStops->values(),
+            'total' => $allTodayStops->count(),
+            'completed' => $allTodayStops->where('status', BeatStop::STATUS_COMPLETED)->count(),
+            'pending' => $allTodayStops->where('status', BeatStop::STATUS_PLANNED)->count(),
+            'cancelled' => $allTodayStops->where('status', BeatStop::STATUS_CANCELLED)->count(),
         ];
     }
 
-    /**
-     * Get details of a specific visit batch
-     */
-    public function getVisitBatchDetails(VisitBatch $batch): VisitBatch
+    public function getBeatDetails(Beat $beat): Beat
     {
-        return $batch->load(['visits' => function ($query) {
+        return $beat->load(['stops' => function ($query) {
             $query->with(['customer:id,name,phone_number,address'])
                 ->orderBy('visit_planned_at');
         }]);
     }
 
-    /**
-     * Complete a visit
-     */
-    public function completeVisit(CustomerVisit $visit, array $data): CustomerVisit
+    public function completeBeatStop(BeatStop $beatStop, array $data): BeatStop
     {
-        DB::transaction(function () use ($visit, $data) {
-            $visit->update([
-                'status' => 'completed',
+        DB::transaction(function () use ($beatStop, $data) {
+            $beatStop->update([
+                'status' => BeatStop::STATUS_COMPLETED,
                 'visited_at' => now(),
                 'notes' => $data['notes'] ?? null,
                 'gps_coordinates' => $data['gps_coordinates'],
@@ -86,72 +75,56 @@ class CustomerVisitService
             ]);
         });
 
-        return $visit->load('customer');
+        return $beatStop->load('customer');
     }
 
-    /**
-     * Cancel a visit
-     */
-    public function cancelVisit(CustomerVisit $visit, array $data): CustomerVisit
+    public function cancelBeatStop(BeatStop $beatStop, array $data): BeatStop
     {
-        DB::transaction(function () use ($visit, $data) {
-            $visit->update([
-                'status' => 'cancelled',
+        DB::transaction(function () use ($beatStop, $data) {
+            $beatStop->update([
+                'status' => BeatStop::STATUS_CANCELLED,
                 'notes' => $data['notes'] ?? null,
             ]);
         });
 
-        return $visit->load('customer');
+        return $beatStop->load('customer');
     }
 
-    /**
-     * Update a visit's details
-     */
-    public function updateVisit(CustomerVisit $visit, array $data): CustomerVisit
+    public function updateBeatStop(BeatStop $beatStop, array $data): BeatStop
     {
-        DB::transaction(function () use ($visit, $data) {
-            $visit->update([
-                'notes' => $data['notes'] ?? $visit->notes,
-                'visit_planned_at' => $data['visit_planned_at'] ?? $visit->visit_planned_at,
+        DB::transaction(function () use ($beatStop, $data) {
+            $beatStop->update([
+                'notes' => $data['notes'] ?? $beatStop->notes,
+                'visit_planned_at' => $data['visit_planned_at'] ?? $beatStop->visit_planned_at,
             ]);
         });
 
-        return $visit->load('customer');
+        return $beatStop->load('customer');
     }
 
-    /**
-     * Check if a commercial can access a visit
-     */
-    public function canAccessVisit(Commercial $commercial, CustomerVisit $visit): bool
+    public function canAccessBeatStop(Commercial $commercial, BeatStop $beatStop): bool
     {
         return true;
     }
 
-    /**
-     * Check if a commercial can access a visit batch
-     */
-    public function canAccessVisitBatch(Commercial $commercial, VisitBatch $batch): bool
+    public function canAccessBeat(Commercial $commercial, Beat $beat): bool
     {
         return true;
     }
 
-    /**
-     * If the customer has a planned visit scheduled for today or earlier, mark it as completed.
-     * Called automatically when a sale is made to a customer.
-     */
-    public function terminateVisitIfCustomerHasPlannedOne(Customer $customer): void
+    public function terminateBeatStopIfCustomerHasPlannedOne(Customer $customer): void
     {
-        $visit = $customer->visits()
-            ->whereDate('visit_planned_at', '<=', now()->toDateString())
-            ->where('status', CustomerVisit::STATUS_PLANNED)
+        $beatStop = $customer->beatStops()
+            ->whereDate('visit_date', now()->toDateString())
+            ->where('status', BeatStop::STATUS_PLANNED)
             ->first();
 
-        if ($visit) {
-            $visit->status = CustomerVisit::STATUS_COMPLETED;
-            $visit->visited_at = now();
-            $visit->notes = 'Visite marquée comme terminée directement suite à une vente';
-            $visit->gps_coordinates = $customer->gps_coordinates;
-            $visit->save();
+        if ($beatStop) {
+            $beatStop->status = BeatStop::STATUS_COMPLETED;
+            $beatStop->visited_at = now();
+            $beatStop->notes = 'Arrêt marqué comme terminé suite à une vente';
+            $beatStop->gps_coordinates = $customer->gps_coordinates;
+            $beatStop->save();
         }
     }
 }

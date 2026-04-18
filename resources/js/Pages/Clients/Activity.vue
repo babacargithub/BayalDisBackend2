@@ -48,7 +48,6 @@
                             />
                         </v-col>
 
-
                         <!-- Sector selector (visible only when filter_type = by_sector) -->
                         <v-col v-if="filterForm.filter_type === 'by_sector'" cols="12" sm="3">
                             <v-select
@@ -118,6 +117,9 @@
                     <div class="mt-3 text-body-2 text-medium-emphasis">
                         {{ customers.length }} client(s) trouvé(s) entre
                         {{ formatDate(filters.start_date) }} et {{ formatDate(filters.end_date) }}
+                        <span v-if="customers.length > 0" class="ml-2 text-caption text-grey">
+                            — Cliquez sur un marqueur pour le sélectionner
+                        </span>
                     </div>
                 </div>
 
@@ -134,11 +136,82 @@
 
             </div>
         </div>
+
+        <!-- Floating selection bar -->
+        <Teleport to="body">
+            <div
+                v-if="selectedCustomerIds.length > 0"
+                class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-2xl"
+                style="background: #1a237e; color: white; min-width: 340px;"
+            >
+                <v-icon icon="mdi-account-check" color="white" />
+                <span class="font-semibold">
+                    {{ selectedCustomerIds.length }} client(s) sélectionné(s)
+                </span>
+                <v-spacer />
+                <v-btn
+                    variant="tonal"
+                    color="white"
+                    size="small"
+                    @click="clearSelection"
+                >
+                    Effacer
+                </v-btn>
+                <v-btn
+                    variant="flat"
+                    color="amber"
+                    size="small"
+                    prepend-icon="mdi-map-marker-check"
+                    @click="addToBeatDialogOpen = true"
+                >
+                    Ajouter à un beat
+                </v-btn>
+            </div>
+        </Teleport>
+
+        <!-- Add to beat dialog -->
+        <v-dialog v-model="addToBeatDialogOpen" max-width="480px">
+            <v-card>
+                <v-card-title class="d-flex align-center pa-4 border-b">
+                    <v-icon icon="mdi-map-marker-check" class="mr-2" color="primary" />
+                    Ajouter à un beat
+                </v-card-title>
+                <v-card-text class="pa-4">
+                    <p class="text-body-2 text-grey mb-4">
+                        {{ selectedCustomerIds.length }} client(s) sélectionné(s) seront ajoutés au beat choisi.
+                        Les clients déjà présents dans le beat seront ignorés.
+                    </p>
+                    <v-select
+                        v-model="selectedBeatIdForAddition"
+                        :items="beatsForSelect"
+                        item-title="label"
+                        item-value="id"
+                        label="Choisir un beat"
+                        variant="outlined"
+                        density="comfortable"
+                        hide-details
+                        clearable
+                    />
+                </v-card-text>
+                <v-card-actions class="pa-4 border-t">
+                    <v-spacer />
+                    <v-btn variant="text" @click="addToBeatDialogOpen = false">Annuler</v-btn>
+                    <v-btn
+                        color="primary"
+                        :disabled="!selectedBeatIdForAddition"
+                        :loading="addToBeatLoading"
+                        @click="submitAddTobeat"
+                    >
+                        Confirmer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
+import { onMounted, onUnmounted, ref, watch, nextTick, computed } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import L from 'leaflet';
@@ -150,6 +223,10 @@ const props = defineProps({
         required: true,
     },
     sectors: {
+        type: Array,
+        required: true,
+    },
+    beats: {
         type: Array,
         required: true,
     },
@@ -179,7 +256,23 @@ const filterForm = ref({
 
 const filterLoading = ref(false);
 
+// Selection state
+const selectedCustomerIds = ref([]);
+const addToBeatDialogOpen = ref(false);
+const selectedBeatIdForAddition = ref(null);
+const addToBeatLoading = ref(false);
+
+// Non-reactive map of customerId -> Leaflet marker (for icon refresh)
+const markersByCustomerId = new Map();
+
 let leafletMap = null;
+
+const beatsForSelect = computed(() =>
+    props.beats.map(beat => ({
+        id: beat.id,
+        label: beat.name + (beat.day_of_week_label ? ` — ${beat.day_of_week_label}` : '') + (beat.commercial_name ? ` (${beat.commercial_name})` : ''),
+    }))
+);
 
 function formatDate(dateString) {
     return new Date(dateString).toLocaleDateString('fr-FR');
@@ -227,6 +320,51 @@ function applyFilters() {
     });
 }
 
+function clearSelection() {
+    const previouslySelected = [...selectedCustomerIds.value];
+    selectedCustomerIds.value = [];
+    previouslySelected.forEach(customerId => {
+        const customer = props.customers.find(c => c.id === customerId);
+        if (customer) {
+            refreshMarkerIcon(customerId, customer, false);
+        }
+    });
+}
+
+function toggleCustomerSelection(customerId, customer) {
+    const indexInSelection = selectedCustomerIds.value.indexOf(customerId);
+    if (indexInSelection === -1) {
+        selectedCustomerIds.value = [...selectedCustomerIds.value, customerId];
+        refreshMarkerIcon(customerId, customer, true);
+    } else {
+        selectedCustomerIds.value = selectedCustomerIds.value.filter(id => id !== customerId);
+        refreshMarkerIcon(customerId, customer, false);
+    }
+}
+
+function submitAddTobeat() {
+    if (!selectedBeatIdForAddition.value) {
+        return;
+    }
+
+    addToBeatLoading.value = true;
+
+    router.post(
+        route('beats.add-customers', selectedBeatIdForAddition.value),
+        { customer_ids: selectedCustomerIds.value },
+        {
+            onSuccess: () => {
+                addToBeatDialogOpen.value = false;
+                selectedBeatIdForAddition.value = null;
+                clearSelection();
+            },
+            onFinish: () => {
+                addToBeatLoading.value = false;
+            },
+        }
+    );
+}
+
 function parseGpsCoordinates(gpsCoordinatesString) {
     const parts = gpsCoordinatesString.split(',');
     if (parts.length !== 2) {
@@ -255,8 +393,49 @@ function buildTooltipContent(customer) {
                     : `<div><strong>Factures:</strong> ${customer.invoices_count}</div>
                        <div><strong>Total facturé:</strong> ${formatAmount(customer.total_invoice_amount)}</div>`
                 }
+                <div style="margin-top:6px;font-size:11px;color:#555;font-style:italic">Cliquez pour sélectionner</div>
             </div>
         </div>`;
+}
+
+function buildMarkerIcon(customer, isSelected) {
+    const isChurningCustomer = customer.last_invoice_date !== undefined;
+    const dotColor = isSelected ? '#16a34a' : (isChurningCustomer ? '#dc2626' : '#1d4ed8');
+    const labelColor = isSelected ? '#15803d' : (isChurningCustomer ? '#dc2626' : '#111');
+    const ringStyle = isSelected
+        ? 'outline: 2px solid #16a34a; outline-offset: 2px;'
+        : '';
+
+    return L.divIcon({
+        html: `
+            <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">
+                <div style="
+                    width:${isSelected ? '13px' : '10px'};height:${isSelected ? '13px' : '10px'};border-radius:50%;
+                    background:${dotColor};border:2px solid #fff;
+                    box-shadow:0 1px 4px rgba(0,0,0,0.4);
+                    flex-shrink:0;
+                    ${ringStyle}
+                ">${isSelected ? '<div style="width:5px;height:5px;border-radius:50%;background:#fff;margin:auto;margin-top:2px"></div>' : ''}</div>
+                <div style="
+                    margin-top:2px;
+                    font-size:11px;font-weight:${isSelected ? '700' : '600'};
+                    color:${labelColor};white-space:normal;
+                    max-width:90px;text-align:center;line-height:1.3;
+                    text-shadow:1px 1px 0 #fff,-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,0 1px 0 #fff,0 -1px 0 #fff,1px 0 0 #fff,-1px 0 0 #fff;
+                ">${customer.name}</div>
+            </div>`,
+        className: '',
+        iconSize: null,
+        iconAnchor: [5, 5],
+        tooltipAnchor: [5, 5],
+    });
+}
+
+function refreshMarkerIcon(customerId, customer, isSelected) {
+    const marker = markersByCustomerId.get(customerId);
+    if (marker) {
+        marker.setIcon(buildMarkerIcon(customer, isSelected));
+    }
 }
 
 function addFullscreenControl() {
@@ -312,6 +491,8 @@ function initOrRefreshMap() {
         return;
     }
 
+    markersByCustomerId.clear();
+
     if (!leafletMap) {
         leafletMap = L.map('activity-map').setView([14.7167, -17.4677], 12);
 
@@ -342,33 +523,10 @@ function initOrRefreshMap() {
             return;
         }
 
-        const isChurningCustomer = customer.last_invoice_date !== undefined;
-        const dotColor = isChurningCustomer ? '#dc2626' : '#1d4ed8';
+        const isSelected = selectedCustomerIds.value.includes(customer.id);
+        const icon = buildMarkerIcon(customer, isSelected);
 
-        const labelIcon = L.divIcon({
-            html: `
-                <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">
-                    <div style="
-                        width:10px;height:10px;border-radius:50%;
-                        background:${dotColor};border:2px solid #fff;
-                        box-shadow:0 1px 4px rgba(0,0,0,0.4);
-                        flex-shrink:0;
-                    "></div>
-                    <div style="
-                        margin-top:2px;
-                        font-size:11px;font-weight:600;
-                        color:${isChurningCustomer ? '#dc2626' : '#111'};white-space:normal;
-                        max-width:90px;text-align:center;line-height:1.3;
-                        text-shadow:1px 1px 0 #fff,-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,0 1px 0 #fff,0 -1px 0 #fff,1px 0 0 #fff,-1px 0 0 #fff;
-                    ">${customer.name}</div>
-                </div>`,
-            className: '',
-            iconSize: null,
-            iconAnchor: [5, 5],
-            tooltipAnchor: [5, 5],
-        });
-
-        L.marker([coordinates.lat, coordinates.lng], { icon: labelIcon })
+        const marker = L.marker([coordinates.lat, coordinates.lng], { icon })
             .addTo(leafletMap)
             .bindTooltip(buildTooltipContent(customer), {
                 sticky: true,
@@ -376,6 +534,11 @@ function initOrRefreshMap() {
                 offset: [0, -10],
             });
 
+        marker.on('click', () => {
+            toggleCustomerSelection(customer.id, customer);
+        });
+
+        markersByCustomerId.set(customer.id, marker);
         markerBounds.push([coordinates.lat, coordinates.lng]);
     });
 
@@ -395,6 +558,7 @@ onMounted(async () => {
 watch(
     () => props.customers,
     async () => {
+        selectedCustomerIds.value = [];
         await nextTick();
         initOrRefreshMap();
     }

@@ -3,6 +3,8 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AccountDebtController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\BeatController;
+use App\Http\Controllers\BeatStopController;
 use App\Http\Controllers\CaisseController;
 use App\Http\Controllers\CarLoadController;
 use App\Http\Controllers\CarLoadExpenseController;
@@ -11,7 +13,6 @@ use App\Http\Controllers\CommissionController;
 use App\Http\Controllers\CustomerCategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerTagController;
-use App\Http\Controllers\CustomerVisitController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\DepenseController;
@@ -33,7 +34,6 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\VenteController;
-use App\Http\Controllers\VisitBatchController;
 use App\Http\Controllers\ZoneController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -103,23 +103,24 @@ Route::middleware('auth')->group(function () {
     Route::put('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'updatePayment'])->name('sales-invoices.payments.update');
     Route::delete('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'removePayment'])->name('sales-invoices.payments.destroy');
 
-    // Visit Management Routes
-    Route::prefix('visits')->name('visits.')->group(function () {
-        // Visit Batches
-        Route::get('/', [VisitBatchController::class, 'index'])->name('index');
-        Route::get('/create', [VisitBatchController::class, 'create'])->name('create');
-        Route::post('/', [VisitBatchController::class, 'store'])->name('store');
-        Route::get('/{visitBatch}', [VisitBatchController::class, 'show'])->name('show');
-        Route::get('/{visitBatch}/edit', [VisitBatchController::class, 'edit'])->name('edit');
-        Route::put('/{visitBatch}', [VisitBatchController::class, 'update'])->name('update');
-        Route::delete('/{visitBatch}', [VisitBatchController::class, 'destroy'])->name('destroy');
-        Route::post('/{visitBatch}/add-customers', [VisitBatchController::class, 'addCustomers'])->name('add-customers');
+    // Beat Management Routes
+    Route::prefix('beats')->name('beats.')->group(function () {
+        Route::get('/', [BeatStopController::class, 'index'])->name('index');
+        Route::get('/create', [BeatStopController::class, 'create'])->name('create');
+        Route::post('/', [BeatStopController::class, 'store'])->name('store');
+        Route::get('/{beat}', [BeatStopController::class, 'show'])->name('show');
+        Route::get('/{beat}/edit', [BeatStopController::class, 'edit'])->name('edit');
+        Route::put('/{beat}', [BeatStopController::class, 'update'])->name('update');
+        Route::delete('/{beat}', [BeatStopController::class, 'destroy'])->name('destroy');
+        Route::post('/{beat}/add-customers', [BeatStopController::class, 'addCustomers'])->name('add-customers');
+        Route::get('/{beat}/pdf', [BeatStopController::class, 'exportPdf'])->name('pdf');
+        Route::get('/{beat}/history', [BeatStopController::class, 'getHistory'])->name('history');
 
-        // Customer Visits
-        Route::get('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'show'])->name('customer-visits.show');
-        Route::post('/customer-visits/{customerVisit}/complete', [CustomerVisitController::class, 'complete'])->name('customer-visits.complete');
-        Route::post('/customer-visits/{customerVisit}/cancel', [CustomerVisitController::class, 'cancel'])->name('customer-visits.cancel');
-        Route::delete('/customer-visits/{customerVisit}', [CustomerVisitController::class, 'destroy'])->name('customer-visits.destroy');
+        // Beat Stops
+        Route::get('/beat-stops/{beatStop}', [BeatController::class, 'show'])->name('beat-stops.show');
+        Route::post('/beat-stops/{beatStop}/complete', [BeatController::class, 'complete'])->name('beat-stops.complete');
+        Route::post('/beat-stops/{beatStop}/cancel', [BeatController::class, 'cancel'])->name('beat-stops.cancel');
+        Route::delete('/beat-stops/{beatStop}', [BeatController::class, 'destroy'])->name('beat-stops.destroy');
     });
 
     // Commission Management Routes
@@ -242,8 +243,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/sectors/{sector}', [SectorController::class, 'destroy'])->name('sectors.destroy');
     Route::post('/sectors/{sector}/customers', [SectorController::class, 'addCustomers'])->name('sectors.add-customers');
     Route::delete('/sectors/{sector}/customers/{customer}', [SectorController::class, 'removeCustomer'])->name('sectors.remove-customer');
-    Route::get('/sectors/{sector}/visit-batches', [SectorController::class, 'getVisitBatches'])->name('sectors.visit-batches');
-    Route::post('/sectors/{sector}/visit-batches', [SectorController::class, 'createVisitBatch'])->name('sectors.create-visit-batch');
+    Route::get('/sectors/{sector}/beats', [SectorController::class, 'getBeats'])->name('sectors.beats');
+    Route::post('/sectors/{sector}/beats', [SectorController::class, 'createBeat'])->name('sectors.create-beat');
     Route::get('/sectors/{sector}/map-customers', [SectorController::class, 'getCustomersForMap'])->name('sectors.map-customers');
     Route::get('/sectors/{sector}/map', [SectorController::class, 'map'])->name('sectors.map');
 

@@ -9,6 +9,7 @@ const props = defineProps({
     dailyTotals: Object,
     commerciaux: Array,
     filters: Object,
+    activeBeat: Object,
 })
 
 const filterDialog = ref(false)
@@ -17,7 +18,13 @@ const filterForm = useForm({
     date: props.filters?.date || new Date().toISOString().split('T')[0],
     paid_status: props.filters?.paid_status || '',
     commercial_id: props.filters?.commercial_id || '',
+    beat_id: props.filters?.beat_id || '',
 })
+
+const clearBeatFilter = () => {
+    filterForm.beat_id = ''
+    filterForm.get(route('ventes.index'), { preserveState: true, preserveScroll: true })
+}
 
 const applyFilters = () => {
     filterForm.get(route('ventes.index'), {
@@ -192,6 +199,17 @@ const deletePayment = () => {
                     Factures & Encaissements
                 </h2>
                 <div class="flex gap-2 items-center">
+                    <v-chip
+                        v-if="activeBeat"
+                        color="primary"
+                        variant="tonal"
+                        prepend-icon="mdi-map-marker-check"
+                        closable
+                        @click:close="clearBeatFilter"
+                        class="mr-2"
+                    >
+                        Beat : {{ activeBeat.name }}
+                    </v-chip>
                     <v-btn-group class="mr-2">
                         <v-btn
                             :color="filterForm.paid_status === '' ? 'primary' : undefined"

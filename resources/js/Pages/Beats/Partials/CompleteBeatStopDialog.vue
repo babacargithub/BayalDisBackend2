@@ -2,7 +2,7 @@
     <v-dialog :model-value="show" @update:model-value="$emit('close')" max-width="700px">
         <v-card>
             <v-card-title class="text-h5 pb-4">
-                Terminer la visite
+                Terminer l'arrêt
             </v-card-title>
             <v-card-text>
                 <form @submit.prevent="submit">
@@ -54,7 +54,7 @@
                     <!-- Create Order Button -->
                     <div v-if="form.resulted_in_sale" class="mb-4">
                         <Link
-                            :href="route('orders.create', { customer_id: props.visit.customer.id })"
+                            :href="route('orders.create', { customer_id: props.stop.customer.id })"
                             class="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700"
                         >
                             Créer une commande
@@ -77,7 +77,7 @@
                     :disabled="form.processing || isLoadingLocation"
                     @click="submit"
                 >
-                    Terminer la visite
+                    Terminer l'arrêt
                 </v-btn>
             </v-card-actions>
         </v-card>
@@ -93,7 +93,7 @@ const props = defineProps({
         type: Boolean,
         required: true
     },
-    visit: {
+    stop: {
         type: Object,
         required: true
     }
@@ -142,7 +142,7 @@ const getLocation = () => {
 };
 
 const submit = () => {
-    form.post(route('visits.customer-visits.complete', props.visit.id), {
+    form.post(route('beats.beat-stops.complete', props.stop.id), {
         onSuccess: () => {
             emit('close');
             form.reset();
@@ -153,4 +153,4 @@ const submit = () => {
 onMounted(() => {
     getLocation();
 });
-</script> 
+</script>

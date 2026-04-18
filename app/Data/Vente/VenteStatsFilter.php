@@ -12,6 +12,9 @@ class VenteStatsFilter
 
     public ?int $customerId;
 
+    /** @var int[]|null */
+    public ?array $customerIds;
+
     public ?string $type;
 
     public function __construct(
@@ -19,12 +22,14 @@ class VenteStatsFilter
         ?int $commercialId = null,
         ?int $carLoadId = null,
         ?int $customerId = null,
+        ?array $customerIds = null,
         ?string $type = null,
     ) {
         $this->paidStatus = $paidStatus;
         $this->commercialId = $commercialId;
         $this->carLoadId = $carLoadId;
         $this->customerId = $customerId;
+        $this->customerIds = $customerIds;
         $this->type = $type;
     }
 
@@ -68,6 +73,19 @@ class VenteStatsFilter
     {
         $clone = clone $this;
         $clone->customerId = $customerId;
+
+        return $clone;
+    }
+
+    /**
+     * Filter to invoices/ventes for any of the given customer IDs.
+     *
+     * @param  int[]  $customerIds
+     */
+    public function forCustomers(array $customerIds): static
+    {
+        $clone = clone $this;
+        $clone->customerIds = $customerIds;
 
         return $clone;
     }

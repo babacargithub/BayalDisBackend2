@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Beat;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\CustomerTag;
@@ -273,9 +274,20 @@ class CustomerController extends Controller
             default => $customerService->getCustomersWithInvoicesInDateRange($startDate, $endDate),
         };
 
+        $beats = Beat::with('commercial:id,name')
+            ->latest()
+            ->get()
+            ->map(fn (Beat $beat) => [
+                'id' => $beat->id,
+                'name' => $beat->name,
+                'day_of_week_label' => $beat->day_of_week?->label(),
+                'commercial_name' => $beat->commercial?->name,
+            ]);
+
         return Inertia::render('Clients/Activity', [
             'customers' => $customers,
             'sectors' => Sector::query()->select('id', 'name')->orderBy('name')->get(),
+            'beats' => $beats,
             'filters' => [
                 'start_date' => $startDate,
                 'end_date' => $endDate,

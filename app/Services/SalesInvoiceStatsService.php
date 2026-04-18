@@ -335,9 +335,9 @@ readonly class SalesInvoiceStatsService
      * Uses invoice-based commissions (not payments) to stay consistent with StatisticsService
      * and ensure netProfit in Dashboard equals netProfit credited to the PROFIT account.
      */
-    public function totalCommercialCommissions(?Carbon $startDate, ?Carbon $endDate): int
+    public function totalCommercialCommissions(?Carbon $startDate, ?Carbon $endDate, ?VenteStatsFilter $filter = null): int
     {
-        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)
             ->sum('estimated_commercial_commission');
     }
 
@@ -347,9 +347,9 @@ readonly class SalesInvoiceStatsService
      * Reads from sales_invoices.delivery_cost (denormalized, kept in sync by
      * InvoiceDeliveryCostService). Scoped to invoices created within the date range.
      */
-    public function totalDeliveryCost(?Carbon $startDate, ?Carbon $endDate, ?CarLoad $carLoad = null): int
+    public function totalDeliveryCost(?Carbon $startDate, ?Carbon $endDate, ?CarLoad $carLoad = null, ?VenteStatsFilter $filter = null): int
     {
-        $baseQuery = $this->buildBaseSalesInvoiceQuery($startDate, $endDate);
+        $baseQuery = $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter);
         if ($carLoad !== null) {
             $baseQuery->where('car_load_id', $carLoad->id);
         }
@@ -360,17 +360,17 @@ readonly class SalesInvoiceStatsService
     /**
      * Count sales invoices created within the given date range.
      */
-    public function salesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
+    public function salesInvoicesCount(?Carbon $startDate, ?Carbon $endDate, ?VenteStatsFilter $filter = null): int
     {
-        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)->count();
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)->count();
     }
 
     /**
      * Count fully paid sales invoices within the given date range.
      */
-    public function fullyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
+    public function fullyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate, ?VenteStatsFilter $filter = null): int
     {
-        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)
             ->where('status', SalesInvoiceStatus::FullyPaid)
             ->count();
     }
@@ -378,9 +378,9 @@ readonly class SalesInvoiceStatsService
     /**
      * Count partially paid sales invoices within the given date range.
      */
-    public function partiallyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
+    public function partiallyPaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate, ?VenteStatsFilter $filter = null): int
     {
-        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)
             ->where('status', SalesInvoiceStatus::PartiallyPaid)
             ->count();
     }
@@ -391,9 +391,9 @@ readonly class SalesInvoiceStatsService
      * Both DRAFT (back-office, not yet issued) and ISSUED (sent to customer, awaiting
      * payment) are considered unpaid — neither has any payment recorded yet.
      */
-    public function unpaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate): int
+    public function unpaidSalesInvoicesCount(?Carbon $startDate, ?Carbon $endDate, ?VenteStatsFilter $filter = null): int
     {
-        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate)
+        return $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)
             ->whereIn('status', [SalesInvoiceStatus::Draft, SalesInvoiceStatus::Issued])
             ->count();
     }
@@ -572,7 +572,7 @@ readonly class SalesInvoiceStatsService
             ->where('sales_invoice_id', $invoice->id);
     }
 
-    private function buildBaseSalesInvoiceQuery(?Carbon $startDate, ?Carbon $endDate): Builder
+    private function buildBaseSalesInvoiceQuery(?Carbon $startDate, ?Carbon $endDate, ?VenteStatsFilter $filter = null): Builder
     {
         $query = SalesInvoice::query();
 
@@ -582,6 +582,14 @@ readonly class SalesInvoiceStatsService
 
         if ($endDate !== null) {
             $query->where('created_at', '<=', $endDate);
+        }
+
+        if ($filter?->customerId !== null) {
+            $query->where('customer_id', $filter->customerId);
+        }
+
+        if ($filter?->customerIds !== null) {
+            $query->whereIn('customer_id', $filter->customerIds);
         }
 
         return $query;
@@ -604,6 +612,7 @@ readonly class SalesInvoiceStatsService
 
         $needsInvoiceScope = $filter->commercialId !== null
             || $filter->customerId !== null
+            || $filter->customerIds !== null
             || $filter->carLoadId !== null;
 
         if ($needsInvoiceScope) {
@@ -614,6 +623,10 @@ readonly class SalesInvoiceStatsService
 
                 if ($filter->customerId !== null) {
                     $invoiceQuery->where('customer_id', $filter->customerId);
+                }
+
+                if ($filter->customerIds !== null) {
+                    $invoiceQuery->whereIn('customer_id', $filter->customerIds);
                 }
 
                 if ($filter->carLoadId !== null) {
@@ -646,15 +659,14 @@ readonly class SalesInvoiceStatsService
             PaidStatus::All => null,
         };
 
-        if ($filter->customerId !== null) {
-            $query->where('customer_id', $filter->customerId);
-        }
-
         if ($filter->type !== null) {
             $query->where('type', $filter->type);
         }
 
-        $needsInvoiceScope = $filter->commercialId !== null || $filter->carLoadId !== null;
+        $needsInvoiceScope = $filter->commercialId !== null
+            || $filter->carLoadId !== null
+            || $filter->customerId !== null
+            || $filter->customerIds !== null;
 
         if ($needsInvoiceScope) {
             $query->whereHas('salesInvoice', function (Builder $invoiceQuery) use ($filter) {
@@ -664,6 +676,14 @@ readonly class SalesInvoiceStatsService
 
                 if ($filter->carLoadId !== null) {
                     $invoiceQuery->where('car_load_id', $filter->carLoadId);
+                }
+
+                if ($filter->customerId !== null) {
+                    $invoiceQuery->where('customer_id', $filter->customerId);
+                }
+
+                if ($filter->customerIds !== null) {
+                    $invoiceQuery->whereIn('customer_id', $filter->customerIds);
                 }
             });
         }

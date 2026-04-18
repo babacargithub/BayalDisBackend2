@@ -4,22 +4,22 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
+
 class Sector extends Model
 {
     protected $fillable = [
         'name',
         'boundaries',
         'ligne_id',
-        'description'
+        'description',
     ];
 
     protected $appends = [
         'total_amount_of_ventes',
         'total_debt',
-        'total_number_of_ventes'
+        'total_number_of_ventes',
     ];
 
     public function ligne(): BelongsTo
@@ -32,16 +32,16 @@ class Sector extends Model
         return $this->hasMany(Customer::class);
     }
 
-    public function visitBatches(): HasMany
+    public function beats(): HasMany
     {
-        return $this->hasMany(VisitBatch::class);
+        return $this->hasMany(Beat::class);
     }
 
     public function getTotalAmountOfVentesAttribute(): int
     {
-        return (int) DB::select("SELECT SUM(ventes.price * ventes.quantity) as total_amount FROM ventes
+        return (int) DB::select('SELECT SUM(ventes.price * ventes.quantity) as total_amount FROM ventes
         JOIN customers ON ventes.customer_id = customers.id
-        WHERE customers.sector_id = ?", [$this->id])[0]->total_amount;
+        WHERE customers.sector_id = ?', [$this->id])[0]->total_amount;
     }
 
     public function getTotalDebtAttribute(): int
@@ -94,5 +94,4 @@ class Sector extends Model
             ->join('ventes', 'customers.id', '=', 'ventes.customer_id')
             ->count();
     }
-    
-} 
+}
