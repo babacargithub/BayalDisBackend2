@@ -24,4 +24,16 @@ export default defineConfig({
             '@': '/resources/js',
         },
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    'vendor-vue': ['vue', '@inertiajs/vue3'],
+                    'vendor-vuetify': ['vuetify'],
+                    'vendor-charts': ['apexcharts', 'vue3-apexcharts'],
+                    'vendor-misc': ['axios', 'leaflet', 'moment', 'sweetalert2'],
+                },
+            },
+        },
+    },
 });
