@@ -28,10 +28,10 @@ export default defineConfig({
         rollupOptions: {
             output: {
                 manualChunks: {
-                    'vendor-vue': ['vue', '@inertiajs/vue3'],
+                    'vendor-vue': ['vue', '@inertiajs/vue3', 'axios'],
                     'vendor-vuetify': ['vuetify'],
                     'vendor-charts': ['apexcharts', 'vue3-apexcharts'],
-                    'vendor-misc': ['axios', 'leaflet', 'moment', 'sweetalert2'],
+                    'vendor-misc': ['leaflet', 'moment', 'sweetalert2'],
                 },
             },
         },
