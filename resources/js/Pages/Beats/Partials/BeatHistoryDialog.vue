@@ -11,6 +11,61 @@
                 <v-btn icon="mdi-close" variant="text" size="small" @click="close" />
             </v-card-title>
 
+            <!-- Date interval filter bar -->
+            <div class="d-flex align-center gap-3 pa-3 border-b bg-grey-lighten-5 flex-wrap">
+                <v-text-field
+                    v-model="filterStartDate"
+                    type="date"
+                    label="Du"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    clearable
+                    style="max-width: 180px"
+                />
+                <v-text-field
+                    v-model="filterEndDate"
+                    type="date"
+                    label="Au"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    clearable
+                    style="max-width: 180px"
+                />
+                <v-btn
+                    color="primary"
+                    variant="tonal"
+                    size="small"
+                    prepend-icon="mdi-magnify"
+                    :loading="loading"
+                    @click="loadHistory"
+                >
+                    Filtrer
+                </v-btn>
+                <v-btn
+                    variant="text"
+                    size="small"
+                    prepend-icon="mdi-refresh"
+                    :disabled="loading"
+                    @click="resetDateFilter"
+                >
+                    Réinitialiser
+                </v-btn>
+                <v-divider vertical class="mx-1" style="height: 28px" />
+                <v-checkbox
+                    v-model="includeAllDaySales"
+                    label="Inclure toutes les ventes du jour"
+                    density="compact"
+                    hide-details
+                    color="primary"
+                    class="flex-shrink-0"
+                />
+                <span v-if="isDateFilterActive" class="text-caption text-primary">
+                    <v-icon icon="mdi-filter" size="14" /> Filtre actif
+                </span>
+            </div>
+
             <v-card-text class="pa-0">
                 <!-- Loading -->
                 <div v-if="loading" class="d-flex justify-center align-center py-12">
@@ -189,6 +244,12 @@ const error = ref(false);
 const beat = ref(null);
 const history = ref([]);
 const activeTab = ref('table');
+
+const filterStartDate = ref(null);
+const filterEndDate = ref(null);
+const includeAllDaySales = ref(false);
+
+const isDateFilterActive = computed(() => filterStartDate.value || filterEndDate.value);
 
 // ─── Series toggle ────────────────────────────────────────────────────────────
 
@@ -379,7 +440,18 @@ const loadHistory = async () => {
     history.value = [];
 
     try {
-        const response = await axios.get(route('beats.history', props.beatId));
+        const queryParams = {};
+        if (filterStartDate.value) {
+            queryParams.start_date = filterStartDate.value;
+        }
+        if (filterEndDate.value) {
+            queryParams.end_date = filterEndDate.value;
+        }
+        if (includeAllDaySales.value) {
+            queryParams.include_all_day_sales = 1;
+        }
+
+        const response = await axios.get(route('beats.history', props.beatId), { params: queryParams });
         beat.value = response.data.beat;
         history.value = response.data.history;
     } catch {
@@ -389,8 +461,25 @@ const loadHistory = async () => {
     }
 };
 
+const resetDateFilter = () => {
+    filterStartDate.value = buildDefaultStartDate();
+    filterEndDate.value = buildDefaultEndDate();
+    includeAllDaySales.value = false;
+    loadHistory();
+};
+
 const close = () => {
     isOpen.value = false;
+};
+
+const buildDefaultStartDate = () => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date.toISOString().slice(0, 10);
+};
+
+const buildDefaultEndDate = () => {
+    return new Date().toISOString().slice(0, 10);
 };
 
 watch(
@@ -398,6 +487,9 @@ watch(
     (opened) => {
         if (opened) {
             activeTab.value = 'table';
+            filterStartDate.value = buildDefaultStartDate();
+            filterEndDate.value = buildDefaultEndDate();
+            includeAllDaySales.value = false;
             loadHistory();
         }
     }

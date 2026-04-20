@@ -11,7 +11,6 @@ use App\Models\Customer;
 use App\Models\SalesInvoice;
 use App\Services\BeatService;
 use App\Services\SalesInvoiceStatsService;
-
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -42,7 +41,7 @@ class BeatStopController extends Controller
 
                 return [
                     'id' => $beat->id,
-                    'name' => $beat->sector?->name . ' ' . $beat->name,
+                    'name' => $beat->sector?->name.' '.$beat->name,
                     'day_of_week' => $beat->day_of_week?->value,
                     'day_of_week_label' => $beat->day_of_week?->label(),
                     'commercial' => [
@@ -104,7 +103,7 @@ class BeatStopController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'day_of_week' => ['required', 'string', 'in:' . implode(',', array_column(DayOfWeek::cases(), 'value'))],
+            'day_of_week' => ['required', 'string', 'in:'.implode(',', array_column(DayOfWeek::cases(), 'value'))],
             'commercial_id' => ['nullable', 'exists:commercials,id'],
             'stops' => ['required', 'array', 'min:1'],
             'stops.*.customer_id' => ['required', 'exists:customers,id'],
@@ -198,7 +197,7 @@ class BeatStopController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'day_of_week' => ['required', 'string', 'in:' . implode(',', array_column(DayOfWeek::cases(), 'value'))],
+            'day_of_week' => ['required', 'string', 'in:'.implode(',', array_column(DayOfWeek::cases(), 'value'))],
             'stops' => ['required', 'array', 'min:1'],
             'stops.*.customer_id' => ['required', 'exists:customers,id'],
             'stops.*.notes' => ['nullable', 'string'],
@@ -273,16 +272,17 @@ class BeatStopController extends Controller
             'generated_at' => now()->format('d/m/Y H:i'),
         ]);
 
-        $filename = 'beat_' . str_replace(' ', '_', strtolower($beat->name)) . '_' . now()->format('d_m_Y') . '.pdf';
+        $filename = 'beat_'.str_replace(' ', '_', strtolower($beat->name)).'_'.now()->format('d_m_Y').'.pdf';
 
         return $pdf->download($filename);
     }
 
-    public function getHistory(Beat $beat): JsonResponse
+    public function getHistory(Beat $beat, Request $request): JsonResponse
     {
         $customerIds = $beat->templateStops()->pluck('customer_id')->toArray();
+        $includeAllDaySales = $request->boolean('include_all_day_sales', false);
 
-        if (empty($customerIds)) {
+        if (empty($customerIds) && ! $includeAllDaySales) {
             return response()->json([
                 'beat' => [
                     'id' => $beat->id,
@@ -293,35 +293,48 @@ class BeatStopController extends Controller
             ]);
         }
 
-        // Discover the actual dates when this beat's customers had invoices,
-        // restricted to dates matching the beat's scheduled day of week.
-        $salesDates = SalesInvoice::whereIn('customer_id', $customerIds)
+        $startDate = $request->filled('start_date')
+            ? Carbon::parse($request->input('start_date'))->startOfDay()
+            : now()->subDays(30)->startOfDay();
+
+        $endDate = $request->filled('end_date')
+            ? Carbon::parse($request->input('end_date'))->endOfDay()
+            : now()->endOfDay();
+
+        // Discover the actual dates within the range that had sales, restricted to
+        // the beat's scheduled day of week. Dates with no sales are excluded.
+        $invoicesQuery = $includeAllDaySales
+            ? SalesInvoice::query()
+            : SalesInvoice::whereIn('customer_id', $customerIds);
+
+        $salesDates = $invoicesQuery
             ->selectRaw('DATE(created_at) as sale_date')
+            ->whereDate('created_at', '>=', $startDate)
+            ->whereDate('created_at', '<=', $endDate)
             ->groupBy('sale_date')
             ->orderByDesc('sale_date')
-            ->limit(120) // fetch extra to account for day-of-week filtering
             ->pluck('sale_date')
             ->map(fn (string $date) => Carbon::parse($date))
             ->filter(fn (Carbon $date) => DayOfWeek::fromCarbon($date) === $beat->day_of_week)
-            ->take(30)
             ->values();
 
-        $beatCustomersFilter = VenteStatsFilter::regardlessOfPaymentStatus()
-            ->forCustomers($customerIds);
+        $salesFilter = $includeAllDaySales
+            ? VenteStatsFilter::regardlessOfPaymentStatus()
+            : VenteStatsFilter::regardlessOfPaymentStatus()->forCustomers($customerIds);
 
-        $history = $salesDates->map(function (Carbon $date) use ($beatCustomersFilter) {
+        $history = $salesDates->map(function (Carbon $date) use ($salesFilter): array {
             $startOfDay = $date->copy()->startOfDay();
             $endOfDay = $date->copy()->endOfDay();
 
             return [
                 'date' => $date->toDateString(),
                 'label' => ucfirst($date->locale('fr')->isoFormat('dddd D MMMM YYYY')),
-                'total_sales' => $this->salesInvoiceStatsService->totalSales($startOfDay, $endOfDay, $beatCustomersFilter),
-                'total_estimated_profit' => $this->salesInvoiceStatsService->totalEstimatedProfits($startOfDay, $endOfDay, $beatCustomersFilter),
-                'total_realized_profit' => $this->salesInvoiceStatsService->totalRealizedProfits($startOfDay, $endOfDay, $beatCustomersFilter),
-                'invoices_count' => $this->salesInvoiceStatsService->salesInvoicesCount($startOfDay, $endOfDay, $beatCustomersFilter),
-                'total_commissions' => $this->salesInvoiceStatsService->totalCommercialCommissions($startOfDay, $endOfDay, $beatCustomersFilter),
-                'total_delivery_cost' => $this->salesInvoiceStatsService->totalDeliveryCost($startOfDay, $endOfDay, null, $beatCustomersFilter),
+                'total_sales' => $this->salesInvoiceStatsService->totalSales($startOfDay, $endOfDay, $salesFilter),
+                'total_estimated_profit' => $this->salesInvoiceStatsService->totalEstimatedProfits($startOfDay, $endOfDay, $salesFilter),
+                'total_realized_profit' => $this->salesInvoiceStatsService->totalRealizedProfits($startOfDay, $endOfDay, $salesFilter),
+                'invoices_count' => $this->salesInvoiceStatsService->salesInvoicesCount($startOfDay, $endOfDay, $salesFilter),
+                'total_commissions' => $this->salesInvoiceStatsService->totalCommercialCommissions($startOfDay, $endOfDay, $salesFilter),
+                'total_delivery_cost' => $this->salesInvoiceStatsService->totalDeliveryCost($startOfDay, $endOfDay, null, $salesFilter),
             ];
         });
 
@@ -352,6 +365,6 @@ class BeatStopController extends Controller
             ]);
         }
 
-        return back()->with('success', count($newCustomerIds) . ' client(s) ajouté(s) avec succès');
+        return back()->with('success', count($newCustomerIds).' client(s) ajouté(s) avec succès');
     }
 }
