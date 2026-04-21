@@ -115,6 +115,7 @@
                                         <th class="text-right" style="min-width:130px">Profit réalisé</th>
                                         <th class="text-right" style="min-width:120px">Commissions</th>
                                         <th class="text-right" style="min-width:110px">Livraison</th>
+                                        <th class="text-center" style="min-width:60px"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -168,6 +169,20 @@
                                                 {{ formatAmount(row.total_delivery_cost) }}
                                             </span>
                                         </td>
+                                        <td class="text-center">
+                                            <v-tooltip text="Clients sans achat ce jour" location="left">
+                                                <template #activator="{ props: tooltipProps }">
+                                                    <v-btn
+                                                        v-bind="tooltipProps"
+                                                        icon="mdi-account-off-outline"
+                                                        size="x-small"
+                                                        variant="text"
+                                                        color="warning"
+                                                        @click="openLeftOutDialog(row)"
+                                                    />
+                                                </template>
+                                            </v-tooltip>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </v-table>
@@ -201,6 +216,81 @@
                         </v-window-item>
                     </v-window>
                 </div>
+
+                <!-- Left-out customers dialog (nested) -->
+                <v-dialog v-model="leftOutDialogOpen" max-width="520px" scrollable>
+                    <v-card>
+                        <v-card-title class="d-flex align-center justify-space-between pa-4 border-b">
+                            <div>
+                                <div class="text-subtitle-1 font-weight-bold">Clients sans achat</div>
+                                <div v-if="leftOutDialogLabel" class="text-caption text-grey mt-1">
+                                    {{ leftOutDialogLabel }}
+                                </div>
+                            </div>
+                            <v-btn icon="mdi-close" variant="text" size="small" @click="leftOutDialogOpen = false" />
+                        </v-card-title>
+
+                        <v-card-text class="pa-0">
+                            <div v-if="leftOutDialogLoading" class="d-flex justify-center align-center py-10">
+                                <v-progress-circular indeterminate color="warning" />
+                            </div>
+
+                            <div v-else-if="leftOutDialogError" class="pa-6 text-center text-error">
+                                <v-icon icon="mdi-alert-circle" size="36" class="mb-2" />
+                                <p>Impossible de charger les données.</p>
+                            </div>
+
+                            <template v-else>
+                                <div v-if="leftOutCustomers.length === 0" class="pa-10 text-center text-grey">
+                                    <v-icon icon="mdi-account-check" size="40" class="mb-3" color="success" />
+                                    <p>Tous les clients du beat ont acheté ce jour.</p>
+                                </div>
+
+                                <div v-else>
+                                    <div class="pa-3 border-b d-flex align-center gap-2 bg-warning-lighten-5">
+                                        <v-icon icon="mdi-account-off-outline" color="warning" size="18" />
+                                        <span class="text-caption">
+                                            {{ leftOutCustomers.length }} / {{ leftOutDialogTotalCustomers }} client(s) sans achat
+                                        </span>
+                                    </div>
+
+                                    <v-list density="compact" border >
+                                        <v-list-item
+                                            v-for="customer in leftOutCustomers"
+                                            :key="customer.id"
+                                            :subtitle="customer.phone_number ?? 'Pas de téléphone'"
+                                        >
+                                            <template #title>
+                                                <span class="font-weight-medium">{{ customer.name }}</span><br>
+                                                <span class="font-weight-light">{{ customer.address }}</span>
+                                            </template>
+                                            <template #prepend>
+                                                <v-icon icon="mdi-account-outline" color="grey" size="20" />
+                                            </template>
+                                        </v-list-item>
+                                    </v-list>
+                                </div>
+                            </template>
+                        </v-card-text>
+
+                        <v-card-actions class="pa-3 border-t">
+                            <v-btn
+                                v-if="!leftOutDialogLoading && !leftOutDialogError"
+                                color="warning"
+                                variant="tonal"
+                                size="small"
+                                prepend-icon="mdi-file-pdf-box"
+                                :href="leftOutPdfUrl"
+                                target="_blank"
+                                rel="noopener"
+                            >
+                                Exporter PDF
+                            </v-btn>
+                            <v-spacer />
+                            <v-btn variant="text" size="small" @click="leftOutDialogOpen = false">Fermer</v-btn>
+                        </v-card-actions>
+                    </v-card>
+                </v-dialog>
             </v-card-text>
 
             <v-card-actions class="pa-4 border-t">
@@ -244,6 +334,46 @@ const error = ref(false);
 const beat = ref(null);
 const history = ref([]);
 const activeTab = ref('table');
+
+// ─── Left-out customers dialog ────────────────────────────────────────────────
+const leftOutDialogOpen = ref(false);
+const leftOutDialogLoading = ref(false);
+const leftOutDialogError = ref(false);
+const leftOutDialogLabel = ref('');
+const leftOutDialogTotalCustomers = ref(0);
+const leftOutCustomers = ref([]);
+
+const leftOutSelectedDate = ref(null);
+
+const leftOutPdfUrl = computed(() => {
+    if (!leftOutSelectedDate.value) {
+        return '#';
+    }
+
+    return route('beats.left-out-customers.pdf', props.beatId) + '?date=' + leftOutSelectedDate.value;
+});
+
+const openLeftOutDialog = async (row) => {
+    leftOutDialogOpen.value = true;
+    leftOutDialogLoading.value = true;
+    leftOutDialogError.value = false;
+    leftOutDialogLabel.value = row.label;
+    leftOutSelectedDate.value = row.date;
+    leftOutCustomers.value = [];
+    leftOutDialogTotalCustomers.value = 0;
+
+    try {
+        const response = await axios.get(route('beats.left-out-customers', props.beatId), {
+            params: { date: row.date },
+        });
+        leftOutCustomers.value = response.data.left_out_customers;
+        leftOutDialogTotalCustomers.value = response.data.total_customers;
+    } catch {
+        leftOutDialogError.value = true;
+    } finally {
+        leftOutDialogLoading.value = false;
+    }
+};
 
 const filterStartDate = ref(null);
 const filterEndDate = ref(null);

@@ -348,6 +348,79 @@ class BeatStopController extends Controller
         ]);
     }
 
+    public function getLeftOutCustomersForDate(Beat $beat, Request $request): JsonResponse
+    {
+        $request->validate(['date' => ['required', 'date']]);
+
+        $date = Carbon::parse($request->input('date'));
+        $startOfDay = $date->copy()->startOfDay();
+        $endOfDay = $date->copy()->endOfDay();
+
+        $customerIds = $beat->templateStops()->pluck('customer_id')->toArray();
+
+        $customerIdsWhoOrderedThatDay = SalesInvoice::whereIn('customer_id', $customerIds)
+            ->whereDate('created_at', '>=', $startOfDay)
+            ->whereDate('created_at', '<=', $endOfDay)
+            ->pluck('customer_id')
+            ->unique()
+            ->toArray();
+
+        $leftOutCustomerIds = array_values(array_diff($customerIds, $customerIdsWhoOrderedThatDay));
+
+        $leftOutCustomers = Customer::whereIn('id', $leftOutCustomerIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone_number','address']);
+
+        return response()->json([
+            'date' => $date->toDateString(),
+            'label' => ucfirst($date->locale('fr')->isoFormat('dddd D MMMM YYYY')),
+            'total_customers' => count($customerIds),
+            'left_out_customers' => $leftOutCustomers,
+        ]);
+    }
+
+    public function exportLeftOutCustomersPdf(Beat $beat, Request $request): \Illuminate\Http\Response
+    {
+        $request->validate(['date' => ['required', 'date']]);
+
+        $beat->load(['commercial:id,name', 'sector:id,name']);
+
+        $date = Carbon::parse($request->input('date'));
+        $startOfDay = $date->copy()->startOfDay();
+        $endOfDay = $date->copy()->endOfDay();
+
+        $customerIds = $beat->templateStops()->pluck('customer_id')->toArray();
+
+        $customerIdsWhoOrderedThatDay = SalesInvoice::whereIn('customer_id', $customerIds)
+            ->whereDate('created_at', '>=', $startOfDay)
+            ->whereDate('created_at', '<=', $endOfDay)
+            ->pluck('customer_id')
+            ->unique()
+            ->toArray();
+
+        $leftOutCustomerIds = array_values(array_diff($customerIds, $customerIdsWhoOrderedThatDay));
+
+        $leftOutCustomers = Customer::whereIn('id', $leftOutCustomerIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'phone_number','address']);
+
+        $pdf = Pdf::loadView('pdf.beat-left-out-customers', [
+            'beat' => $beat,
+            'date' => $date,
+            'date_label' => ucfirst($date->locale('fr')->isoFormat('dddd D MMMM YYYY')),
+            'total_customers' => count($customerIds),
+            'left_out_customers' => $leftOutCustomers,
+            'generated_at' => now()->format('d/m/Y H:i'),
+        ]);
+
+        $filename = 'clients_sans_achat_'
+            .str_replace(' ', '_', strtolower($beat->name))
+            .'_'.$date->format('d_m_Y')
+            .'.pdf';
+
+        return $pdf->download($filename);
+    }
+
     public function addCustomers(Request $request, Beat $beat)
     {
         $request->validate([
