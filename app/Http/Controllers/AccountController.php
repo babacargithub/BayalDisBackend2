@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Data\Account\AccountBalanceSummaryDTO;
 use App\Enums\AccountType;
 use App\Exceptions\InsufficientAccountBalanceException;
 use App\Exceptions\InvariantException;
@@ -41,6 +42,7 @@ class AccountController extends Controller
                 'updated_at' => $account->updated_at,
             ]),
             'totalBalance' => $accounts->sum('balance'),
+            'balanceSummary' => AccountBalanceSummaryDTO::fromAccounts($accounts)->toArray(),
             'vehicles' => Vehicle::orderBy('name')->get(['id', 'name']),
             'commercials' => Commercial::orderBy('name')->get(['id', 'name']),
             'accountTypes' => collect(AccountType::cases())->map(fn (AccountType $type) => [

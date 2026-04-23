@@ -73,6 +73,12 @@
             >
               Non Payées
             </v-btn>
+            <v-btn
+              :color="filter === 'past_due' ? 'warning' : ''"
+              @click="filter = 'past_due'"
+            >
+              Factures passées
+            </v-btn>
           </v-btn-group>
 
           <!-- Week Filter Button -->
@@ -434,9 +440,15 @@ const filteredInvoices = computed(() => {
   let filtered = props.invoices.data
 
   // Apply payment status filter
-  if (filter.value !== 'all') {
+  if (filter.value === 'paid') {
+    filtered = filtered.filter(invoice => invoice.paid)
+  } else if (filter.value === 'unpaid') {
+    filtered = filtered.filter(invoice => !invoice.paid)
+  } else if (filter.value === 'past_due') {
+    const today = new Date()
+    today.setHours(23, 59, 59, 999)
     filtered = filtered.filter(invoice =>
-      filter.value === 'paid' ? invoice.paid : !invoice.paid
+      invoice.should_be_paid_at && new Date(invoice.should_be_paid_at) <= today
     )
   }
 

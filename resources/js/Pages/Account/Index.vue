@@ -42,6 +42,66 @@
 
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+
+                <!-- Summary Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <!-- Merchandises -->
+                    <div class="rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 p-5 text-white shadow-lg">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="rounded-xl bg-white/20 p-2 flex items-center justify-center">
+                                <v-icon icon="mdi-shopping-outline" size="20" color="white" />
+                            </div>
+                            <span class="text-sm font-semibold text-blue-100 uppercase tracking-wide">Marchandises</span>
+                        </div>
+                        <div class="text-2xl font-bold tracking-tight leading-none">
+                            {{ formatAmount(balanceSummary.merchandise_sales_balance) }}
+                        </div>
+                        <div class="mt-2 text-xs text-blue-200">Compte ventes marchandises</div>
+                    </div>
+
+                    <!-- Compte Bénéfice -->
+                    <div class="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 p-5 text-white shadow-lg">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="rounded-xl bg-white/20 p-2 flex items-center justify-center">
+                                <v-icon icon="mdi-trending-up" size="20" color="white" />
+                            </div>
+                            <span class="text-sm font-semibold text-emerald-100 uppercase tracking-wide">Compte Bénéfice</span>
+                        </div>
+                        <div class="text-2xl font-bold tracking-tight leading-none">
+                            {{ formatAmount(balanceSummary.profit_account_balance) }}
+                        </div>
+                        <div class="mt-2 text-xs text-emerald-200">Bénéfices accumulés</div>
+                    </div>
+
+                    <!-- Réserves -->
+                    <div class="rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 p-5 text-white shadow-lg">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="rounded-xl bg-white/20 p-2 flex items-center justify-center">
+                                <v-icon icon="mdi-piggy-bank-outline" size="20" color="white" />
+                            </div>
+                            <span class="text-sm font-semibold text-amber-100 uppercase tracking-wide">Réserves</span>
+                        </div>
+                        <div class="text-2xl font-bold tracking-tight leading-none">
+                            {{ formatAmount(balanceSummary.reserves_balance) }}
+                        </div>
+                        <div class="mt-2 text-xs text-amber-200">Tous les autres comptes de charges</div>
+                    </div>
+
+                    <!-- Total Non Utilisable -->
+                    <div class="rounded-2xl bg-gradient-to-br from-violet-500 to-violet-700 p-5 text-white shadow-lg">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="rounded-xl bg-white/20 p-2 flex items-center justify-center">
+                                <v-icon icon="mdi-lock-outline" size="20" color="white" />
+                            </div>
+                            <span class="text-sm font-semibold text-violet-100 uppercase tracking-wide">Total Non Utilisable</span>
+                        </div>
+                        <div class="text-2xl font-bold tracking-tight leading-none">
+                            {{ formatAmount(balanceSummary.total_non_utilisable) }}
+                        </div>
+                        <div class="mt-2 text-xs text-violet-200">Bénéfice + Réserves</div>
+                    </div>
+                </div>
+
                 <v-card>
                     <v-data-table
                         :headers="tableHeaders"
@@ -820,6 +880,7 @@ import axios from 'axios';
 const props = defineProps({
     accounts: Array,
     totalBalance: Number,
+    balanceSummary: Object,
     vehicles: Array,
     commercials: Array,
     accountTypes: Array,
