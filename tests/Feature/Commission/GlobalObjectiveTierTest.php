@@ -346,4 +346,49 @@ class GlobalObjectiveTierTest extends TestCase
         // 50_000 > 30_000 → all global tiers achieved, nothing left.
         $this->assertNull($nextTierProgress);
     }
+
+    public function test_next_tier_progress_falls_back_to_global_tiers_when_commercial_has_no_work_period(): void
+    {
+        // Commercial with no work period at all — global tiers must still be consulted.
+        $commercialWithNoWorkPeriod = Commercial::create([
+            'name' => 'Commercial Sans Période',
+            'phone_number' => '221700000088',
+            'gender' => 'male',
+            'user_id' => User::factory()->create()->id,
+        ]);
+
+        $this->createGlobalTier(1, 50_000, 15_000);
+        $this->createGlobalTier(2, 100_000, 35_000);
+
+        $nextTierProgress = $this->service->computeNextTierProgressForCommercialOnDay(
+            $commercialWithNoWorkPeriod,
+            '2026-03-04',
+            currentDailyEncaissement: 60_000,
+        );
+
+        // No work period exists, but global tier 2 (100_000) is still above 60_000.
+        $this->assertNotNull($nextTierProgress);
+        $this->assertEquals(2, $nextTierProgress->tierLevel);
+        $this->assertEquals(100_000, $nextTierProgress->caThreshold);
+        $this->assertEquals(35_000, $nextTierProgress->bonusAmount);
+        $this->assertEquals(40_000, $nextTierProgress->missingAmount);
+    }
+
+    public function test_next_tier_progress_returns_null_when_no_work_period_and_no_global_tiers(): void
+    {
+        $commercialWithNoWorkPeriod = Commercial::create([
+            'name' => 'Commercial Sans Période Ni Tiers',
+            'phone_number' => '221700000077',
+            'gender' => 'male',
+            'user_id' => User::factory()->create()->id,
+        ]);
+
+        $nextTierProgress = $this->service->computeNextTierProgressForCommercialOnDay(
+            $commercialWithNoWorkPeriod,
+            '2026-03-04',
+            currentDailyEncaissement: 60_000,
+        );
+
+        $this->assertNull($nextTierProgress);
+    }
 }

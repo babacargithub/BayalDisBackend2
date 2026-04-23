@@ -1102,11 +1102,7 @@ readonly class DailyCommissionService
             ->whereDate('period_end_date', '>=', $workDay)
             ->first();
 
-        if ($workPeriod === null) {
-            return null;
-        }
-
-        $periodHasTiers = $workPeriod->objectiveTiers()->exists();
+        $periodHasTiers = $workPeriod !== null && $workPeriod->objectiveTiers()->exists();
 
         $nextTier = $periodHasTiers
             ? $workPeriod->objectiveTiers()
