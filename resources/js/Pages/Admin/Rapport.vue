@@ -58,7 +58,7 @@ const unpaidInvoicesStartDateFormatted = computed(() =>
                 <!-- Stock & Caisses Breakdown -->
                 <div class="text-subtitle-1 font-weight-medium text-grey-darken-2 px-1">Composition du business</div>
                 <v-row>
-                    <v-col cols="12" md="4">
+                    <v-col cols="12" md="3">
                         <v-card class="rounded-xl h-100" elevation="2">
                             <v-card-text class="pa-5">
                                 <div class="d-flex align-center gap-3 mb-3">
@@ -75,7 +75,7 @@ const unpaidInvoicesStartDateFormatted = computed(() =>
                         </v-card>
                     </v-col>
 
-                    <v-col cols="12" md="4">
+                    <v-col cols="12" md="3">
                         <v-card class="rounded-xl h-100" elevation="2">
                             <v-card-text class="pa-5">
                                 <div class="d-flex align-center gap-3 mb-3">
@@ -92,25 +92,56 @@ const unpaidInvoicesStartDateFormatted = computed(() =>
                         </v-card>
                     </v-col>
 
-                    <v-col cols="12" md="4">
+                    <v-col cols="12" md="3">
                         <v-card class="rounded-xl h-100" elevation="2">
                             <v-card-text class="pa-5">
                                 <div class="d-flex align-center gap-3 mb-3">
-                                    <v-avatar color="green-lighten-4" size="44">
-                                        <v-icon color="green-darken-2">mdi-cash-multiple</v-icon>
+                                    <v-avatar color="teal-lighten-4" size="44">
+                                        <v-icon color="teal-darken-2">mdi-cash-multiple</v-icon>
                                     </v-avatar>
                                     <span class="text-subtitle-2 text-grey-darken-2">Solde des caisses</span>
                                 </div>
-                                <div class="text-h5 font-weight-bold text-green-darken-2">
+                                <div class="text-h5 font-weight-bold text-amber-900">
                                     {{ formatAmount(statistics.total_caisses_balance) }}
                                 </div>
                                 <div class="text-caption text-grey mt-1">Total de tous les comptes de trésorerie</div>
                             </v-card-text>
                         </v-card>
                     </v-col>
+                  <v-col cols="12" md="3">
+                        <v-card class="rounded-xl h-100" elevation="2">
+                            <v-card-text class="pa-5">
+                                <div class="d-flex align-center gap-3 mb-3">
+                                    <v-avatar color="green-lighten-4" size="44">
+                                        <v-icon color="green-darken-2">mdi-check-circle</v-icon>
+                                    </v-avatar>
+                                    <span class="text-subtitle-2 text-grey-darken-2">Avoir réel</span>
+                                </div>
+                                <div class="text-h5 font-weight-bold text-green-darken-2">
+                                    {{ formatAmount(statistics.real_value)}}
+                                </div>
+                                <div class="text-caption text-grey mt-1">La somme des avoirs réels</div>
+                            </v-card-text>
+                        </v-card>
+                    </v-col>
                 </v-row>
 
-                <!-- Unpaid Invoices -->
+                <!-- Real Net Value -->
+                <v-card class="rounded-xl" elevation="2">
+                    <v-card-text class="pa-5">
+                        <div class="d-flex align-center gap-3 mb-4">
+                            <v-avatar color="green-lighten-4" size="44">
+                                <v-icon color="green-darken-2">mdi-file-clock-outline</v-icon>
+                            </v-avatar>
+
+                        </div>
+                        <div class="text-h5 font-weight-bold text-green-darken-2">
+                            {{ formatAmount(statistics.real_net_value) }}
+                        </div>
+                        <div class="text-caption text-grey mt-1">Montant plus value réel</div>
+                    </v-card-text>
+                </v-card>
+  <!-- Unpaid Invoices -->
                 <v-card class="rounded-xl" elevation="2">
                     <v-card-text class="pa-5">
                         <div class="d-flex align-center gap-3 mb-4">

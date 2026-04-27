@@ -42,7 +42,7 @@ class AdminController extends Controller
 
         $businessValue = $warehouseStockValue + $carLoadsStockValue + $totalCaissesBalance + $totalUnpaidInvoicesAmount;
         $netPlusValue = $businessValue - self::FOND_DE_ROULEMENT;
-
+        $realValue = $warehouseStockValue + $carLoadsStockValue + $totalCaissesBalance;
         return Inertia::render('Admin/Rapport', [
             'statistics' => [
                 'warehouse_stock_value' => $warehouseStockValue,
@@ -54,6 +54,8 @@ class AdminController extends Controller
                 'business_value' => $businessValue,
                 'fond_de_roulement' => self::FOND_DE_ROULEMENT,
                 'net_plus_value' => $netPlusValue,
+                'real_value'=> $realValue,
+                'real_net_value'=> $realValue - self::FOND_DE_ROULEMENT,
             ],
         ]);
     }
