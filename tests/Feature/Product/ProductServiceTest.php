@@ -407,7 +407,7 @@ class ProductServiceTest extends TestCase
         $this->assertSame(2, $result['parent_quantity'], 'floar(30/12) = 3 cartons needed');
         $this->assertSame(6, $result['remaining_variant_quantity'], '(3 × 12) − 30 = 6 packs returned');
     }
-
+// TODO change tests to apply floar instead of ceiling
     public function test_convert_variant_quantity_to_parent_quantity_applies_ceiling_for_a_single_partial_unit(): void
     {
         // 1 pack out of 12 → needs 1 full carton; remaining = 11 packs
