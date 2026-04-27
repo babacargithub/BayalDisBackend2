@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CommercialObjectiveTier;
 use App\Models\CommercialWorkPeriod;
 use App\Services\Commission\DailyCommissionService;
 use Carbon\CarbonImmutable;
@@ -201,21 +202,23 @@ class ApiCommissionController extends Controller
             ->whereDate('period_end_date', '>=', $today)
             ->first();
 
-        $caTiers = [];
+        $periodHasTiers = $currentWorkPeriod !== null && $currentWorkPeriod->objectiveTiers()->exists();
 
-        if ($currentWorkPeriod !== null) {
-            $caTiers = $currentWorkPeriod->objectiveTiers()
-                ->orderBy('ca_threshold')
-                ->get()
-                ->map(fn ($tier) => [
-                    'tier_level' => $tier->tier_level,
-                    'ca_threshold' => $tier->ca_threshold,
-                    'bonus_amount' => $tier->bonus_amount,
-                    'description' => 'Atteindre '.number_format($tier->ca_threshold, 0, ',', ' ').' F de CA journalier',
-                ])
-                ->values()
-                ->all();
-        }
+        $tiersQuery = $periodHasTiers
+            ? $currentWorkPeriod->objectiveTiers()
+            : CommercialObjectiveTier::global();
+
+        $caTiers = $tiersQuery
+            ->orderBy('ca_threshold')
+            ->get()
+            ->map(fn ($tier) => [
+                'tier_level' => $tier->tier_level,
+                'ca_threshold' => $tier->ca_threshold,
+                'bonus_amount' => $tier->bonus_amount,
+                'description' => 'Atteindre '.number_format($tier->ca_threshold, 0, ',', ' ').' F de CA journalier',
+            ])
+            ->values()
+            ->all();
 
         // --- New customer bonuses ---
         $newCustomerBonuses = [];

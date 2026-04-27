@@ -8,6 +8,7 @@ use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InvoicePaymentMismatchException;
 use App\Jobs\RecalculateInvoicesDeliveryCostJob;
 use App\Services\SalesInvoiceStatsService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -259,6 +260,23 @@ class SalesInvoice extends Model
         $this->status = SalesInvoiceStatus::FullyPaid;
         $this->paid = true;
         $this->save();
+    }
+
+    // =========================================================================
+    // Query scopes
+    // =========================================================================
+
+    /**
+     * Filter invoices that are currently overdue: a due date is set, it has passed,
+     * and the invoice is not yet fully paid.
+     *
+     * Usage: SalesInvoice::query()->overdue()->get()
+     */
+    public function scopeOverdue(Builder $query): void
+    {
+        $query->where('status', "!=", SalesInvoiceStatus::FullyPaid->value)
+            ->whereNotNull('should_be_paid_at')
+            ->whereDate('should_be_paid_at', '<', today()->toDateString());
     }
 
     // =========================================================================

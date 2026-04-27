@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Beat;
+use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\CustomerTag;
@@ -284,8 +285,26 @@ class CustomerController extends Controller
                 'commercial_name' => $beat->commercial?->name,
             ]);
 
+        $customerIds = $customers->pluck('id')->filter()->values()->toArray();
+
+        $beatIdsByCustomerId = ! empty($customerIds)
+            ? BeatStop::whereIn('customer_id', $customerIds)
+                ->whereNull('visit_date')
+                ->select('customer_id', 'beat_id')
+                ->get()
+                ->groupBy('customer_id')
+                ->map(fn ($stops) => $stops->pluck('beat_id')->unique()->values()->toArray())
+            : collect();
+
+        $customersWithBeatInfo = $customers->map(function ($customer) use ($beatIdsByCustomerId) {
+            $customerData = $customer->toArray();
+            $customerData['beat_ids'] = $beatIdsByCustomerId->get($customerData['id']) ?? [];
+
+            return $customerData;
+        });
+
         return Inertia::render('Clients/Activity', [
-            'customers' => $customers,
+            'customers' => $customersWithBeatInfo,
             'sectors' => Sector::query()->select('id', 'name')->orderBy('name')->get(),
             'beats' => $beats,
             'filters' => [

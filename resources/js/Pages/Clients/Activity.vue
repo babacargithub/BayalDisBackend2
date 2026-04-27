@@ -125,6 +125,25 @@
 
                 <!-- Map section -->
                 <div class="bg-white shadow-sm sm:rounded-lg p-6">
+                    <!-- Map legend -->
+                    <div v-if="customers.length > 0" class="flex flex-wrap gap-4 mb-3 text-xs text-gray-600">
+                        <span class="flex items-center gap-1">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#1d4ed8;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+                            Client actif
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#dc2626;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+                            Client en churn
+                        </span>
+                        <span class="flex items-center gap-1">
+                            <span style="position:relative;display:inline-block;width:14px;height:14px">
+                                <span style="position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#1d4ed8;border:2px solid #fff;outline:2px solid #f59e0b;outline-offset:2px;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+                                <span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;background:#f59e0b;border:1px solid #fff;display:flex;align-items:center;justify-content:center;font-size:6px;color:#fff;font-weight:bold">★</span>
+                            </span>
+                            Déjà dans un beat
+                        </span>
+                    </div>
+
                     <div v-if="customers.length === 0" class="text-center text-medium-emphasis py-16">
                         <v-icon size="64" color="grey-lighten-1">mdi-map-marker-off</v-icon>
                         <div class="mt-2">Aucun client avec des coordonnées GPS trouvé pour cette période.</div>
@@ -380,6 +399,17 @@ function parseGpsCoordinates(gpsCoordinatesString) {
 
 function buildTooltipContent(customer) {
     const isChurningCustomer = customer.last_invoice_date !== undefined;
+    const customerBeatIds = customer.beat_ids ?? [];
+    const customerBeats = customerBeatIds
+        .map(beatId => props.beats.find(b => b.id === beatId))
+        .filter(Boolean);
+
+    const beatBadgeHtml = customerBeats.length > 0
+        ? `<div style="margin-top:6px;padding:4px 6px;background:#fff8e1;border:1px solid #f59e0b;border-radius:4px;font-size:11px;color:#92400e">
+               <strong>★ Déjà dans ${customerBeats.length === 1 ? 'le beat' : 'les beats'} :</strong>
+               ${customerBeats.map(b => `<div style="margin-top:2px">• ${b.name}${b.day_of_week_label ? ' — ' + b.day_of_week_label : ''}${b.commercial_name ? ' (' + b.commercial_name + ')' : ''}</div>`).join('')}
+           </div>`
+        : '';
 
     return `
         <div style="min-width:160px;font-size:13px">
@@ -393,6 +423,7 @@ function buildTooltipContent(customer) {
                     : `<div><strong>Factures:</strong> ${customer.invoices_count}</div>
                        <div><strong>Total facturé:</strong> ${formatAmount(customer.total_invoice_amount)}</div>`
                 }
+                ${beatBadgeHtml}
                 <div style="margin-top:6px;font-size:11px;color:#555;font-style:italic">Cliquez pour sélectionner</div>
             </div>
         </div>`;
@@ -400,22 +431,37 @@ function buildTooltipContent(customer) {
 
 function buildMarkerIcon(customer, isSelected) {
     const isChurningCustomer = customer.last_invoice_date !== undefined;
+    const isInBeat = (customer.beat_ids ?? []).length > 0;
     const dotColor = isSelected ? '#16a34a' : (isChurningCustomer ? '#dc2626' : '#1d4ed8');
     const labelColor = isSelected ? '#15803d' : (isChurningCustomer ? '#dc2626' : '#111');
+    const dotSize = isSelected ? 13 : 10;
     const ringStyle = isSelected
         ? 'outline: 2px solid #16a34a; outline-offset: 2px;'
+        : (isInBeat ? 'outline: 2px solid #f59e0b; outline-offset: 2px;' : '');
+
+    const beatBadgeHtml = isInBeat
+        ? `<div style="
+               position:absolute;top:-5px;right:-7px;
+               width:13px;height:13px;border-radius:50%;
+               background:#f59e0b;border:1.5px solid #fff;
+               display:flex;align-items:center;justify-content:center;
+               font-size:8px;color:#fff;font-weight:bold;line-height:1;
+               box-shadow:0 1px 3px rgba(0,0,0,0.3);
+           ">★</div>`
         : '';
 
     return L.divIcon({
         html: `
             <div style="display:flex;flex-direction:column;align-items:center;pointer-events:none">
-                <div style="
-                    width:${isSelected ? '13px' : '10px'};height:${isSelected ? '13px' : '10px'};border-radius:50%;
-                    background:${dotColor};border:2px solid #fff;
-                    box-shadow:0 1px 4px rgba(0,0,0,0.4);
-                    flex-shrink:0;
-                    ${ringStyle}
-                ">${isSelected ? '<div style="width:5px;height:5px;border-radius:50%;background:#fff;margin:auto;margin-top:2px"></div>' : ''}</div>
+                <div style="position:relative;flex-shrink:0;">
+                    <div style="
+                        width:${dotSize}px;height:${dotSize}px;border-radius:50%;
+                        background:${dotColor};border:2px solid #fff;
+                        box-shadow:0 1px 4px rgba(0,0,0,0.4);
+                        ${ringStyle}
+                    ">${isSelected ? '<div style="width:5px;height:5px;border-radius:50%;background:#fff;margin:auto;margin-top:2px"></div>' : ''}</div>
+                    ${beatBadgeHtml}
+                </div>
                 <div style="
                     margin-top:2px;
                     font-size:11px;font-weight:${isSelected ? '700' : '600'};

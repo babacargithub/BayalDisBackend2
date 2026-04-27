@@ -89,6 +89,7 @@ const menuItems = [
         icon: 'mdi-shield-account',
         isDropdown: true,
         items: [
+            { name: 'RH', route: 'admin.rh', icon: 'mdi-account-hard-hat' },
             { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
             { name: 'Statistiques', route: 'admin.statistiques', icon: 'mdi-chart-line' },
             { name: 'Zones & Lignes', route: 'admin.geo-stats', icon: 'mdi-map-marker-path' },

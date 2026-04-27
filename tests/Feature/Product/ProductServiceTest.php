@@ -404,10 +404,10 @@ class ProductServiceTest extends TestCase
 
         $result = $this->productService->convertVariantQuantityToParentQuantity($variantProduct, 30);
 
-        $this->assertSame(3, $result['parent_quantity'], 'ceil(30/12) = 3 cartons needed');
+        $this->assertSame(2, $result['parent_quantity'], 'floar(30/12) = 3 cartons needed');
         $this->assertSame(6, $result['remaining_variant_quantity'], '(3 × 12) − 30 = 6 packs returned');
     }
-
+// TODO change tests to apply floar instead of ceiling
     public function test_convert_variant_quantity_to_parent_quantity_applies_ceiling_for_a_single_partial_unit(): void
     {
         // 1 pack out of 12 → needs 1 full carton; remaining = 11 packs
@@ -416,9 +416,9 @@ class ProductServiceTest extends TestCase
 
         $result = $this->productService->convertVariantQuantityToParentQuantity($variantProduct, 1);
 
-        $this->assertSame(1, $result['parent_quantity'], 'ceil(1/12) = 1 carton needed');
+        $this->assertSame(0, $result['parent_quantity'], 'ceil(1/12) = 1 carton needed');
         $this->assertEqualsWithDelta(1 / 12, $result['decimal_parent_quantity'], 0.0001);
-        $this->assertSame(11, $result['remaining_variant_quantity'], '(1 × 12) − 1 = 11 packs unused');
+        $this->assertSame(1, $result['remaining_variant_quantity'], '(1 × 12) − 1 = 11 packs unused');
     }
 
     public function test_convert_variant_quantity_to_parent_quantity_returns_all_zeros_when_called_on_a_base_product_with_no_parent(): void

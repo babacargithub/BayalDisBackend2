@@ -302,7 +302,7 @@ class InventoryPdfViewTest extends TestCase
         $response = $this->callExportPdf($manager, $carLoad, $inventory);
 
         $response->assertOk();
-        $response->assertSee('RESULTAT');
+        $response->assertSee('RÉSULTAT');
         $response->assertSee('-4 500 F'); // total price in the RESULTAT row
     }
 

@@ -45,25 +45,25 @@ readonly class ProductService
     {
         if ($variantProduct->is_base_product) {
             return [
-                'parent_quantity' => 0,
+                'parent_quantity'            => 0,
                 'remaining_variant_quantity' => 0,
-                'decimal_parent_quantity' => 0.0,
+                'decimal_parent_quantity'    => 0.0,
             ];
         }
 
-        $parentProduct = $variantProduct->parent;
+        $parentProduct   = $variantProduct->parent;
         $conversionRatio = $parentProduct->base_quantity / $variantProduct->base_quantity;
 
-        $parentUnitsNeededCeiled = ceil($quantity / $conversionRatio);
-        $remainingVariantUnitsAfterConversion = ($parentUnitsNeededCeiled * $conversionRatio) - $quantity;
+        $decimalParentQuantity    = $quantity / $conversionRatio;                          // example 4.475
+        $parentQuantity           = floor($decimalParentQuantity);                         // 4
+        $remainingVariantQuantity = $quantity - ($parentQuantity * $conversionRatio);      // 19
 
         return [
-            'parent_quantity' => intval($parentUnitsNeededCeiled),
-            'decimal_parent_quantity' => $quantity / $conversionRatio,
-            'remaining_variant_quantity' => intval($remainingVariantUnitsAfterConversion),
+            'parent_quantity'            => intval($parentQuantity),
+            'remaining_variant_quantity' => intval($remainingVariantQuantity),
+            'decimal_parent_quantity'    => floatval($decimalParentQuantity),
         ];
     }
-
     /**
      * @throws Exception
      */

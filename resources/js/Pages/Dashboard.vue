@@ -23,7 +23,7 @@ const emptyStats = () => ({
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 
 const activePeriodTab = ref('daily');
 const menu = ref(false);
@@ -63,6 +63,18 @@ const formattedDate = computed(() => {
 const today = computed(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+});
+
+let autoRefreshIntervalId = null;
+
+onMounted(() => {
+    autoRefreshIntervalId = setInterval(() => {
+        router.reload({ preserveScroll: true });
+    }, 60_000);
+});
+
+onUnmounted(() => {
+    clearInterval(autoRefreshIntervalId);
 });
 
 const currentPeriodStats = computed(() => {

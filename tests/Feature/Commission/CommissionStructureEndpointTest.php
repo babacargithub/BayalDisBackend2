@@ -71,6 +71,17 @@ class CommissionStructureEndpointTest extends TestCase
         ]);
     }
 
+    private function createGlobalTier(int $tierLevel, int $caThreshold, int $bonusAmount): CommercialObjectiveTier
+    {
+        return CommercialObjectiveTier::create([
+            'commercial_work_period_id' => null,
+            'is_global' => true,
+            'tier_level' => $tierLevel,
+            'ca_threshold' => $caThreshold,
+            'bonus_amount' => $bonusAmount,
+        ]);
+    }
+
     private function makeNewCustomerSetting(int $confirmedBonus, int $prospectBonus): CommercialNewCustomerCommissionSetting
     {
         return CommercialNewCustomerCommissionSetting::create([
@@ -114,20 +125,62 @@ class CommissionStructureEndpointTest extends TestCase
     // ca_tiers
     // =========================================================================
 
-    public function test_ca_tiers_is_empty_when_no_work_period_covers_today(): void
+    public function test_ca_tiers_is_empty_when_no_work_period_covers_today_and_no_global_tiers_exist(): void
     {
         $this->callEndpoint()
             ->assertStatus(200)
             ->assertJsonPath('ca_tiers', []);
     }
 
-    public function test_ca_tiers_is_empty_when_work_period_has_no_tiers(): void
+    public function test_ca_tiers_is_empty_when_work_period_has_no_tiers_and_no_global_tiers_exist(): void
     {
         $this->makeWorkPeriodCoveringToday();
 
         $this->callEndpoint()
             ->assertStatus(200)
             ->assertJsonPath('ca_tiers', []);
+    }
+
+    public function test_ca_tiers_returns_global_tiers_when_no_work_period_covers_today(): void
+    {
+        $this->createGlobalTier(1, 50_000, 10_000);
+        $this->createGlobalTier(2, 100_000, 25_000);
+
+        $response = $this->callEndpoint()->assertStatus(200);
+
+        $response->assertJsonCount(2, 'ca_tiers');
+        $response->assertJsonPath('ca_tiers.0.tier_level', 1);
+        $response->assertJsonPath('ca_tiers.0.ca_threshold', 50_000);
+        $response->assertJsonPath('ca_tiers.0.bonus_amount', 10_000);
+        $response->assertJsonPath('ca_tiers.1.tier_level', 2);
+        $response->assertJsonPath('ca_tiers.1.ca_threshold', 100_000);
+        $response->assertJsonPath('ca_tiers.1.bonus_amount', 25_000);
+    }
+
+    public function test_ca_tiers_returns_global_tiers_when_work_period_has_no_custom_tiers(): void
+    {
+        $this->makeWorkPeriodCoveringToday();
+        $this->createGlobalTier(1, 75_000, 15_000);
+
+        $response = $this->callEndpoint()->assertStatus(200);
+
+        $response->assertJsonCount(1, 'ca_tiers');
+        $response->assertJsonPath('ca_tiers.0.ca_threshold', 75_000);
+        $response->assertJsonPath('ca_tiers.0.bonus_amount', 15_000);
+    }
+
+    public function test_custom_work_period_tiers_take_precedence_over_global_tiers_in_response(): void
+    {
+        $workPeriod = $this->makeWorkPeriodCoveringToday();
+        // Global tier would give a big bonus — must be ignored when custom tiers exist.
+        $this->createGlobalTier(1, 10_000, 999_999);
+        $this->addTierToWorkPeriod($workPeriod, tierLevel: 1, caThreshold: 80_000, bonusAmount: 5_000);
+
+        $response = $this->callEndpoint()->assertStatus(200);
+
+        $response->assertJsonCount(1, 'ca_tiers');
+        $response->assertJsonPath('ca_tiers.0.ca_threshold', 80_000);
+        $response->assertJsonPath('ca_tiers.0.bonus_amount', 5_000);
     }
 
     public function test_ca_tiers_contains_all_tiers_from_the_current_work_period(): void

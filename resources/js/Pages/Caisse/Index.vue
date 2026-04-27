@@ -742,6 +742,16 @@
                             hide-details
                         />
                         <v-text-field
+                            v-model.number="physicalAmounts.bankAccount"
+                            label="Compte bancaire"
+                            type="number"
+                            min="0"
+                            variant="outlined"
+                            density="compact"
+                            prepend-inner-icon="mdi-bank"
+                            hide-details
+                        />
+                        <v-text-field
                             v-model.number="physicalAmounts.cashInHand"
                             label="Cash"
                             type="number"
@@ -849,6 +859,7 @@ const physicalAmounts = ref({
     waveAccount: null,
     waveBusinessAccount: null,
     orangeMoneyAccount: null,
+    bankAccount: null,
     cashInHand: null,
     totalDebtsOwedToOthers: null,
 });
@@ -857,6 +868,7 @@ const physicalGrossTotal = computed(() =>
     (physicalAmounts.value.waveAccount || 0) +
     (physicalAmounts.value.waveBusinessAccount || 0) +
     (physicalAmounts.value.orangeMoneyAccount || 0) +
+    (physicalAmounts.value.bankAccount || 0) +
     (physicalAmounts.value.cashInHand || 0)
 );
 
@@ -873,6 +885,7 @@ const resetReconciliationAmounts = () => {
         waveAccount: null,
         waveBusinessAccount: null,
         orangeMoneyAccount: null,
+        bankAccount: null,
         cashInHand: null,
         totalDebtsOwedToOthers: null,
     };

@@ -13,6 +13,8 @@ class CommercialPenalty extends Model
     protected $fillable = [
         'commercial_work_period_id',
         'work_day',
+        'car_load_inventory_id',
+        'sales_invoice_id',
         'amount',
         'reason',
         'created_by_user_id',
@@ -34,5 +36,15 @@ class CommercialPenalty extends Model
     public function createdByUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function carLoadInventory(): BelongsTo
+    {
+        return $this->belongsTo(CarLoadInventory::class);
+    }
+
+    public function salesInvoice(): BelongsTo
+    {
+        return $this->belongsTo(SalesInvoice::class);
     }
 }

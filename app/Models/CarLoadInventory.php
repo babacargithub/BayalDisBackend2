@@ -13,11 +13,11 @@ class CarLoadInventory extends Model
         'car_load_id',
         'user_id',
         'closed',
-        'comment'
+        'comment',
     ];
 
     protected $casts = [
-        'closed' => 'boolean'
+        'closed' => 'boolean',
     ];
 
     public function carLoad(): BelongsTo
@@ -34,4 +34,9 @@ class CarLoadInventory extends Model
     {
         return $this->hasMany(CarLoadInventoryItem::class);
     }
-} 
+
+    public function penalties(): HasMany
+    {
+        return $this->hasMany(CommercialPenalty::class);
+    }
+}
