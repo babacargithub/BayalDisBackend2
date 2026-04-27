@@ -142,7 +142,7 @@
                     <span class="success" style="color: #00c853">Décompte OK</span>
                 @else
                     {{ $item->resultSign < 0 ? 'Manque ' : 'Surplus de ' }}
-                        {{ $resultDisplay->parentQuantity }} cartons
+                        @if($resultDisplay->parentQuantity != 0) {{ $resultDisplay->parentQuantity }} cartons @endif
                         <span class="small">{{ $resultDisplay->childQuantity }} paquets @if(!empty($resultDisplay->childName))
                                 de {{  $resultDisplay->childName }}
                             @endif</span>
@@ -155,7 +155,7 @@
         </tr>
     @endforeach
     <tr class="total-row">
-        <td colspan="4" style="text-align: center"><strong>RESULTAT</strong></td>
+        <td colspan="4" style="text-align: center"><strong>RÉSULTAT</strong></td>
         <td colspan="2" style="text-align: center"
             class="text-right price {{ $totalPrice < 0 ? 'negative' : 'success' }}">
             {{ number_format($totalPrice, 0, ',', ' ') }} F

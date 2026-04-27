@@ -17,6 +17,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\DepenseController;
 use App\Http\Controllers\GeographicStatsController;
+use App\Http\Controllers\HrController;
 use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\LigneController;
 use App\Http\Controllers\MonthlyFixedCostController;
@@ -297,6 +298,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/admin/statistiques', [StatisticsController::class, 'index'])->name('admin.statistiques');
     Route::get('/admin/geo-stats', [GeographicStatsController::class, 'index'])->name('admin.geo-stats');
     Route::get('/admin/users', [AdminController::class, 'rapport'])->name('users.index');
+    Route::get('/admin/rh', [HrController::class, 'index'])->name('admin.rh');
+    Route::get('/admin/rh/payroll-pdf', [HrController::class, 'generatePayrollPdf'])->name('admin.rh.payroll.pdf');
+    Route::post('/admin/rh/penalties', [HrController::class, 'storePenalty'])->name('admin.rh.penalties.store');
+    Route::post('/admin/rh/penalties/bulk', [HrController::class, 'storePenaltiesBulkFromInvoices'])->name('admin.rh.penalties.bulk');
     Route::resource('teams', TeamController::class);
     Route::post('teams/{team}/add-commercial', [TeamController::class, 'addCommercial'])->name('teams.add-commercial');
     Route::post('teams/{team}/remove-commercial', [TeamController::class, 'removeCommercial'])->name('teams.remove-commercial');

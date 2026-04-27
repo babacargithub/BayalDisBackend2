@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
+use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Throwable;
@@ -65,7 +67,7 @@ readonly class SalesInvoiceService
 
             $salesInvoice = SalesInvoice::create([
                 'customer_id' => $data['customer_id'],
-                'invoice_number' => 'F'.date('Ymd').'-'.str_pad(SalesInvoice::max('id')+ 1, 4, '0', STR_PAD_LEFT),
+                'invoice_number' => 'F'.date('Ymd').'-'.str_pad(SalesInvoice::max('id') + 1, 4, '0', STR_PAD_LEFT),
                 'comment' => $data['comment'] ?? 'Facture de Vente',
                 'should_be_paid_at' => $data['should_be_paid_at'] ?? null,
                 'commercial_id' => $user->commercial->id,
@@ -241,6 +243,32 @@ readonly class SalesInvoiceService
                 $salesInvoice->markAsFullyPaid();
             }
         });
+    }
+
+    // =========================================================================
+    // Queries
+    // =========================================================================
+
+    /**
+     * Returns overdue unpaid invoices created for the given commercial within the date range.
+     * Uses the SalesInvoice::scopeOverdue() scope as the single source of truth for the
+     * "overdue" definition.
+     *
+     * @return Collection<int, SalesInvoice>
+     */
+    public function getOverdueInvoicesForCommercial(
+        Commercial $commercial,
+        string $startDate,
+        string $endDate,
+    ): Collection {
+        return SalesInvoice::query()
+            ->overdue()
+            ->where('commercial_id', $commercial->id)
+            ->whereBetween('created_at', [$startDate, $endDate.' 23:59:59'])
+            ->whereDate('should_be_paid_at', '<', today()->toDateString())
+            ->with('customer:id,name')
+            ->orderBy('should_be_paid_at')
+            ->get();
     }
 
     /** @throws Throwable */
