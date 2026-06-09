@@ -1,0 +1,12 @@
+[mcp_servers.laravel-boost]
+args = [
+    "artisan",
+    "boost:mcp",
+]
+command = "php"
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+ENABLE_LSP_TOOL = "1"

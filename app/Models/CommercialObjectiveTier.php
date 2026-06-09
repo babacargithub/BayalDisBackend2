@@ -17,12 +17,14 @@ class CommercialObjectiveTier extends Model
         'tier_level',
         'ca_threshold',
         'bonus_amount',
+        'is_mandatory',
     ];
 
     protected function casts(): array
     {
         return [
             'is_global' => 'boolean',
+            'is_mandatory' => 'boolean',
             'tier_level' => 'integer',
             'ca_threshold' => 'integer',
             'bonus_amount' => 'integer',

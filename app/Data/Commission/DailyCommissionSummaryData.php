@@ -26,6 +26,8 @@ namespace App\Data\Commission;
  *                                   (0 when no active car load or no cost data available)
  *  - mandatoryThresholdReached    : whether mandatoryDailySales >= mandatoryDailyThreshold
  *  - cachedAverageMarginRate      : average margin rate used to compute the threshold (null if unavailable)
+ *  - mandatoryTierThreshold       : ca_threshold of the mandatory objective tier (null when none configured)
+ *  - mandatoryTierThresholdReached: whether daily encaissement reached the mandatory tier threshold
  */
 readonly class DailyCommissionSummaryData
 {
@@ -44,6 +46,8 @@ readonly class DailyCommissionSummaryData
         public int $mandatoryDailyThreshold,
         public bool $mandatoryThresholdReached,
         public ?float $cachedAverageMarginRate,
+        public ?int $mandatoryTierThreshold,
+        public bool $mandatoryTierThresholdReached,
     ) {}
 
     public function toArray(): array
@@ -63,6 +67,8 @@ readonly class DailyCommissionSummaryData
             'mandatory_daily_threshold' => $this->mandatoryDailyThreshold,
             'mandatory_threshold_reached' => $this->mandatoryThresholdReached,
             'cached_average_margin_rate' => $this->cachedAverageMarginRate,
+            'mandatory_tier_threshold' => $this->mandatoryTierThreshold,
+            'mandatory_tier_threshold_reached' => $this->mandatoryTierThresholdReached,
         ];
     }
 }

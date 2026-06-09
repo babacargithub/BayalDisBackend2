@@ -99,7 +99,8 @@ readonly class SalesInvoiceStatsService
      *
      * Returns 0 when the invoice has no commercial assigned.
      */
-    public function calculateEstimatedCommissionForInvoice(SalesInvoice $invoice): int
+    public function
+    calculateEstimatedCommissionForInvoice(SalesInvoice $invoice): int
     {
         if ($invoice->commercial_id === null) {
             return 0;

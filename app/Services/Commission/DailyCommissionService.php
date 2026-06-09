@@ -138,6 +138,8 @@ readonly class DailyCommissionService
                     'achieved_tier_level' => null,
                     'new_confirmed_customers_bonus' => 0,
                     'new_prospect_customers_bonus' => 0,
+                    'mandatory_tier_threshold' => null,
+                    'mandatory_tier_threshold_reached' => true,
                 ]);
             }
 
@@ -204,15 +206,44 @@ readonly class DailyCommissionService
 
             $periodHasTiers = $workPeriod->objectiveTiers()->exists();
 
-            $highestAchievedTier = $periodHasTiers
-                ? $workPeriod->objectiveTiers()
-                    ->where('ca_threshold', '<=', $dailyEncaissement)
-                    ->orderByDesc('tier_level')
-                    ->first()
-                : CommercialObjectiveTier::global()
-                    ->where('ca_threshold', '<=', $dailyEncaissement)
-                    ->orderByDesc('tier_level')
-                    ->first();
+            // --- Mandatory tier threshold ---
+            // Commission is earned only after the commercial's daily encaissement reaches the
+            // mandatory tier's ca_threshold. Falls back to global tiers when the period has none.
+            $mandatoryTier = $periodHasTiers
+                ? $workPeriod->objectiveTiers()->where('is_mandatory', true)->orderBy('tier_level')->first()
+                : CommercialObjectiveTier::global()->where('is_mandatory', true)->orderBy('tier_level')->first();
+
+            $mandatoryTierThreshold = $mandatoryTier?->ca_threshold;
+            $mandatoryTierThresholdReached = $mandatoryTier === null || $dailyEncaissement >= $mandatoryTier->ca_threshold;
+
+            // When the mandatory tier threshold is not reached, zero out all commission components.
+            // When it is reached, commission only applies on the encaissement that exceeds the threshold:
+            // base commission and basket bonus are scaled proportionally by (excess / total_encaissement).
+            if (! $mandatoryTierThresholdReached) {
+                $baseCommission = 0;
+                $basketBonus = 0;
+                $basketAchieved = false;
+                $basketMultiplierApplied = null;
+            } elseif ($mandatoryTierThreshold !== null && $dailyEncaissement > 0) {
+                $excessEncaissement = $dailyEncaissement - $mandatoryTierThreshold;
+                $proportion = $excessEncaissement / $dailyEncaissement;
+                $baseCommission = (int) round($baseCommission * $proportion);
+                $basketBonus = (int) round($basketBonus * $proportion);
+            }
+
+            // Tier objective bonus is only computed when the mandatory threshold has been reached.
+            $highestAchievedTier = null;
+            if ($mandatoryTierThresholdReached) {
+                $highestAchievedTier = $periodHasTiers
+                    ? $workPeriod->objectiveTiers()
+                        ->where('ca_threshold', '<=', $dailyEncaissement)
+                        ->orderByDesc('tier_level')
+                        ->first()
+                    : CommercialObjectiveTier::global()
+                        ->where('ca_threshold', '<=', $dailyEncaissement)
+                        ->orderByDesc('tier_level')
+                        ->first();
+            }
 
             $objectiveBonus = $highestAchievedTier?->bonus_amount ?? 0;
             $achievedTierLevel = $highestAchievedTier?->tier_level;
@@ -261,6 +292,8 @@ readonly class DailyCommissionService
                 'mandatory_daily_threshold' => $mandatoryDailyThreshold,
                 'mandatory_threshold_reached' => $mandatoryThresholdReached,
                 'cached_average_margin_rate' => $cachedAverageMarginRate,
+                'mandatory_tier_threshold' => $mandatoryTierThreshold,
+                'mandatory_tier_threshold_reached' => $mandatoryTierThresholdReached,
                 'net_commission' => $netCommission,
                 'basket_achieved' => $basketAchieved,
                 'basket_multiplier_applied' => $basketMultiplierApplied,
@@ -268,14 +301,26 @@ readonly class DailyCommissionService
             ]);
 
             // --- Persist payment lines ---
+            // commission_amount mirrors the same scaling applied to base_commission so that
+            // invoice-level aggregations (estimated_commercial_commission) stay consistent.
             foreach ($allPaymentLines as $paymentLineData) {
+                if (! $mandatoryTierThresholdReached) {
+                    $scaledCommissionAmount = 0;
+                } elseif ($mandatoryTierThreshold !== null && $dailyEncaissement > 0) {
+                    $scaledCommissionAmount = (int) round(
+                        $paymentLineData->commissionAmount * ($dailyEncaissement - $mandatoryTierThreshold) / $dailyEncaissement
+                    );
+                } else {
+                    $scaledCommissionAmount = $paymentLineData->commissionAmount;
+                }
+
                 CommissionPaymentLine::create([
                     'daily_commission_id' => $dailyCommission->id,
                     'payment_id' => $paymentLineData->paymentId,
                     'product_id' => $paymentLineData->productId,
                     'rate_applied' => $paymentLineData->rateApplied,
                     'payment_amount_allocated' => $paymentLineData->paymentAmountAllocated,
-                    'commission_amount' => $paymentLineData->commissionAmount,
+                    'commission_amount' => $scaledCommissionAmount,
                 ]);
             }
 
@@ -830,6 +875,8 @@ readonly class DailyCommissionService
                 mandatoryDailyThreshold: 0,
                 mandatoryThresholdReached: true,
                 cachedAverageMarginRate: null,
+                mandatoryTierThreshold: null,
+                mandatoryTierThresholdReached: false,
             );
         }
 
@@ -853,6 +900,8 @@ readonly class DailyCommissionService
                 mandatoryDailyThreshold: 0,
                 mandatoryThresholdReached: true,
                 cachedAverageMarginRate: null,
+                mandatoryTierThreshold: null,
+                mandatoryTierThresholdReached: true,
             );
         }
 
@@ -883,6 +932,8 @@ readonly class DailyCommissionService
             cachedAverageMarginRate: $dailyCommission->cached_average_margin_rate !== null
                 ? (float) $dailyCommission->cached_average_margin_rate
                 : null,
+            mandatoryTierThreshold: $dailyCommission->mandatory_tier_threshold,
+            mandatoryTierThresholdReached: (bool) $dailyCommission->mandatory_tier_threshold_reached,
         );
     }
 

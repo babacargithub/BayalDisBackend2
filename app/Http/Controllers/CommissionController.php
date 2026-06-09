@@ -95,6 +95,7 @@ class CommissionController extends Controller
                         'tier_level' => $tier->tier_level,
                         'ca_threshold' => $tier->ca_threshold,
                         'bonus_amount' => $tier->bonus_amount,
+                        'is_mandatory' => $tier->is_mandatory,
                     ])->values(),
                 'penalties' => $workPeriod->penalties
                     ->map(fn (CommercialPenalty $penalty): array => [
@@ -113,9 +114,8 @@ class CommissionController extends Controller
                 'id' => $tier->id,
                 'tier_level' => $tier->tier_level,
                 'ca_threshold' => $tier->ca_threshold,
-                // TODO make this dynamic later
-                'is_mandatory' => false,
                 'bonus_amount' => $tier->bonus_amount,
+                'is_mandatory' => $tier->is_mandatory,
             ])->values();
 
         return Inertia::render('Commissions/Index', [
@@ -222,6 +222,7 @@ class CommissionController extends Controller
             'tier_level' => 'required|integer|min:1',
             'ca_threshold' => 'required|integer|min:0',
             'bonus_amount' => 'required|integer|min:0',
+            'is_mandatory' => 'boolean',
         ]);
 
         $tierLevelAlreadyExists = CommercialObjectiveTier::global()
@@ -239,6 +240,7 @@ class CommissionController extends Controller
             'tier_level' => $validated['tier_level'],
             'ca_threshold' => $validated['ca_threshold'],
             'bonus_amount' => $validated['bonus_amount'],
+            'is_mandatory' => $validated['is_mandatory'] ?? false,
         ]);
 
         return redirect()->back()->with('success', 'Palier global créé.');
@@ -255,6 +257,7 @@ class CommissionController extends Controller
             'tier_level' => 'required|integer|min:1',
             'ca_threshold' => 'required|integer|min:0',
             'bonus_amount' => 'required|integer|min:0',
+            'is_mandatory' => 'boolean',
         ]);
 
         $tierLevelTakenByAnotherGlobalTier = CommercialObjectiveTier::global()
@@ -297,6 +300,7 @@ class CommissionController extends Controller
             'tier_level' => 'required|integer|min:1',
             'ca_threshold' => 'required|integer|min:0',
             'bonus_amount' => 'required|integer|min:0',
+            'is_mandatory' => 'boolean',
         ]);
 
         $workPeriod->objectiveTiers()->create($validated);
