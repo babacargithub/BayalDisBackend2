@@ -103,6 +103,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/sales-invoices/{salesInvoice}/payments', [SalesInvoiceController::class, 'addPayment'])->name('sales-invoices.payments.store');
     Route::put('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'updatePayment'])->name('sales-invoices.payments.update');
     Route::delete('/sales-invoices/{salesInvoice}/payments/{payment}', [SalesInvoiceController::class, 'removePayment'])->name('sales-invoices.payments.destroy');
+    Route::post('/sales-invoices/{salesInvoice}/payments/{payment}/cancel', [SalesInvoiceController::class, 'cancelPayment'])->name('sales-invoices.payments.cancel');
 
     // Beat Management Routes
     Route::prefix('beats')->name('beats.')->group(function () {

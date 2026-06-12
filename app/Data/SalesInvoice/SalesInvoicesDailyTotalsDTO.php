@@ -43,7 +43,9 @@ readonly class SalesInvoicesDailyTotalsDTO
     public static function fromSummaries(Collection $timelineItems): self
     {
         $invoiceItems = $timelineItems->filter(fn (DailySalesInvoiceItemDTO $item) => $item->isInvoice());
-        $paymentItems = $timelineItems->filter(fn (DailySalesInvoiceItemDTO $item) => ! $item->isInvoice());
+        $paymentItems = $timelineItems->filter(
+            fn (DailySalesInvoiceItemDTO $item) => ! $item->isInvoice() && $item->cancelledAt === null
+        );
 
         return new self(
             invoicesCount: $invoiceItems->count(),

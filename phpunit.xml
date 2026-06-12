@@ -23,6 +23,9 @@
         <testsuite name="Inventory">
             <directory>tests/Feature/Inventory</directory>
         </testsuite>
+        <testsuite name="Payment">
+            <directory>tests/Feature/Payment</directory>
+        </testsuite>
         <testsuite name="Auth">
             <directory>tests/Feature/Auth</directory>
         </testsuite>

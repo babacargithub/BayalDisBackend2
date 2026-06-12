@@ -298,6 +298,8 @@ class StatisticsService
             ])
             ->whereBetween('created_at', [$periodStart, $periodEnd])
             ->whereNotNull('sales_invoice_id')
+            // Raw query bypasses the Payment model's notCancelled global scope.
+            ->whereNull('cancelled_at')
             ->groupBy('activity_date')
             ->orderBy('activity_date')
             ->get()

@@ -42,7 +42,11 @@ class DailySalesInvoicesService
 
         $invoiceItems = $this->getDailySales($date, $commercialId, $paidStatus, $beatCustomerIds);
 
-        $pastInvoicePaymentQuery = Payment::with(['salesInvoice.customer'])
+        // Cancelled payments are excluded by the global scope; keep them visible
+        // in the timeline (flagged "Annulé") for audit purposes. They do not
+        // contribute to any totals — those come from stored invoice columns.
+        $pastInvoicePaymentQuery = Payment::withoutGlobalScope(Payment::SCOPE_NOT_CANCELLED)
+            ->with(['salesInvoice.customer', 'cancelledBy:id,name'])
             ->whereDate('created_at', $date)
             ->whereHas('salesInvoice', fn ($query) => $query->whereDate('created_at', '<>', $date));
 

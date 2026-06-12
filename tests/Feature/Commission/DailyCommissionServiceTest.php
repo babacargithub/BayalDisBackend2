@@ -515,6 +515,270 @@ class DailyCommissionServiceTest extends TestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Mandatory tier threshold — commission gating
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_base_commission_is_zero_when_mandatory_tier_threshold_is_not_reached(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0100,
+        ]);
+
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $this->weeklyWorkPeriod->id,
+            'tier_level' => 1,
+            'ca_threshold' => 100_000,
+            'bonus_amount' => 15_000,
+            'is_mandatory' => true,
+        ]);
+
+        // Payment of 50_000 — below the mandatory threshold of 100_000.
+        $this->makePaidInvoiceOnDate($product, 5, 10_000, Carbon::parse('2026-03-04'));
+
+        $dailyCommission = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-04'
+        );
+
+        $this->assertEquals(0, $dailyCommission->base_commission);
+        $this->assertEquals(0, $dailyCommission->net_commission);
+        $this->assertEquals(100_000, $dailyCommission->mandatory_tier_threshold);
+        $this->assertFalse($dailyCommission->mandatory_tier_threshold_reached);
+    }
+
+    public function test_basket_bonus_is_zero_when_mandatory_tier_threshold_is_not_reached(): void
+    {
+        $categoryAlm = $this->makeCategory('ALM');
+        $categoryJet = $this->makeCategory('JET');
+
+        $productAlm = $this->makeProduct($categoryAlm, 10_000);
+        $productJet = $this->makeProduct($categoryJet, 10_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id, 'product_id' => $productAlm->id, 'rate' => 0.0100,
+        ]);
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id, 'product_id' => $productJet->id, 'rate' => 0.0100,
+        ]);
+
+        CommissionPeriodSetting::create([
+            'period_start_date' => $this->periodStart,
+            'period_end_date' => $this->periodEnd,
+            'basket_multiplier' => 1.30,
+            'required_category_ids' => [$categoryAlm->id, $categoryJet->id],
+        ]);
+
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $this->weeklyWorkPeriod->id,
+            'tier_level' => 1,
+            'ca_threshold' => 200_000,
+            'bonus_amount' => 20_000,
+            'is_mandatory' => true,
+        ]);
+
+        // Payment of 20_000 — all required categories in one invoice, but encaissement is below mandatory threshold.
+        $this->makeMultiProductPaidInvoiceOnDate(
+            [[$productAlm, 1, 10_000], [$productJet, 1, 10_000]],
+            Carbon::parse('2026-03-03'),
+        );
+
+        $dailyCommission = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-03'
+        );
+
+        $this->assertEquals(0, $dailyCommission->base_commission);
+        $this->assertEquals(0, $dailyCommission->basket_bonus);
+        $this->assertFalse($dailyCommission->basket_achieved);
+        $this->assertEquals(0, $dailyCommission->objective_bonus);
+        $this->assertEquals(0, $dailyCommission->net_commission);
+        $this->assertFalse($dailyCommission->mandatory_tier_threshold_reached);
+    }
+
+    public function test_objective_bonus_is_zero_when_mandatory_tier_threshold_is_not_reached(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $this->weeklyWorkPeriod->id,
+            'tier_level' => 1,
+            'ca_threshold' => 100_000,
+            'bonus_amount' => 15_000,
+            'is_mandatory' => true,
+        ]);
+
+        // Payment of 60_000 — tier 1 ca_threshold not reached (60_000 < 100_000).
+        $this->makePaidInvoiceOnDate($product, 6, 10_000, Carbon::parse('2026-03-04'));
+
+        $dailyCommission = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-04'
+        );
+
+        $this->assertEquals(0, $dailyCommission->objective_bonus);
+        $this->assertNull($dailyCommission->achieved_tier_level);
+        $this->assertFalse($dailyCommission->mandatory_tier_threshold_reached);
+    }
+
+    public function test_base_commission_is_zero_when_encaissement_exactly_equals_mandatory_tier_threshold_but_objective_bonus_still_applies(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0100,
+        ]);
+
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $this->weeklyWorkPeriod->id,
+            'tier_level' => 1,
+            'ca_threshold' => 100_000,
+            'bonus_amount' => 15_000,
+            'is_mandatory' => true,
+        ]);
+
+        // Payment of exactly 100_000 — excess above threshold = 0, so base commission = 0.
+        $this->makePaidInvoiceOnDate($product, 10, 10_000, Carbon::parse('2026-03-04'));
+
+        $dailyCommission = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-04'
+        );
+
+        // Excess = 100_000 − 100_000 = 0 → base commission scaled to 0.
+        $this->assertEquals(0, $dailyCommission->base_commission);
+        // Objective bonus still applies because the tier threshold was reached.
+        $this->assertEquals(15_000, $dailyCommission->objective_bonus);
+        $this->assertEquals(1, $dailyCommission->achieved_tier_level);
+        $this->assertEquals(15_000, $dailyCommission->net_commission);
+        $this->assertEquals(100_000, $dailyCommission->mandatory_tier_threshold);
+        $this->assertTrue($dailyCommission->mandatory_tier_threshold_reached);
+    }
+
+    public function test_base_commission_applies_only_on_encaissement_exceeding_mandatory_tier_threshold(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 1_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0100, // 1%
+        ]);
+
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $this->weeklyWorkPeriod->id,
+            'tier_level' => 1,
+            'ca_threshold' => 68_000,
+            'bonus_amount' => 5_000,
+            'is_mandatory' => true,
+        ]);
+
+        // 78 units × 1_000 = 78_000 encaissement — 10_000 above the mandatory threshold.
+        $this->makePaidInvoiceOnDate($product, 78, 1_000, Carbon::parse('2026-03-04'));
+
+        $dailyCommission = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-04'
+        );
+
+        // Full commission would be 78_000 × 1% = 780 XOF.
+        // Excess = 78_000 − 68_000 = 10_000. Proportion = 10_000 / 78_000.
+        // Scaled commission = round(780 × 10_000 / 78_000) = round(100) = 100 XOF.
+        $this->assertEquals(100, $dailyCommission->base_commission);
+        $this->assertTrue($dailyCommission->mandatory_tier_threshold_reached);
+        $this->assertEquals(68_000, $dailyCommission->mandatory_tier_threshold);
+
+        // Payment lines must also carry the scaled amount so that invoice-level
+        // estimated_commercial_commission stays consistent with the daily commission total.
+        $this->assertDatabaseHas('commission_payment_lines', [
+            'daily_commission_id' => $dailyCommission->id,
+            'product_id' => $product->id,
+            'commission_amount' => 100,
+        ]);
+    }
+
+    public function test_commission_is_earned_normally_when_no_mandatory_tier_is_configured(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0100,
+        ]);
+
+        // Tier without is_mandatory — should not gate commission.
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $this->weeklyWorkPeriod->id,
+            'tier_level' => 1,
+            'ca_threshold' => 100_000,
+            'bonus_amount' => 15_000,
+            'is_mandatory' => false,
+        ]);
+
+        // Payment well below the tier threshold.
+        $this->makePaidInvoiceOnDate($product, 1, 10_000, Carbon::parse('2026-03-04'));
+
+        $dailyCommission = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-04'
+        );
+
+        $this->assertEquals(100, $dailyCommission->base_commission); // 10_000 × 1% — commission still earned
+        $this->assertEquals(0, $dailyCommission->objective_bonus);   // tier not reached, no bonus
+        $this->assertNull($dailyCommission->mandatory_tier_threshold);
+        $this->assertTrue($dailyCommission->mandatory_tier_threshold_reached);
+    }
+
+    public function test_mandatory_tier_threshold_reached_is_stored_correctly_on_daily_commission(): void
+    {
+        $category = $this->makeCategory('ALM');
+        $product = $this->makeProduct($category, 10_000);
+
+        CommercialProductCommissionRate::create([
+            'commercial_id' => $this->commercial->id,
+            'product_id' => $product->id,
+            'rate' => 0.0100,
+        ]);
+
+        CommercialObjectiveTier::create([
+            'commercial_work_period_id' => $this->weeklyWorkPeriod->id,
+            'tier_level' => 1,
+            'ca_threshold' => 50_000,
+            'bonus_amount' => 10_000,
+            'is_mandatory' => true,
+        ]);
+
+        // Monday: 60_000 — above mandatory threshold.
+        $this->makePaidInvoiceOnDate($product, 6, 10_000, Carbon::parse('2026-03-02'));
+        // Tuesday: 10_000 — below mandatory threshold.
+        $this->makePaidInvoiceOnDate($product, 1, 10_000, Carbon::parse('2026-03-03'));
+
+        $monday = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-02'
+        );
+        $tuesday = $this->service->recalculateDailyCommissionForWorkDay(
+            $this->commercial, $this->weeklyWorkPeriod, '2026-03-03'
+        );
+
+        $this->assertTrue($monday->mandatory_tier_threshold_reached);
+        $this->assertEquals(50_000, $monday->mandatory_tier_threshold);
+        // Excess = 60_000 − 50_000 = 10_000. Proportion = 10_000 / 60_000.
+        // Full base = 60_000 × 1% = 600. Scaled = round(600 × 10_000 / 60_000) = 100.
+        $this->assertEquals(100, $monday->base_commission);
+        $this->assertEquals(10_000, $monday->objective_bonus);
+
+        $this->assertFalse($tuesday->mandatory_tier_threshold_reached);
+        $this->assertEquals(50_000, $tuesday->mandatory_tier_threshold);
+        $this->assertEquals(0, $tuesday->base_commission);
+        $this->assertEquals(0, $tuesday->objective_bonus);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Objective bonus (daily encaissement vs period tiers)
     // ─────────────────────────────────────────────────────────────────────────
 

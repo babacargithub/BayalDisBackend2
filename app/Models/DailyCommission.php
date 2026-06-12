@@ -43,6 +43,8 @@ class DailyCommission extends Model
         'mandatory_daily_threshold',
         'mandatory_threshold_reached',
         'cached_average_margin_rate',
+        'mandatory_tier_threshold',
+        'mandatory_tier_threshold_reached',
         'net_commission',
         'basket_achieved',
         'basket_multiplier_applied',
@@ -64,6 +66,8 @@ class DailyCommission extends Model
             'mandatory_daily_threshold' => 'integer',
             'mandatory_threshold_reached' => 'boolean',
             'cached_average_margin_rate' => 'decimal:4',
+            'mandatory_tier_threshold' => 'integer',
+            'mandatory_tier_threshold_reached' => 'boolean',
             'net_commission' => 'integer',
             'basket_achieved' => 'boolean',
             'basket_multiplier_applied' => 'decimal:2',
@@ -80,6 +84,11 @@ class DailyCommission extends Model
     public function paymentLines(): HasMany
     {
         return $this->hasMany(CommissionPaymentLine::class);
+    }
+
+    public function versement(): BelongsTo
+    {
+        return $this->belongsTo(CommercialVersement::class, 'versement_id');
     }
 
     public function commercialWorkPeriod()

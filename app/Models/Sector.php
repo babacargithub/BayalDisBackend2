@@ -55,7 +55,9 @@ class Sector extends Model
             AND customers.sector_id = ? AND ventes.paid = 0
         ", [$this->id])[0]->total_amount;
 
-        // Get total debt from sales invoices considering partial payments
+        // Get total debt from sales invoices considering partial payments.
+        // Raw SQL bypasses the Payment model's notCancelled global scope,
+        // so cancelled payments must be excluded explicitly.
         $invoicesDebt = DB::select("
             SELECT COALESCE(SUM(
                 (
@@ -65,23 +67,25 @@ class Sector extends Model
                     AND  ventes.type ='INVOICE_ITEM'
 
                 ) - COALESCE((
-                    SELECT SUM(amount) 
-                    FROM payments 
+                    SELECT SUM(amount)
+                    FROM payments
                     WHERE sales_invoice_id = sales_invoices.id
+                    AND cancelled_at IS NULL
                 ), 0)
             ), 0) as total_amount
             FROM sales_invoices
             JOIN customers ON sales_invoices.customer_id = customers.id
-            WHERE customers.sector_id = ? 
+            WHERE customers.sector_id = ?
             AND (
                 SELECT SUM(quantity * price)
                 FROM ventes
                 WHERE sales_invoice_id = sales_invoices.id
                 AND ventes.type ='INVOICE_ITEM'
             ) > COALESCE((
-                SELECT SUM(amount) 
-                FROM payments 
+                SELECT SUM(amount)
+                FROM payments
                 WHERE sales_invoice_id = sales_invoices.id
+                AND cancelled_at IS NULL
             ), 0)
         ", [$this->id])[0]->total_amount;
 

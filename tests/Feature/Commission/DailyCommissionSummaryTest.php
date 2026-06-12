@@ -184,6 +184,8 @@ class DailyCommissionSummaryTest extends TestCase
             mandatoryDailyThreshold: 0,
             mandatoryThresholdReached: true,
             cachedAverageMarginRate: null,
+            mandatoryTierThreshold: 100_000,
+            mandatoryTierThresholdReached: false,
         );
 
         $this->assertEquals(500_000, $summaryData->mandatoryDailySales);
@@ -212,12 +214,14 @@ class DailyCommissionSummaryTest extends TestCase
             mandatoryDailyThreshold: 0,
             mandatoryThresholdReached: true,
             cachedAverageMarginRate: null,
+            mandatoryTierThreshold: null,
+            mandatoryTierThresholdReached: true,
         );
 
         $this->assertNull($summaryData->reachedTierLevel);
     }
 
-    public function test_dto_to_array_returns_all_fourteen_keys_with_correct_snake_case_names(): void
+    public function test_dto_to_array_returns_all_sixteen_keys_with_correct_snake_case_names(): void
     {
         $summaryData = new DailyCommissionSummaryData(
             mandatoryDailySales: 100,
@@ -234,6 +238,8 @@ class DailyCommissionSummaryTest extends TestCase
             mandatoryDailyThreshold: 50_000,
             mandatoryThresholdReached: false,
             cachedAverageMarginRate: 0.30,
+            mandatoryTierThreshold: 100_000,
+            mandatoryTierThresholdReached: false,
         );
 
         $array = $summaryData->toArray();
@@ -252,7 +258,9 @@ class DailyCommissionSummaryTest extends TestCase
         $this->assertArrayHasKey('mandatory_daily_threshold', $array);
         $this->assertArrayHasKey('mandatory_threshold_reached', $array);
         $this->assertArrayHasKey('cached_average_margin_rate', $array);
-        $this->assertCount(14, $array);
+        $this->assertArrayHasKey('mandatory_tier_threshold', $array);
+        $this->assertArrayHasKey('mandatory_tier_threshold_reached', $array);
+        $this->assertCount(16, $array);
     }
 
     public function test_dto_to_array_maps_values_correctly(): void
@@ -272,6 +280,8 @@ class DailyCommissionSummaryTest extends TestCase
             mandatoryDailyThreshold: 50_000,
             mandatoryThresholdReached: true,
             cachedAverageMarginRate: 0.30,
+            mandatoryTierThreshold: 100_000,
+            mandatoryTierThresholdReached: false,
         );
 
         $this->assertEquals([
@@ -289,6 +299,8 @@ class DailyCommissionSummaryTest extends TestCase
             'mandatory_daily_threshold' => 50_000,
             'mandatory_threshold_reached' => true,
             'cached_average_margin_rate' => 0.30,
+            'mandatory_tier_threshold' => 100_000,
+            'mandatory_tier_threshold_reached' => false,
         ], $summaryData->toArray());
     }
 
@@ -309,6 +321,8 @@ class DailyCommissionSummaryTest extends TestCase
             mandatoryDailyThreshold: 0,
             mandatoryThresholdReached: true,
             cachedAverageMarginRate: null,
+            mandatoryTierThreshold: null,
+            mandatoryTierThresholdReached: true,
         );
 
         $this->assertNull($summaryData->toArray()['reached_tier_level']);
@@ -509,6 +523,8 @@ class DailyCommissionSummaryTest extends TestCase
                 'mandatory_daily_threshold',
                 'mandatory_threshold_reached',
                 'cached_average_margin_rate',
+                'mandatory_tier_threshold',
+                'mandatory_tier_threshold_reached',
             ]);
     }
 
@@ -533,6 +549,8 @@ class DailyCommissionSummaryTest extends TestCase
                 'mandatory_daily_threshold' => 0,
                 'mandatory_threshold_reached' => true,
                 'cached_average_margin_rate' => null,
+                'mandatory_tier_threshold' => null,
+                'mandatory_tier_threshold_reached' => true,
             ]);
     }
 

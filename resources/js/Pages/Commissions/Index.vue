@@ -130,6 +130,7 @@
                                         <th>Palier</th>
                                         <th class="text-right">Seuil CA (XOF)</th>
                                         <th class="text-right">Bonus (XOF)</th>
+                                        <th class="text-center">Obligatoire</th>
                                         <th class="text-center">Actions</th>
                                     </tr>
                                 </thead>
@@ -138,6 +139,17 @@
                                         <td>{{ tier.tier_level }}</td>
                                         <td class="text-right">{{ formatCurrency(tier.ca_threshold) }}</td>
                                         <td class="text-right">{{ formatCurrency(tier.bonus_amount) }}</td>
+                                        <td class="text-center">
+                                            <v-icon
+                                                v-if="tier.is_mandatory"
+                                                color="warning"
+                                                size="small"
+                                                title="Palier obligatoire"
+                                            >
+                                                mdi-alert-circle
+                                            </v-icon>
+                                            <span v-else class="text-grey text-caption">—</span>
+                                        </td>
                                         <td class="text-center">
                                             <v-btn
                                                 icon="mdi-pencil"
@@ -437,6 +449,7 @@
                                                         <th>Palier</th>
                                                         <th class="text-right">Seuil CA</th>
                                                         <th class="text-right">Bonus</th>
+                                                        <th class="text-center">Oblig.</th>
                                                         <th></th>
                                                     </tr>
                                                 </thead>
@@ -445,6 +458,17 @@
                                                         <td>{{ tier.tier_level }}</td>
                                                         <td class="text-right">{{ formatCurrency(tier.ca_threshold) }}</td>
                                                         <td class="text-right">{{ formatCurrency(tier.bonus_amount) }}</td>
+                                                        <td class="text-center">
+                                                            <v-icon
+                                                                v-if="tier.is_mandatory"
+                                                                color="warning"
+                                                                size="small"
+                                                                title="Palier obligatoire"
+                                                            >
+                                                                mdi-alert-circle
+                                                            </v-icon>
+                                                            <span v-else class="text-grey text-caption">—</span>
+                                                        </td>
                                                         <td>
                                                             <v-btn
                                                                 v-if="!workPeriod.is_finalized"
@@ -697,6 +721,14 @@
                         required
                         :error-messages="globalTierForm.errors.bonus_amount"
                     />
+                    <v-checkbox
+                        v-model="globalTierForm.is_mandatory"
+                        label="Palier obligatoire"
+                        hint="Si coché, le commercial doit atteindre ce palier pour percevoir ses commissions de la journée."
+                        persistent-hint
+                        color="warning"
+                        class="mt-1"
+                    />
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer />
@@ -738,6 +770,14 @@
                         suffix="XOF"
                         required
                         :error-messages="tierForm.errors.bonus_amount"
+                    />
+                    <v-checkbox
+                        v-model="tierForm.is_mandatory"
+                        label="Palier obligatoire"
+                        hint="Si coché, le commercial doit atteindre ce palier pour percevoir ses commissions de la journée."
+                        persistent-hint
+                        color="warning"
+                        class="mt-1"
                     />
                 </v-card-text>
                 <v-card-actions>
@@ -1000,7 +1040,7 @@ function saveWorkPeriod() {
 
 const globalTierDialog = ref(false);
 const globalTierEditingId = ref(null);
-const globalTierForm = useForm({ tier_level: 1, ca_threshold: 0, bonus_amount: 0 });
+const globalTierForm = useForm({ tier_level: 1, ca_threshold: 0, bonus_amount: 0, is_mandatory: false });
 
 function openGlobalTierDialog() {
     globalTierEditingId.value = null;
@@ -1014,6 +1054,7 @@ function openEditGlobalTierDialog(tier) {
     globalTierForm.tier_level = tier.tier_level;
     globalTierForm.ca_threshold = tier.ca_threshold;
     globalTierForm.bonus_amount = tier.bonus_amount;
+    globalTierForm.is_mandatory = tier.is_mandatory;
     globalTierForm.clearErrors();
     globalTierDialog.value = true;
 }
@@ -1038,7 +1079,7 @@ function deleteGlobalTier(tier) {
 
 const tierDialog = ref(false);
 const tierTargetWorkPeriod = ref(null);
-const tierForm = useForm({ tier_level: 1, ca_threshold: 0, bonus_amount: 0 });
+const tierForm = useForm({ tier_level: 1, ca_threshold: 0, bonus_amount: 0, is_mandatory: false });
 
 function openTierDialog(workPeriod) {
     tierTargetWorkPeriod.value = workPeriod;
