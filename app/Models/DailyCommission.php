@@ -86,6 +86,11 @@ class DailyCommission extends Model
         return $this->hasMany(CommissionPaymentLine::class);
     }
 
+    public function versement(): BelongsTo
+    {
+        return $this->belongsTo(CommercialVersement::class, 'versement_id');
+    }
+
     public function commercialWorkPeriod()
     {
         return $this->belongsTo(CommercialWorkPeriod::class);

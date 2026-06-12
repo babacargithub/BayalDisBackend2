@@ -48,6 +48,9 @@ readonly class DailySalesInvoiceItemDTO
         public ?int $amountPaid = null,       // invoice total_payments after this payment
         public ?int $amountRemaining = null,  // invoice total_remaining after this payment
         public ?string $paymentMethod = null,
+        public ?string $cancelledAt = null,          // set when the payment was cancelled (audit display)
+        public ?string $cancellationReason = null,
+        public ?string $cancelledByName = null,
     ) {}
 
     public static function fromInvoice(SalesInvoice $invoice): self
@@ -88,6 +91,9 @@ readonly class DailySalesInvoiceItemDTO
             amountPaid: $invoice->total_payments,
             amountRemaining: $invoice->total_remaining,
             paymentMethod: $payment->payment_method,
+            cancelledAt: $payment->cancelled_at?->toIso8601String(),
+            cancellationReason: $payment->cancellation_reason,
+            cancelledByName: $payment->cancelledBy?->name,
         );
     }
 
@@ -127,6 +133,9 @@ readonly class DailySalesInvoiceItemDTO
             'amount_paid' => $this->amountPaid,
             'amount_remaining' => $this->amountRemaining,
             'payment_method' => $this->paymentMethod,
+            'cancelled_at' => $this->cancelledAt,
+            'cancellation_reason' => $this->cancellationReason,
+            'cancelled_by_name' => $this->cancelledByName,
         ]);
     }
 }

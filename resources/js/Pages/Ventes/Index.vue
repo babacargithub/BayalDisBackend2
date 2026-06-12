@@ -187,6 +187,37 @@ const deletePayment = () => {
         },
     })
 }
+
+// ─── Cancel payment dialog ────────────────────────────────────────────────────
+const cancelPaymentDialog = ref(false)
+const paymentToCancel = ref(null)
+
+const cancelPaymentForm = useForm({
+    cancellation_reason: '',
+})
+
+const openCancelPaymentDialog = (payment) => {
+    paymentToCancel.value = payment
+    cancelPaymentForm.reset()
+    cancelPaymentForm.clearErrors()
+    cancelPaymentDialog.value = true
+}
+
+const confirmCancelPayment = () => {
+    if (!paymentToCancel.value?.invoice_id) return
+
+    cancelPaymentForm.post(route('sales-invoices.payments.cancel', {
+        salesInvoice: paymentToCancel.value.invoice_id,
+        payment: paymentToCancel.value.payment_id,
+    }), {
+        preserveScroll: true,
+        onSuccess: () => {
+            cancelPaymentDialog.value = false
+            paymentToCancel.value = null
+            cancelPaymentForm.reset()
+        },
+    })
+}
 </script>
 
 <template>
@@ -386,9 +417,34 @@ const deletePayment = () => {
                                     </tr>
 
                                     <!-- ── Past-invoice payment row ── -->
-                                    <tr v-else-if="item.row_type === 'payment'">
+                                    <tr
+                                        v-else-if="item.row_type === 'payment'"
+                                        :class="{ 'cancelled-payment-row': item.cancelled_at }"
+                                    >
                                         <td>
+                                            <v-tooltip
+                                                v-if="item.cancelled_at"
+                                                location="top"
+                                            >
+                                                <template #activator="{ props: tooltipProps }">
+                                                    <v-chip
+                                                        v-bind="tooltipProps"
+                                                        size="small"
+                                                        color="error"
+                                                        variant="outlined"
+                                                        prepend-icon="mdi-cancel"
+                                                    >
+                                                        Annulé
+                                                    </v-chip>
+                                                </template>
+                                                <span>
+                                                    Annulé le {{ formatDate(item.cancelled_at) }}
+                                                    <template v-if="item.cancelled_by_name"> par {{ item.cancelled_by_name }}</template>
+                                                    <template v-if="item.cancellation_reason"> — {{ item.cancellation_reason }}</template>
+                                                </span>
+                                            </v-tooltip>
                                             <v-chip
+                                                v-else
                                                 size="small"
                                                 color="teal"
                                                 variant="outlined"
@@ -423,7 +479,16 @@ const deletePayment = () => {
                                         <td class="text-center text-grey">—</td>
                                         <td>
                                             <div class="d-flex justify-center">
-
+                                                <v-btn
+                                                    v-if="!item.cancelled_at"
+                                                    icon="mdi-cancel"
+                                                    variant="text"
+                                                    color="warning"
+                                                    size="small"
+                                                    density="compact"
+                                                    title="Annuler le paiement"
+                                                    @click="openCancelPaymentDialog(item)"
+                                                />
                                             </div>
                                         </td>
                                     </tr>
@@ -483,6 +548,53 @@ const deletePayment = () => {
                     <v-spacer />
                     <v-btn color="primary" variant="text" @click="deletePaymentDialog = false">Annuler</v-btn>
                     <v-btn color="error" variant="text" @click="deletePayment">Confirmer</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- ─── Cancel Payment Dialog ─────────────────────────────────────── -->
+        <v-dialog v-model="cancelPaymentDialog" max-width="500px">
+            <v-card>
+                <v-card-title>Annuler le paiement</v-card-title>
+                <v-card-text>
+                    <v-alert type="warning" variant="tonal" class="mb-4">
+                        L'annulation de ce paiement de
+                        <strong>{{ formatCurrency(paymentToCancel?.payment_amount) }}</strong>
+                        va recalculer les totaux de la facture, la commission du commercial
+                        et retirer le montant de la caisse concernée.
+                    </v-alert>
+                    <v-alert
+                        v-if="cancelPaymentForm.errors.error"
+                        type="error"
+                        variant="tonal"
+                        class="mb-4"
+                    >
+                        {{ cancelPaymentForm.errors.error }}
+                    </v-alert>
+                    <div v-if="paymentToCancel" class="mb-4">
+                        <strong>Client :</strong> {{ paymentToCancel.customer_name }}<br />
+                        <strong>Montant :</strong> {{ formatCurrency(paymentToCancel.payment_amount) }}<br />
+                        <strong>Date :</strong> {{ formatDate(paymentToCancel.created_at) }}
+                    </div>
+                    <v-textarea
+                        v-model="cancelPaymentForm.cancellation_reason"
+                        label="Motif de l'annulation"
+                        rows="2"
+                        required
+                        :error-messages="cancelPaymentForm.errors.cancellation_reason"
+                    />
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn variant="text" @click="cancelPaymentDialog = false">Retour</v-btn>
+                    <v-btn
+                        color="warning"
+                        variant="text"
+                        :loading="cancelPaymentForm.processing"
+                        @click="confirmCancelPayment"
+                    >
+                        Confirmer l'annulation
+                    </v-btn>
                 </v-card-actions>
             </v-card>
         </v-dialog>
@@ -587,3 +699,13 @@ const deletePayment = () => {
         </v-dialog>
     </AuthenticatedLayout>
 </template>
+
+<style scoped>
+.cancelled-payment-row {
+    opacity: 0.55;
+}
+
+.cancelled-payment-row td:not(:first-child):not(:last-child) {
+    text-decoration: line-through;
+}
+</style>

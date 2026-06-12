@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Enums\SalesInvoiceStatus;
+use App\Exceptions\InsufficientAccountBalanceException;
+use App\Exceptions\PaymentCancellationException;
 use App\Http\Requests\AddInvoiceItemRequest;
 use App\Http\Requests\Api\PaySalesInvoiceRequest;
+use App\Http\Requests\CancelPaymentRequest;
 use App\Http\Requests\StoreSalesInvoiceRequest;
 use App\Http\Requests\UpdateInvoiceItemProfitRequest;
 use App\Http\Requests\UpdateSalesInvoiceRequest;
@@ -12,6 +15,7 @@ use App\Http\Resources\SalesInvoiceResource;
 use App\Models\Payment;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
+use App\Services\PaymentCancellationService;
 use App\Services\SalesInvoiceService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Exception;
@@ -32,7 +36,7 @@ class SalesInvoiceController extends Controller
                 'commercial:id,name',
             ])
             ->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
-            ->whereDate('created_at',">","2026-03-29")
+            ->whereDate('created_at', '>', '2026-03-29')
             ->latest()
             ->paginate(5000);
 
@@ -65,7 +69,16 @@ class SalesInvoiceController extends Controller
             'customer:id,name,phone_number,address',
             'items:id,sales_invoice_id,product_id,quantity,price,profit',
             'items.product:id,name,price',
-            'payments:id,sales_invoice_id,amount,commercial_commission,payment_method,comment,created_at',
+            // Cancelled payments are excluded by the global scope; include them
+            // here for display/audit in the payments dialog.
+            'payments' => fn ($paymentsQuery) => $paymentsQuery
+                ->withoutGlobalScope(Payment::SCOPE_NOT_CANCELLED)
+                ->select(
+                    'id', 'sales_invoice_id', 'amount', 'commercial_commission',
+                    'payment_method', 'comment', 'created_at',
+                    'cancelled_at', 'cancelled_by_user_id', 'cancellation_reason',
+                ),
+            'payments.cancelledBy:id,name',
         ]);
 
         if (request()->wantsJson() || request()->header('X-Requested-With') === 'XMLHttpRequest') {
@@ -102,6 +115,9 @@ class SalesInvoiceController extends Controller
                 'payment_method' => $payment->payment_method,
                 'comment' => $payment->comment,
                 'created_at' => $payment->created_at,
+                'cancelled_at' => $payment->cancelled_at,
+                'cancellation_reason' => $payment->cancellation_reason,
+                'cancelled_by_name' => $payment->cancelledBy?->name,
             ])->values()->all(),
             'items' => $salesInvoice->items->map(fn ($item) => [
                 'id' => $item->id,
@@ -241,6 +257,33 @@ class SalesInvoiceController extends Controller
         }
     }
 
+    public function cancelPayment(
+        CancelPaymentRequest $request,
+        SalesInvoice $salesInvoice,
+        Payment $payment,
+        PaymentCancellationService $paymentCancellationService,
+    ) {
+        if ($payment->sales_invoice_id !== $salesInvoice->id) {
+            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture.']);
+        }
+
+        try {
+            $cancellationResult = $paymentCancellationService->cancelPayment(
+                payment: $payment,
+                cancelledByUserId: $request->user()->id,
+                cancellationReason: $request->validated()['cancellation_reason'],
+            );
+
+            return redirect()->back()->with('success', $cancellationResult->buildSuccessMessage());
+        } catch (PaymentCancellationException|InsufficientAccountBalanceException $e) {
+            return redirect()->back()->withErrors(['error' => $e->getMessage()]);
+        } catch (Exception $e) {
+            report($e);
+
+            return redirect()->back()->withErrors(['error' => 'Échec de l\'annulation du paiement. Veuillez réessayer.']);
+        }
+    }
+
     public function updatePayment(PaySalesInvoiceRequest $request, SalesInvoice $salesInvoice, Payment $payment)
     {
         if ($payment->sales_invoice_id !== $salesInvoice->id) {
@@ -323,10 +366,12 @@ class SalesInvoiceController extends Controller
 
     public function exportUnpaidPdf()
     {
+        // Raw subquery bypasses the Payment model's notCancelled global scope —
+        // cancelled payments must be excluded explicitly.
         $unpaidInvoices = SalesInvoice::with(['customer', 'payments', 'items'])
             ->select('sales_invoices.*')
             ->selectRaw('(SELECT SUM(quantity * price) FROM ventes WHERE sales_invoice_id = sales_invoices.id AND type = "INVOICE_ITEM") as total')
-            ->selectRaw('COALESCE((SELECT SUM(amount) FROM payments WHERE sales_invoice_id = sales_invoices.id), 0) as total_paid')
+            ->selectRaw('COALESCE((SELECT SUM(amount) FROM payments WHERE sales_invoice_id = sales_invoices.id AND cancelled_at IS NULL), 0) as total_paid')
             ->havingRaw('total_paid < total OR total_paid IS NULL')
             ->orderBy('created_at', 'desc')
             ->get();
@@ -341,11 +386,13 @@ class SalesInvoiceController extends Controller
 
     public function exportFilteredPdf(Request $request)
     {
+        // Raw subquery bypasses the Payment model's notCancelled global scope —
+        // cancelled payments must be excluded explicitly.
         $query = SalesInvoice::query()
             ->with(['customer', 'payments', 'items'])
             ->select('sales_invoices.*')
             ->selectRaw('(SELECT SUM(quantity * price) FROM ventes WHERE sales_invoice_id = sales_invoices.id AND type = "INVOICE_ITEM") as total')
-            ->selectRaw('COALESCE((SELECT SUM(amount) FROM payments WHERE sales_invoice_id = sales_invoices.id), 0) as total_paid');
+            ->selectRaw('COALESCE((SELECT SUM(amount) FROM payments WHERE sales_invoice_id = sales_invoices.id AND cancelled_at IS NULL), 0) as total_paid');
 
         if ($request->has('filter') && $request->filter !== 'all') {
             if ($request->filter === 'paid') {

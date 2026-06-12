@@ -115,7 +115,11 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="payment in invoice.payments" :key="payment.id">
+            <tr
+              v-for="payment in invoice.payments"
+              :key="payment.id"
+              :class="{ 'cancelled-payment-row': payment.cancelled_at }"
+            >
               <td>{{ formatDate(payment.created_at) }}</td>
               <td>
                 <template v-if="editingPayment?.id === payment.id">
@@ -131,6 +135,23 @@
                 </template>
                 <template v-else>
                   {{ formatPrice(payment.amount) }}
+                  <v-tooltip v-if="payment.cancelled_at" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <v-chip
+                        v-bind="tooltipProps"
+                        color="error"
+                        size="x-small"
+                        class="ml-1"
+                      >
+                        Annulé
+                      </v-chip>
+                    </template>
+                    <span>
+                      Annulé le {{ formatDate(payment.cancelled_at) }}
+                      <template v-if="payment.cancelled_by_name"> par {{ payment.cancelled_by_name }}</template>
+                      <template v-if="payment.cancellation_reason"> — {{ payment.cancellation_reason }}</template>
+                    </span>
+                  </v-tooltip>
                 </template>
               </td>
               <td class="text-deep-purple">{{ formatPrice(payment.commercial_commission ?? 0) }}</td>
@@ -184,7 +205,7 @@
                       <v-icon>mdi-close</v-icon>
                     </v-btn>
                   </template>
-                  <template v-else>
+                  <template v-else-if="!payment.cancelled_at">
                     <v-btn
                       icon
                       size="small"
@@ -193,6 +214,15 @@
                       :title="'Modifier'"
                     >
                       <v-icon>mdi-pencil</v-icon>
+                    </v-btn>
+                    <v-btn
+                      icon
+                      size="small"
+                      color="warning"
+                      @click="openCancelDialog(payment)"
+                      :title="'Annuler le paiement'"
+                    >
+                      <v-icon>mdi-cancel</v-icon>
                     </v-btn>
                     <v-btn
                       icon
@@ -215,6 +245,47 @@
         <v-spacer />
         <v-btn color="primary" @click="dialog = false">Fermer</v-btn>
       </v-card-actions>
+
+      <!-- Cancel Payment Dialog -->
+      <v-dialog v-model="showCancelPaymentDialog" max-width="500px">
+        <v-card>
+          <v-card-title>Annuler le paiement</v-card-title>
+          <v-card-text>
+            <v-alert type="warning" variant="tonal" class="mb-4">
+              L'annulation de ce paiement de
+              <strong>{{ formatPrice(paymentBeingCancelled?.amount ?? 0) }}</strong>
+              va recalculer les totaux de la facture, la commission du commercial
+              et retirer le montant de la caisse concernée.
+            </v-alert>
+            <v-alert
+              v-if="cancelForm.errors.error"
+              type="error"
+              variant="tonal"
+              class="mb-4"
+            >
+              {{ cancelForm.errors.error }}
+            </v-alert>
+            <v-textarea
+              v-model="cancelForm.cancellation_reason"
+              label="Motif de l'annulation"
+              rows="2"
+              required
+              :error-messages="cancelForm.errors.cancellation_reason"
+            />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn @click="showCancelPaymentDialog = false">Retour</v-btn>
+            <v-btn
+              color="warning"
+              :loading="cancelForm.processing"
+              @click="confirmCancelPayment"
+            >
+              Confirmer l'annulation
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
     </v-card>
   </v-dialog>
 </template>
@@ -254,7 +325,9 @@ watch(dialog, (val) => {
 })
 
 const totalPaid = computed(() => {
-  return props.invoice.payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0
+  return props.invoice.payments
+    ?.filter((payment) => !payment.cancelled_at)
+    .reduce((sum, payment) => sum + payment.amount, 0) || 0
 })
 
 const form = useForm({
@@ -335,4 +408,39 @@ const deletePayment = (payment) => {
     })
   }
 }
-</script> 
+
+const showCancelPaymentDialog = ref(false)
+const paymentBeingCancelled = ref(null)
+const cancelForm = useForm({
+  cancellation_reason: ''
+})
+
+const openCancelDialog = (payment) => {
+  paymentBeingCancelled.value = payment
+  cancelForm.reset()
+  cancelForm.clearErrors()
+  showCancelPaymentDialog.value = true
+}
+
+const confirmCancelPayment = () => {
+  cancelForm.post(
+    route('sales-invoices.payments.cancel', [props.invoice.id, paymentBeingCancelled.value.id]),
+    {
+      preserveScroll: true,
+      onSuccess: () => {
+        showCancelPaymentDialog.value = false
+        paymentBeingCancelled.value = null
+        cancelForm.reset()
+        emit('updated')
+      }
+    }
+  )
+}
+</script>
+
+<style scoped>
+.cancelled-payment-row {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+</style> 

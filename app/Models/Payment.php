@@ -14,9 +14,19 @@ use Illuminate\Support\Facades\Log;
  * @property int $amount Payment amount in XOF.
  * @property int $profit Realized profit allocated to this payment (proportional share of invoice profit).
  * @property int $commercial_commission Commission owed to the commercial for this payment (proportional share of invoice commission).
+ * @property \Carbon\Carbon|null $cancelled_at When the payment was cancelled (null = active payment).
+ * @property int|null $cancelled_by_user_id User who performed the cancellation.
+ * @property string|null $cancellation_reason Why the payment was cancelled.
  */
 class Payment extends Model
 {
+    /**
+     * Global scope name excluding cancelled payments from every query.
+     * Cancelled payments must never count in any financial aggregation —
+     * use withoutGlobalScope(Payment::SCOPE_NOT_CANCELLED) only for display/audit.
+     */
+    public const SCOPE_NOT_CANCELLED = 'notCancelled';
+
     protected $fillable = [
         'order_id',
         'sales_invoice_id',
@@ -36,6 +46,7 @@ class Payment extends Model
             'commercial_commission' => 'integer',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'cancelled_at' => 'datetime',
         ];
     }
 
@@ -44,6 +55,14 @@ class Payment extends Model
     protected static function boot(): void
     {
         parent::boot();
+
+        /**
+         * Cancelled payments are excluded from every query (sums, relations, stats).
+         * They remain in the database for audit purposes only.
+         */
+        static::addGlobalScope(self::SCOPE_NOT_CANCELLED, function ($query): void {
+            $query->whereNull('payments.cancelled_at');
+        });
 
         /**
          * Auto-populate profit when a payment is created.
@@ -121,6 +140,9 @@ class Payment extends Model
         /**
          * After a payment is deleted, recalculate the invoice's stored totals
          * and reverse the commercial's caisse/account credit.
+         *
+         * Payments that were already cancelled have had their caisse credit
+         * reversed at cancellation time — deleting them must not reverse twice.
          */
         static::deleted(function (Payment $payment): void {
             if ($payment->sales_invoice_id !== null) {
@@ -133,7 +155,9 @@ class Payment extends Model
                 salesInvoiceId: $payment->sales_invoice_id,
             );
 
-            self::reverseCommercialCaisseForPayment($payment);
+            if (! $payment->isCancelled()) {
+                self::reverseCommercialCaisseForPayment($payment);
+            }
         });
     }
 
@@ -269,11 +293,23 @@ class Payment extends Model
         }
     }
 
+    // ── Cancellation ─────────────────────────────────────────────────────────
+
+    public function isCancelled(): bool
+    {
+        return $this->cancelled_at !== null;
+    }
+
     // ── Relationships ────────────────────────────────────────────────────────
 
     public function salesInvoice(): BelongsTo
     {
         return $this->belongsTo(SalesInvoice::class);
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by_user_id');
     }
 
     public function user(): BelongsTo
