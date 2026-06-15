@@ -119,6 +119,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{beat}/history', [BeatStopController::class, 'getHistory'])->name('history');
         Route::get('/{beat}/left-out-customers', [BeatStopController::class, 'getLeftOutCustomersForDate'])->name('left-out-customers');
         Route::get('/{beat}/left-out-customers/pdf', [BeatStopController::class, 'exportLeftOutCustomersPdf'])->name('left-out-customers.pdf');
+        Route::get('/{beat}/rounds/{date}', [BeatStopController::class, 'getRoundDetail'])->name('rounds.detail');
 
         // Beat Stops
         Route::get('/beat-stops/{beatStop}', [BeatController::class, 'show'])->name('beat-stops.show');

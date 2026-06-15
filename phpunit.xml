@@ -47,6 +47,7 @@
             <file>tests/Feature/BeatServiceForecastTest.php</file>
             <file>tests/Feature/BeatRoundFinancialSummaryTest.php</file>
             <file>tests/Feature/BeatStopAutoCompleteTest.php</file>
+            <directory>tests/Feature/Feature</directory>
         </testsuite>
     </testsuites>
     <source>
