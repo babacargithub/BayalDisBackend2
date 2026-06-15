@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvoicePaymentMismatchException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\BulkPayCustomerInvoicesRequest;
 use App\Http\Requests\Api\CreateSalesInvoiceRequest;
 use App\Http\Requests\Api\PaySalesInvoiceRequest;
 use App\Http\Resources\CustomerResource;
@@ -43,6 +44,31 @@ class ApiSalesInvoiceController extends Controller
         }
 
         return response()->json(['message' => 'Facture créée avec succès'], 201);
+    }
+
+    /**
+     * @throws Throwable
+     */
+    public function bulkPayCustomerInvoices(BulkPayCustomerInvoicesRequest $request, Customer $customer): JsonResponse
+    {
+        try {
+            $result = $this->salesInvoiceService->payCustomerUnpaidInvoicesInBulk(
+                customer: $customer,
+                totalAmountToDistribute: $request->integer('amount'),
+                paymentMethod: $request->string('payment_method')->value(),
+                userId: $request->user()->id,
+            );
+        } catch (\Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'message' => 'Paiement groupé effectué avec succès',
+            'data' => [
+                'total_distributed' => $result->totalAmountDistributed,
+                'invoice_payments' => $result->invoicePayments,
+            ],
+        ]);
     }
 
     /**

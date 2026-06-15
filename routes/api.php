@@ -47,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('sales-invoices/overdue-count', [ApiCustomerController::class, 'getOverdueDebtsCount']);
         Route::post('sales-invoices', [ApiSalesInvoiceController::class, 'createSalesInvoice'])->name('sales_person.sales-invoices.create');
         Route::post('invoices/{invoice}/pay', [ApiSalesInvoiceController::class, 'paySalesInvoice']);
+        Route::post('customers/{customer}/pay-invoices', [ApiSalesInvoiceController::class, 'bulkPayCustomerInvoices'])->name('salesperson.customers.pay-invoices');
 
         // Orders
         Route::get('orders', [ApiOrderController::class, 'getOrders']);
