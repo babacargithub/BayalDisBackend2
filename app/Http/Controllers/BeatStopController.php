@@ -164,7 +164,13 @@ class BeatStopController extends Controller
                     ];
                 }),
             ],
+            'rounds' => $this->beatService->getRoundsForBeat($beat),
         ]);
+    }
+
+    public function getRoundDetail(Beat $beat, string $date): JsonResponse
+    {
+        return response()->json($this->beatService->getRoundCustomers($beat, $date));
     }
 
     public function edit(Beat $beat): Response
@@ -369,7 +375,7 @@ class BeatStopController extends Controller
 
         $leftOutCustomers = Customer::whereIn('id', $leftOutCustomerIds)
             ->orderBy('name')
-            ->get(['id', 'name', 'phone_number','address']);
+            ->get(['id', 'name', 'phone_number', 'address']);
 
         return response()->json([
             'date' => $date->toDateString(),
@@ -402,7 +408,7 @@ class BeatStopController extends Controller
 
         $leftOutCustomers = Customer::whereIn('id', $leftOutCustomerIds)
             ->orderBy('name')
-            ->get(['id', 'name', 'phone_number','address']);
+            ->get(['id', 'name', 'phone_number', 'address']);
 
         $pdf = Pdf::loadView('pdf.beat-left-out-customers', [
             'beat' => $beat,

@@ -26,6 +26,7 @@ readonly class BeatService
 
     public function __construct(
         private SalesInvoiceStatsService $salesInvoiceStatsService,
+        private PaymentService $paymentService,
     ) {}
 
     /**
