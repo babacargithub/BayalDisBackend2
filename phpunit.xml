@@ -44,6 +44,9 @@
             <file>tests/Feature/CarLoadStockValueTest.php</file>
             <file>tests/Feature/CarLoadTransformToVariantsTest.php</file>
             <file>tests/Feature/ProfileTest.php</file>
+            <file>tests/Feature/BeatServiceForecastTest.php</file>
+            <file>tests/Feature/BeatRoundFinancialSummaryTest.php</file>
+            <file>tests/Feature/BeatStopAutoCompleteTest.php</file>
         </testsuite>
     </testsuites>
     <source>

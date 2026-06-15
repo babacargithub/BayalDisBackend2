@@ -63,20 +63,19 @@ class Beat extends Model
             return $existingOccurrenceStops;
         }
 
-        $templateCustomerIds = $this->templateStops()->pluck('customer_id');
+        $templateStops = $this->templateStops()->get(['customer_id', 'display_position']);
 
-        if ($templateCustomerIds->isEmpty()) {
-            return new Collection();
+        if ($templateStops->isEmpty()) {
+            return new Collection;
         }
 
-        $generatedStops = collect();
-        foreach ($templateCustomerIds as $customerId) {
-            $stop = $this->stops()->create([
-                'customer_id' => $customerId,
+        foreach ($templateStops as $template) {
+            $this->stops()->create([
+                'customer_id' => $template->customer_id,
                 'visit_date' => $dateString,
                 'status' => BeatStop::STATUS_PLANNED,
+                'display_position' => $template->display_position,
             ]);
-            $generatedStops->push($stop);
         }
 
         return $this->stops()

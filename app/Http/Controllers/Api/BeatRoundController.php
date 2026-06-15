@@ -3,19 +3,25 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\AddCustomersToBeatRequest;
 use App\Http\Requests\Api\CompleteVisitRequest;
 use App\Http\Requests\Api\StoreCustomerVisitRequest;
+use App\Http\Requests\Api\UpdateBeatStopStatusRequest;
 use App\Http\Resources\CustomerVisitResource;
 use App\Models\Beat;
 use App\Models\BeatStop;
+use App\Models\Customer;
+use App\Services\BeatService;
 use App\Services\CustomerVisitService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class CustomerVisitController extends Controller
+class BeatRoundController extends Controller
 {
     public function __construct(
         private readonly CustomerVisitService $visitService,
+        private readonly BeatService $beatService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -110,6 +116,160 @@ class CustomerVisitController extends Controller
 
     // ─── Beat listing & today's stops (mobile salesperson API) ───────────────
 
+    public function listBeatCustomers(Request $request, Beat $beat): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($beat->templateStops()->whereNull('display_position')->exists()) {
+            $this->beatService->recalculateTemplateStopsDisplayPositionByProximity($beat);
+        }
+
+        $customers = $beat->templateStops()
+            ->with(['customer' => fn ($query) => $query->with([
+                'salesInvoices:id,customer_id,total_amount,total_payments',
+            ])])
+            ->orderBy('display_position')
+            ->get()
+            ->map(fn (BeatStop $stop) => [
+                'id' => $stop->customer->id,
+                'name' => $stop->customer->name,
+                'address' => $stop->customer->address,
+                'debt' => $stop->customer->total_debt,
+                'display_position' => $stop->display_position,
+            ]);
+
+        return response()->json(['data' => $customers]);
+    }
+
+    public function addCustomersToBeat(AddCustomersToBeatRequest $request, Beat $beat): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $this->beatService->addCustomersToBeat($beat, $request->validated()['customer_ids']);
+
+        return response()->json(['message' => 'Clients ajoutés au beat']);
+    }
+
+    public function removeCustomerFromBeat(Request $request, Beat $beat, Customer $customer): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $templateStop = $beat->templateStops()
+            ->where('customer_id', $customer->id)
+            ->first();
+
+        if (! $templateStop) {
+            return response()->json(['message' => 'Client non trouvé dans ce beat'], 404);
+        }
+
+        $templateStop->delete();
+
+        $this->beatService->recalculateTemplateStopsDisplayPositionByProximity($beat);
+
+        return response()->json(['message' => 'Client retiré du beat']);
+    }
+
+    public function reorderBeatCustomers(Request $request, Beat $beat): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'positions' => ['required', 'array'],
+            'positions.*.customer_id' => ['required', 'integer'],
+            'positions.*.display_position' => ['required', 'integer', 'min:0'],
+        ]);
+
+        foreach ($validated['positions'] as $entry) {
+            $beat->templateStops()
+                ->where('customer_id', $entry['customer_id'])
+                ->update(['display_position' => $entry['display_position']]);
+        }
+
+        return response()->json(['message' => 'Ordre mis à jour']);
+    }
+
+    public function listBeatRounds(Request $request, Beat $beat): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json(['data' => $this->beatService->getRoundsForBeat($beat)]);
+    }
+
+    public function updateStopStatus(UpdateBeatStopStatusRequest $request, Beat $beat, string $date, int $stop): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $this->beatService->updateStopStatus(
+            beat: $beat,
+            date: $date,
+            stopId: $stop,
+            status: $request->validated()['status'],
+            notes: $request->validated()['notes'] ?? null,
+        );
+
+        return response()->json(null, 204);
+    }
+
+    public function listBeatRoundCustomers(Request $request, Beat $beat, string $date): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        try {
+            Carbon::createFromFormat('Y-m-d', $date);
+        } catch (\Exception) {
+            return response()->json(['message' => 'Format de date invalide (YYYY-MM-DD requis)'], 422);
+        }
+
+        return response()->json(['data' => $this->beatService->getRoundCustomers($beat, $date)]);
+    }
+
+    public function listBeatsWithCustomerCount(Request $request): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        $beats = Beat::where('commercial_id', $commercial->id)
+            ->withCount(['stops as customers_count' => function ($query) {
+                $query->whereNull('visit_date');
+            }])
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Beat $beat) => [
+                'id' => $beat->id,
+                'name' => $beat->name,
+                'customers_count' => $beat->customers_count,
+            ]);
+
+        return response()->json(['data' => $beats]);
+    }
+
     public function getBeats(Request $request): JsonResponse
     {
         $commercial = $request->user()->commercial;
@@ -125,7 +285,7 @@ class CustomerVisitController extends Controller
         return response()->json($this->visitService->getTodayStops($commercial));
     }
 
-    public function getBeatDetails(Request $request, Beat $beat): JsonResponse
+    public function getBeatDetails(Beat $beat): JsonResponse
     {
         $beat->load(['stops' => function ($query) {
             $query->with('customer:id,name,phone_number,address,gps_coordinates')

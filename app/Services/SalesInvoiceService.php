@@ -26,6 +26,7 @@ readonly class SalesInvoiceService
     public function __construct(
         private CarLoadService $carLoadService,
         private PricingPolicyService $pricingPolicyService,
+        private BeatService $beatService,
     ) {}
 
     // =========================================================================
@@ -35,7 +36,8 @@ readonly class SalesInvoiceService
     /** @throws InsufficientStockException|Throwable */
     public function createSalesInvoice(array $data): SalesInvoice
     {
-        return DB::transaction(function () use ($data) {
+        $salesInvoice = null;
+        $dbTransactionResult = DB::transaction(function () use ($data) {
             $user = auth()->user();
             $user->load('commercial');
 
@@ -121,9 +123,18 @@ readonly class SalesInvoiceService
                 $customer->is_prospect = false;
                 $customer->save();
             }
+            // if the customer has planned beat stops in current rounds we mark it as complete
+
 
             return $salesInvoice;
         });
+        if ($salesInvoice instanceof SalesInvoice) {
+            $this->beatService->completeRoundStopForCustomerOnDate(
+                customerId: $salesInvoice->customer_id,
+                date: $salesInvoice->created_at->toDateString(),
+            );
+        }
+        return $dbTransactionResult;
     }
 
     /** @throws Throwable */
@@ -241,6 +252,16 @@ readonly class SalesInvoiceService
 
             if ($salesInvoice->total_payments >= $salesInvoice->total_amount) {
                 $salesInvoice->markAsFullyPaid();
+            }
+
+            // Complete the customer's planned beat stop on the payment date.
+            // The payment date (today) is used as the anchor, not the invoice date,
+            // because deferred collection visits happen on a different day than the sale.
+            if ($salesInvoice->customer_id !== null) {
+                $this->beatService->completeRoundStopForCustomerOnDate(
+                    customerId: $salesInvoice->customer_id,
+                    date: now()->toDateString(),
+                );
             }
         });
     }
