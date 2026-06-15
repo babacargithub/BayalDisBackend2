@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Data\Payment\BulkCustomerPaymentResultData;
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Models\Commercial;
@@ -26,6 +27,7 @@ readonly class SalesInvoiceService
     public function __construct(
         private CarLoadService $carLoadService,
         private PricingPolicyService $pricingPolicyService,
+        private BeatService $beatService,
     ) {}
 
     // =========================================================================
@@ -35,7 +37,8 @@ readonly class SalesInvoiceService
     /** @throws InsufficientStockException|Throwable */
     public function createSalesInvoice(array $data): SalesInvoice
     {
-        return DB::transaction(function () use ($data) {
+        $salesInvoice = null;
+        $dbTransactionResult = DB::transaction(function () use ($data) {
             $user = auth()->user();
             $user->load('commercial');
 
@@ -121,9 +124,18 @@ readonly class SalesInvoiceService
                 $customer->is_prospect = false;
                 $customer->save();
             }
+            // if the customer has planned beat stops in current rounds we mark it as complete
 
             return $salesInvoice;
         });
+        if ($salesInvoice instanceof SalesInvoice) {
+            $this->beatService->completeRoundStopForCustomerOnDate(
+                customerId: $salesInvoice->customer_id,
+                date: $salesInvoice->created_at->toDateString(),
+            );
+        }
+
+        return $dbTransactionResult;
     }
 
     /** @throws Throwable */
@@ -242,6 +254,16 @@ readonly class SalesInvoiceService
             if ($salesInvoice->total_payments >= $salesInvoice->total_amount) {
                 $salesInvoice->markAsFullyPaid();
             }
+
+            // Complete the customer's planned beat stop on the payment date.
+            // The payment date (today) is used as the anchor, not the invoice date,
+            // because deferred collection visits happen on a different day than the sale.
+            if ($salesInvoice->customer_id !== null) {
+                $this->beatService->completeRoundStopForCustomerOnDate(
+                    customerId: $salesInvoice->customer_id,
+                    date: now()->toDateString(),
+                );
+            }
         });
     }
 
@@ -269,6 +291,85 @@ readonly class SalesInvoiceService
             ->with('customer:id,name')
             ->orderBy('should_be_paid_at')
             ->get();
+    }
+
+    // =========================================================================
+    // Bulk payment
+    // =========================================================================
+
+    /**
+     * Pay multiple unpaid invoices for a single customer with one payment operation.
+     *
+     * The given amount is distributed from the oldest unpaid invoice to the newest,
+     * paying each invoice in full before moving on to the next one until the amount
+     * is exhausted (partial settlement of the last touched invoice is allowed).
+     *
+     * The total amount must not exceed the sum of all remaining balances across the
+     * customer's unpaid invoices. Throws UnprocessableEntityHttpException otherwise.
+     *
+     * @throws UnprocessableEntityHttpException when totalAmountToDistribute exceeds total owed.
+     * @throws Throwable
+     */
+    public function payCustomerUnpaidInvoicesInBulk(
+        Customer $customer,
+        int $totalAmountToDistribute,
+        string $paymentMethod,
+        int $userId,
+    ): BulkCustomerPaymentResultData {
+        return DB::transaction(function () use ($customer, $totalAmountToDistribute, $paymentMethod, $userId) {
+            $unpaidInvoices = SalesInvoice::query()
+                ->where('customer_id', $customer->id)
+                ->whereIn('status', [SalesInvoiceStatus::Issued->value, SalesInvoiceStatus::PartiallyPaid->value])
+                ->orderBy('created_at')
+                ->get();
+
+            $totalOwedByCustomer = $unpaidInvoices->sum(fn (SalesInvoice $invoice) => $invoice->total_remaining);
+
+            if ($totalAmountToDistribute > $totalOwedByCustomer) {
+                throw new UnprocessableEntityHttpException(
+                    "Le montant saisi ({$totalAmountToDistribute} F) dépasse le total dû ".
+                    "({$totalOwedByCustomer} F) pour ce client."
+                );
+            }
+
+            $remainingAmountToDistribute = $totalAmountToDistribute;
+            $invoicePayments = [];
+
+            foreach ($unpaidInvoices as $unpaidInvoice) {
+                if ($remainingAmountToDistribute === 0) {
+                    break;
+                }
+
+                $invoiceRemainingBalance = $unpaidInvoice->total_remaining;
+
+                if ($invoiceRemainingBalance <= 0) {
+                    continue;
+                }
+
+                $amountAllocatedToThisInvoice = min($remainingAmountToDistribute, $invoiceRemainingBalance);
+
+                $this->paySalesInvoice($unpaidInvoice, [
+                    'amount' => $amountAllocatedToThisInvoice,
+                    'payment_method' => $paymentMethod,
+                ], $userId);
+
+                $unpaidInvoice->refresh();
+
+                $invoicePayments[] = [
+                    'invoice_id' => $unpaidInvoice->id,
+                    'invoice_number' => $unpaidInvoice->invoice_number,
+                    'amount_paid' => $amountAllocatedToThisInvoice,
+                    'was_fully_paid' => $unpaidInvoice->status === SalesInvoiceStatus::FullyPaid,
+                ];
+
+                $remainingAmountToDistribute -= $amountAllocatedToThisInvoice;
+            }
+
+            return new BulkCustomerPaymentResultData(
+                totalAmountDistributed: $totalAmountToDistribute,
+                invoicePayments: $invoicePayments,
+            );
+        });
     }
 
     /** @throws Throwable */

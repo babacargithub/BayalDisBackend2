@@ -274,7 +274,7 @@ class SalesInvoice extends Model
      */
     public function scopeOverdue(Builder $query): void
     {
-        $query->where('status', "!=", SalesInvoiceStatus::FullyPaid->value)
+        $query->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
             ->whereNotNull('should_be_paid_at')
             ->whereDate('should_be_paid_at', '<', today()->toDateString());
     }

@@ -31,7 +31,6 @@ class Customer extends Model
         'is_prospect' => 'boolean',
     ];
 
-    protected $appends = ['last_visit'];
 
     public function commercial(): BelongsTo
     {
@@ -85,7 +84,7 @@ class Customer extends Model
         }
 
         // If no visit, check for last sale
-        $lastSale = $this->ventes()
+        $lastSale = $this->salesInvoices()
             ->latest('created_at')
             ->first();
 

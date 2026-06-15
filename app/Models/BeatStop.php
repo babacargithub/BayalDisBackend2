@@ -9,13 +9,16 @@ use JetBrains\PhpStorm\ArrayShape;
 class BeatStop extends Model
 {
     const STATUS_PLANNED = 'planned';
+
     const STATUS_COMPLETED = 'completed';
+
     const STATUS_CANCELLED = 'cancelled';
 
     protected $fillable = [
         'customer_id',
         'beat_id',
         'visit_date',
+        'display_position',
         'visit_planned_at',
         'visited_at',
         'status',
@@ -41,17 +44,12 @@ class BeatStop extends Model
         return $this->belongsTo(Beat::class);
     }
 
-    /**
-     * @param array $data
-     * @return void
-     */
-
-    public function complete( #[ArrayShape([
+    public function complete(#[ArrayShape([
         'notes' => 'string|null',
         'resulted_in_sale' => 'bool|null',
-        'gps_coordinates' => 'string|null'
-    ])] 
-    array $data): void
+        'gps_coordinates' => 'string|null',
+    ])]
+        array $data): void
     {
         $this->update([
             'visited_at' => now(),
@@ -62,7 +60,7 @@ class BeatStop extends Model
         ]);
     }
 
-    public function cancel(string $notes = null): void
+    public function cancel(?string $notes = null): void
     {
         $this->update([
             'status' => self::STATUS_CANCELLED,
@@ -84,4 +82,4 @@ class BeatStop extends Model
     {
         return $this->status === self::STATUS_PLANNED;
     }
-} 
+}

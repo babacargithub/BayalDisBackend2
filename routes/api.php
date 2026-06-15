@@ -8,7 +8,7 @@ use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiSalesInvoiceController;
 use App\Http\Controllers\Api\ApiVersementController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\CustomerVisitController as ApiCustomerVisitController;
+use App\Http\Controllers\Api\BeatRoundController as ApiCustomerVisitController;
 use App\Http\Controllers\BeatController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
@@ -24,6 +24,16 @@ Route::middleware('auth:sanctum')->group(function () {
     // Get commercials list
     Route::get('/commercials', [ApiSalesInvoiceController::class, 'getCommercials']);
 
+    // Beats simple list and customer roster for mobile app
+    Route::get('/beats', [ApiCustomerVisitController::class, 'listBeatsWithCustomerCount']);
+    Route::get('/beats/{beat}/customers', [ApiCustomerVisitController::class, 'listBeatCustomers']);
+    Route::post('/beats/{beat}/customers', [ApiCustomerVisitController::class, 'addCustomersToBeat']);
+    Route::put('/beats/{beat}/customers/reorder', [ApiCustomerVisitController::class, 'reorderBeatCustomers']);
+    Route::delete('/beats/{beat}/customers/{customer}', [ApiCustomerVisitController::class, 'removeCustomerFromBeat']);
+    Route::get('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'listBeatRounds']);
+    Route::get('/beats/{beat}/rounds/{date}/customers', [ApiCustomerVisitController::class, 'listBeatRoundCustomers']);
+    Route::patch('/beats/{beat}/rounds/{date}/stops/{stop}', [ApiCustomerVisitController::class, 'updateStopStatus']);
+
     // Salesperson routes
     Route::prefix('salesperson/')->group(function () {
         Route::get('commercials', [ApiSalesInvoiceController::class, 'getCommercials']);
@@ -37,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('sales-invoices/overdue-count', [ApiCustomerController::class, 'getOverdueDebtsCount']);
         Route::post('sales-invoices', [ApiSalesInvoiceController::class, 'createSalesInvoice'])->name('sales_person.sales-invoices.create');
         Route::post('invoices/{invoice}/pay', [ApiSalesInvoiceController::class, 'paySalesInvoice']);
+        Route::post('customers/{customer}/pay-invoices', [ApiSalesInvoiceController::class, 'bulkPayCustomerInvoices'])->name('salesperson.customers.pay-invoices');
 
         // Orders
         Route::get('orders', [ApiOrderController::class, 'getOrders']);
