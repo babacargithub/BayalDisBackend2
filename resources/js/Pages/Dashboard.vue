@@ -28,42 +28,58 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 const activePeriodTab = ref('daily');
 const menu = ref(false);
 const datePickerKey = ref(0);
+const menuDateRangeStart = ref(false);
+const menuDateRangeEnd = ref(false);
 
 const props = defineProps({
-    dailyStats:   { type: Object, default: emptyStats },
-    weeklyStats:  { type: Object, default: emptyStats },
-    monthlyStats: { type: Object, default: emptyStats },
-    overallStats: { type: Object, default: emptyStats },
-    selectedDate: { type: String, required: true },
+    dailyStats:        { type: Object, default: emptyStats },
+    weeklyStats:       { type: Object, default: emptyStats },
+    monthlyStats:      { type: Object, default: emptyStats },
+    overallStats:      { type: Object, default: emptyStats },
+    customRangeStats:  { type: Object, default: emptyStats },
+    selectedDate:      { type: String, required: true },
+    selectedDateStart: { type: String, required: true },
+    selectedDateEnd:   { type: String, required: true },
 });
 
 const date = ref(props.selectedDate);
+const dateRangeStart = ref(props.selectedDateStart);
+const dateRangeEnd = ref(props.selectedDateEnd);
 
-const dateAsObject = computed(() => {
-    const [year, month, day] = date.value.split('-').map(Number);
+const parseDateStringToObject = (dateString) => {
+    const [year, month, day] = dateString.split('-').map(Number);
     return new Date(year, month - 1, day);
-});
+};
 
-const formattedDate = computed(() => {
+const dateAsObject = computed(() => parseDateStringToObject(date.value));
+const dateRangeStartAsObject = computed(() => parseDateStringToObject(dateRangeStart.value));
+const dateRangeEndAsObject = computed(() => parseDateStringToObject(dateRangeEnd.value));
+
+const formatDateString = (dateString) => {
     try {
-        return new Date(date.value).toLocaleDateString('fr-FR', {
+        return parseDateStringToObject(dateString).toLocaleDateString('fr-FR', {
             year: 'numeric',
             month: 'long',
             day: 'numeric',
         });
     } catch (e) {
-        return new Date().toLocaleDateString('fr-FR', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
+        return new Date().toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
     }
-});
+};
+
+const formattedDate = computed(() => formatDateString(date.value));
+const formattedDateRangeStart = computed(() => formatDateString(dateRangeStart.value));
+const formattedDateRangeEnd = computed(() => formatDateString(dateRangeEnd.value));
 
 const today = computed(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 });
+
+const formatDateToLocalString = (date) => {
+    const d = new Date(date);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 let autoRefreshIntervalId = null;
 
@@ -80,7 +96,8 @@ onUnmounted(() => {
 const currentPeriodStats = computed(() => {
     if (activePeriodTab.value === 'daily') return props.dailyStats;
     if (activePeriodTab.value === 'weekly') return props.weeklyStats;
-    return props.monthlyStats;
+    if (activePeriodTab.value === 'monthly') return props.monthlyStats;
+    return props.customRangeStats;
 });
 
 const currentPeriodLabel = computed(() => {
@@ -90,12 +107,18 @@ const currentPeriodLabel = computed(() => {
     if (activePeriodTab.value === 'weekly') {
         return `Semaine du ${formattedDate.value}`;
     }
-    return new Date(date.value).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    if (activePeriodTab.value === 'monthly') {
+        return parseDateStringToObject(date.value).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    }
+    if (dateRangeStart.value === dateRangeEnd.value) {
+        return `Personnalisé — ${formattedDateRangeStart.value}`;
+    }
+    return `Du ${formattedDateRangeStart.value} au ${formattedDateRangeEnd.value}`;
 });
 
 const handleDateChange = (newDate) => {
     if (newDate) {
-        const formattedNewDate = new Date(newDate).toISOString().split('T')[0];
+        const formattedNewDate = formatDateToLocalString(newDate);
         date.value = formattedNewDate;
         menu.value = false;
         router.get(route('dashboard'), { date: formattedNewDate }, {
@@ -106,6 +129,37 @@ const handleDateChange = (newDate) => {
     }
 };
 
+const fetchCustomRangeStats = () => {
+    router.get(route('dashboard'), {
+        date: date.value,
+        date_start: dateRangeStart.value,
+        date_end: dateRangeEnd.value,
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+        only: ['customRangeStats', 'selectedDateStart', 'selectedDateEnd'],
+    });
+};
+
+const handleDateRangeStartChange = (newDate) => {
+    if (!newDate) { return; }
+    const formattedNewDate = formatDateToLocalString(newDate);
+    dateRangeStart.value = formattedNewDate;
+    if (formattedNewDate > dateRangeEnd.value) {
+        dateRangeEnd.value = formattedNewDate;
+    }
+    menuDateRangeStart.value = false;
+    fetchCustomRangeStats();
+};
+
+const handleDateRangeEndChange = (newDate) => {
+    if (!newDate) { return; }
+    const formattedNewDate = formatDateToLocalString(newDate);
+    dateRangeEnd.value = formattedNewDate;
+    menuDateRangeEnd.value = false;
+    fetchCustomRangeStats();
+};
+
 const formatCurrency = (amount) => {
     return new Intl.NumberFormat('fr-FR', {
         style: 'currency',
@@ -114,9 +168,10 @@ const formatCurrency = (amount) => {
 };
 
 const periodTabs = [
-    { value: 'daily',   label: "Aujourd'hui", icon: 'mdi-calendar-today' },
-    { value: 'weekly',  label: 'Semaine',      icon: 'mdi-calendar-week'  },
-    { value: 'monthly', label: 'Mois',         icon: 'mdi-calendar-month' },
+    { value: 'daily',   label: "Aujourd'hui",  icon: 'mdi-calendar-today' },
+    { value: 'weekly',  label: 'Semaine',       icon: 'mdi-calendar-week'  },
+    { value: 'monthly', label: 'Mois',          icon: 'mdi-calendar-month' },
+    { value: 'custom',  label: 'Personnalisé',  icon: 'mdi-calendar-range' },
 ];
 </script>
 
@@ -362,6 +417,84 @@ const periodTabs = [
                                 {{ periodTab.label }}
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Custom date range pickers (visible only on Personnalisé tab) -->
+                    <div v-if="activePeriodTab === 'custom'" class="custom-range-row">
+                        <!-- Start date picker -->
+                        <v-menu
+                            v-model="menuDateRangeStart"
+                            :close-on-content-click="false"
+                            min-width="auto"
+                            transition="scale-transition"
+                        >
+                            <template v-slot:activator="{ props: menuActivatorProps }">
+                                <v-btn
+                                    color="primary"
+                                    v-bind="menuActivatorProps"
+                                    prepend-icon="mdi-calendar-start"
+                                    variant="outlined"
+                                    size="small"
+                                    class="custom-range-btn"
+                                >
+                                    <span class="custom-range-btn-label">Début :</span>
+                                    {{ formattedDateRangeStart }}
+                                </v-btn>
+                            </template>
+                            <v-card elevation="8" class="rounded-xl overflow-hidden">
+                                <v-card-text class="pa-2">
+                                    <v-date-picker
+                                        :model-value="dateRangeStartAsObject"
+                                        :max="today"
+                                        :first-day-of-week="1"
+                                        locale="fr"
+                                        @update:model-value="handleDateRangeStartChange"
+                                        color="primary"
+                                        elevation="0"
+                                    />
+                                </v-card-text>
+                            </v-card>
+                        </v-menu>
+
+                        <span class="custom-range-arrow">
+                            <v-icon size="18" color="grey-darken-1">mdi-arrow-right</v-icon>
+                        </span>
+
+                        <!-- End date picker -->
+                        <v-menu
+                            v-model="menuDateRangeEnd"
+                            :close-on-content-click="false"
+                            min-width="auto"
+                            transition="scale-transition"
+                        >
+                            <template v-slot:activator="{ props: menuActivatorProps }">
+                                <v-btn
+                                    color="primary"
+                                    v-bind="menuActivatorProps"
+                                    prepend-icon="mdi-calendar-end"
+                                    variant="outlined"
+                                    size="small"
+                                    class="custom-range-btn"
+                                >
+                                    <span class="custom-range-btn-label">Fin :</span>
+                                    {{ formattedDateRangeEnd }}
+                                </v-btn>
+                            </template>
+                            <v-card elevation="8" class="rounded-xl overflow-hidden">
+                                <v-card-text class="pa-2">
+                                    <v-date-picker
+                                        :model-value="dateRangeEndAsObject"
+                                        :min="dateRangeStart"
+                                        :max="today"
+                                        :first-day-of-week="1"
+                                        locale="fr"
+                                        @update:model-value="handleDateRangeEndChange"
+                                        color="primary"
+                                        elevation="0"
+                                    />
+                                </v-card-text>
+                            </v-card>
+                        </v-menu>
                     </div>
 
                     <!-- Period stats card -->
@@ -674,6 +807,41 @@ const periodTabs = [
 
 .period-tab-icon {
     opacity: 0.8;
+}
+
+/* =====================
+   CUSTOM DATE RANGE ROW
+   ===================== */
+.custom-range-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 12px 16px;
+    background: #f8f9ff;
+    border: 1px solid #e0e7ff;
+    border-radius: 10px;
+}
+
+.custom-range-btn {
+    letter-spacing: 0;
+    font-weight: 500;
+}
+
+.custom-range-btn-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6366f1;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 4px;
+}
+
+.custom-range-arrow {
+    display: flex;
+    align-items: center;
+    opacity: 0.5;
 }
 
 /* =====================

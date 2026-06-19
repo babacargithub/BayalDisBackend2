@@ -215,7 +215,7 @@ readonly class BeatService
         $stop->update([
             'status' => $status,
             'notes' => $notes,
-            'visited_at' => \Illuminate\Support\now()
+            'visited_at' => \Illuminate\Support\now(),
         ]);
     }
 
@@ -306,7 +306,7 @@ readonly class BeatService
             ->all();
 
         $templateCustomerCount = $beat->templateStops()->count();
-        $upcomingDates = $this->computeUpcomingRoundDates($beat, 1, $existingDates);
+        $upcomingDates = $this->computeUpcomingRoundDates($beat, 4, $existingDates);
 
         $upcomingRounds = collect($upcomingDates)->map(fn (string $date) => [
             'date' => $date,

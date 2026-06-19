@@ -519,6 +519,121 @@ class DashboardControllerTest extends TestCase
         });
     }
 
+    // =========================================================================
+    // customRangeStats — scoped to the explicit date_start / date_end params
+    // =========================================================================
+
+    public function test_custom_range_stats_response_contains_custom_range_stats_prop(): void
+    {
+        $response = $this->actingAs($this->authenticatedUser)->get(route('dashboard'));
+
+        $response->assertInertia(fn ($page) => $page
+            ->has('customRangeStats')
+            ->has('selectedDateStart')
+            ->has('selectedDateEnd')
+        );
+    }
+
+    public function test_custom_range_stats_falls_back_to_selected_date_when_no_range_params_given(): void
+    {
+        $selectedDate = Carbon::today()->subDays(3)->toDateString();
+
+        $invoiceOnSelectedDate = $this->makeInvoiceWithOneItem(price: 1000, quantity: 1, profit: 200);
+        $this->backdateInvoice($invoiceOnSelectedDate, Carbon::parse($selectedDate));
+
+        $response = $this->actingAs($this->authenticatedUser)
+            ->get(route('dashboard', ['date' => $selectedDate]));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('customRangeStats.sales_invoices_count', 1)
+            ->where('customRangeStats.total_sales', 1000)
+            ->where('selectedDateStart', $selectedDate)
+            ->where('selectedDateEnd', $selectedDate)
+        );
+    }
+
+    public function test_custom_range_stats_includes_all_invoices_within_date_range(): void
+    {
+        $start = '2025-06-01';
+        $end = '2025-06-30';
+
+        $invoiceInRange = $this->makeInvoiceWithOneItem(price: 2000, quantity: 1, profit: 400);
+        $this->backdateInvoice($invoiceInRange, Carbon::parse('2025-06-15'));
+
+        $anotherInvoiceInRange = $this->makeInvoiceWithOneItem(price: 3000, quantity: 1, profit: 600);
+        $this->backdateInvoice($anotherInvoiceInRange, Carbon::parse('2025-06-28'));
+
+        $invoiceOutsideRange = $this->makeInvoiceWithOneItem(price: 9000, quantity: 1, profit: 1800);
+        $this->backdateInvoice($invoiceOutsideRange, Carbon::parse('2025-07-01'));
+
+        $response = $this->actingAs($this->authenticatedUser)
+            ->get(route('dashboard', ['date_start' => $start, 'date_end' => $end]));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('customRangeStats.sales_invoices_count', 2)
+            ->where('customRangeStats.total_sales', 5000)
+            ->where('selectedDateStart', $start)
+            ->where('selectedDateEnd', $end)
+        );
+    }
+
+    public function test_custom_range_stats_payments_are_scoped_to_the_date_range(): void
+    {
+        $start = '2025-06-01';
+        $end = '2025-06-30';
+
+        $invoice = $this->makeInvoiceWithOneItem(price: 5000, quantity: 1, profit: 1000);
+
+        $paymentInRange = $this->makePayment($invoice, 3000);
+        $this->backdatePayment($paymentInRange, Carbon::parse('2025-06-10'));
+
+        $paymentOutsideRange = $this->makePayment($invoice, 2000);
+        $this->backdatePayment($paymentOutsideRange, Carbon::parse('2025-07-05'));
+
+        $response = $this->actingAs($this->authenticatedUser)
+            ->get(route('dashboard', ['date_start' => $start, 'date_end' => $end]));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('customRangeStats.total_payments_received', 3000)
+        );
+    }
+
+    public function test_custom_range_stats_excludes_data_outside_the_range(): void
+    {
+        $start = '2025-09-01';
+        $end = '2025-09-30';
+
+        $invoiceOutsideRange = $this->makeInvoiceWithOneItem(price: 9000, quantity: 1, profit: 1800);
+        $this->backdateInvoice($invoiceOutsideRange, Carbon::parse('2025-08-31'));
+
+        $response = $this->actingAs($this->authenticatedUser)
+            ->get(route('dashboard', ['date_start' => $start, 'date_end' => $end]));
+
+        $response->assertInertia(fn ($page) => $page
+            ->where('customRangeStats.sales_invoices_count', 0)
+            ->where('customRangeStats.total_sales', 0)
+        );
+    }
+
+    public function test_custom_range_stats_single_day_range_matches_that_days_daily_stats(): void
+    {
+        $date = Carbon::today()->subDays(5)->toDateString();
+
+        $invoice = $this->makeInvoiceWithOneItem(price: 4000, quantity: 1, profit: 800);
+        $this->backdateInvoice($invoice, Carbon::parse($date));
+
+        $response = $this->actingAs($this->authenticatedUser)
+            ->get(route('dashboard', ['date' => $date, 'date_start' => $date, 'date_end' => $date]));
+
+        $props = $response->original->getData()['page']['props'];
+
+        $this->assertSame(
+            $props['dailyStats']['total_sales'],
+            $props['customRangeStats']['total_sales'],
+            'Single-day custom range must match daily stats for the same date'
+        );
+    }
+
     public function test_overall_stats_always_includes_all_periods(): void
     {
         $veryOldDate = Carbon::now()->subYears(2);

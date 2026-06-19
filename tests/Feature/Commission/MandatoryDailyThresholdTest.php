@@ -20,6 +20,7 @@ use App\Services\Abc\VehicleCostCalculatorService;
 use App\Services\Commission\CommissionCalculatorService;
 use App\Services\Commission\CommissionRateResolverService;
 use App\Services\Commission\DailyCommissionService;
+use App\Services\PaymentService;
 use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -71,7 +72,7 @@ class MandatoryDailyThresholdTest extends TestCase
                 new VehicleCostCalculatorService,
                 new FixedCostCalculationAndDistributionService,
             ),
-            new SalesInvoiceStatsService(new CommissionRateResolverService),
+            new SalesInvoiceStatsService(new CommissionRateResolverService, new PaymentService),
         );
 
         $this->user = User::factory()->create();

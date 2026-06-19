@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Data\Vente\VenteStatsFilter;
 use App\Models\Beat;
 use App\Models\CarLoad;
 use App\Models\Commercial;
 use App\Models\Customer;
-use App\Models\Payment;
 use App\Models\Vente;
 use App\Services\DailySalesInvoicesService;
+use App\Services\PaymentService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -21,6 +22,7 @@ class VenteController extends Controller
 {
     public function __construct(
         private readonly DailySalesInvoicesService $dailySummaryService,
+        private readonly PaymentService $paymentService,
     ) {}
 
     public function index(Request $request): Response
@@ -149,9 +151,9 @@ class VenteController extends Controller
         $dateStart = $request->get('dateStart');
         $dateEnd = $request->get('dateEnd');
         /** @var EloquentBuilder $profitsQuery */
-        $profitsQuery = Payment::select(
+        $profitsQuery = $this->paymentService->paymentsQuery(VenteStatsFilter::new())->select(
             DB::raw('DATE(created_at) as date'),
-            DB::raw('SUM(profit) as total') // adjust field names as needed
+            DB::raw('SUM(profit) as total')
         );
         $profits_history = filterAndGroup($profitsQuery, $dateStart, $dateEnd)
             ->get()->map(function ($item) {
@@ -160,7 +162,7 @@ class VenteController extends Controller
         /** @var EloquentBuilder $salesQuery */
         $salesQuery = Vente::select(
             DB::raw('DATE(created_at) as date'),
-            DB::raw('SUM(price * quantity) as total') // adjust field names as needed
+            DB::raw('SUM(price * quantity) as total')
         );
         $salesQuery = filterAndGroup($salesQuery, $dateStart, $dateEnd);
         $sales_history = $salesQuery->get()->map(function ($item) use ($profits_history) {
@@ -176,12 +178,12 @@ class VenteController extends Controller
             }
 
             return $data;
-
         });
 
         // averages
 
-        $average_profits = Payment::select(DB::raw('SUM(profit) as total'))
+        $average_profits = $this->paymentService->paymentsQuery(VenteStatsFilter::new())
+            ->select(DB::raw('SUM(profit) as total'))
             ->whereBetween(DB::raw('DATE(created_at)'), [$dateStart, $dateEnd])
             ->groupBy(DB::raw('DATE(created_at)'))
             ->get()->avg('total');
@@ -194,7 +196,8 @@ class VenteController extends Controller
             ->get()
             ->avg('total');
         /** @var EloquentBuilder $totalProfitsQuery */
-        $totalProfitsQuery = Payment::select(DB::raw('SUM(profit) as total'));
+        $totalProfitsQuery = $this->paymentService->paymentsQuery(VenteStatsFilter::new())
+            ->select(DB::raw('SUM(profit) as total'));
         $total_profits = filterAndGroup($totalProfitsQuery, $dateStart, $dateEnd, group: false)->first()->total;
         /** @var EloquentBuilder $salesTotalQuery */
         $salesTotalQuery = Vente::select(DB::raw('SUM(price * quantity) as total'));
