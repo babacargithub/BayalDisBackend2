@@ -17,14 +17,24 @@ class DashboardController extends Controller
     {
         $selectedDate = Carbon::parse($request->query('date', Carbon::today()->toDateString()));
 
+        $customRangeStartDate = $request->filled('date_start')
+            ? Carbon::parse($request->query('date_start'))->startOfDay()
+            : $selectedDate->copy()->startOfDay();
+
+        $customRangeEndDate = $request->filled('date_end')
+            ? Carbon::parse($request->query('date_end'))->endOfDay()
+            : $selectedDate->copy()->endOfDay();
+
         return Inertia::render('Dashboard', [
             'selectedDate' => $selectedDate->toDateString(),
+            'selectedDateStart' => $customRangeStartDate->toDateString(),
+            'selectedDateEnd' => $customRangeEndDate->toDateString(),
             'dailyStats' => $this->getDailyStats($selectedDate)->toSnakeCaseArray(),
             'weeklyStats' => $this->getWeeklyStats($selectedDate)->toSnakeCaseArray(),
             'monthlyStats' => $this->getMonthlyStats($selectedDate)->toSnakeCaseArray(),
             'overallStats' => $this->getOverallStats()->toSnakeCaseArray(),
+            'customRangeStats' => $this->getCustomRangeStats($customRangeStartDate, $customRangeEndDate)->toSnakeCaseArray(),
         ]);
-
     }
 
     private function getDailyStats(Carbon $date): DashboardStats
@@ -48,6 +58,14 @@ class DashboardController extends Controller
         return $this->salesInvoiceStatsService->buildStatsForPeriod(
             startDate: $date->copy()->startOfMonth(),
             endDate: $date->copy()->endOfMonth(),
+        );
+    }
+
+    private function getCustomRangeStats(Carbon $startDate, Carbon $endDate): DashboardStats
+    {
+        return $this->salesInvoiceStatsService->buildStatsForPeriod(
+            startDate: $startDate,
+            endDate: $endDate,
         );
     }
 

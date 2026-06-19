@@ -109,7 +109,7 @@ class BeatsWebShowRoundsTest extends TestCase
         $this->assertNotEmpty($rounds);
 
         $upcomingRounds = array_filter($rounds, fn ($r) => $r['status'] === 'upcoming');
-        $this->assertNotEmpty($upcomingRounds, 'Expected at least one upcoming round when template stops exist');
+        $this->assertCount(4, $upcomingRounds, 'Expected exactly 4 upcoming rounds when template stops exist');
     }
 
     public function test_show_page_rounds_includes_past_round_when_occurrence_stops_exist(): void

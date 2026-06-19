@@ -5,6 +5,7 @@ namespace App\Http\Requests\Api;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
 use App\Rules\InvoicePaymentOneMinuteRateLimitRule;
+use App\Services\PaymentService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -40,7 +41,7 @@ class PaySalesInvoiceRequest extends FormRequest
         $amountRules = ['required', 'integer', 'min:1'];
 
         if ($salesInvoiceId !== null) {
-            $amountRules[] = new InvoicePaymentOneMinuteRateLimitRule($salesInvoiceId);
+            $amountRules[] = new InvoicePaymentOneMinuteRateLimitRule($salesInvoiceId, app(PaymentService::class));
         }
 
         return [

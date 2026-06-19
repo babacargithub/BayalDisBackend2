@@ -5,6 +5,7 @@ namespace App\Http\Requests\Api;
 use App\Models\Customer;
 use App\Models\Vente;
 use App\Rules\CustomerBulkPaymentOneMinuteRateLimitRule;
+use App\Services\PaymentService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -33,7 +34,7 @@ class BulkPayCustomerInvoicesRequest extends FormRequest
         $amountRules = ['required', 'integer', 'min:1'];
 
         if ($customerId !== null) {
-            $amountRules[] = new CustomerBulkPaymentOneMinuteRateLimitRule($customerId);
+            $amountRules[] = new CustomerBulkPaymentOneMinuteRateLimitRule($customerId, app(PaymentService::class));
         }
 
         return [

@@ -2,7 +2,8 @@
 
 namespace App\Rules;
 
-use App\Models\Payment;
+use App\Data\Vente\VenteStatsFilter;
+use App\Services\PaymentService;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 
@@ -16,14 +17,17 @@ use Illuminate\Contracts\Validation\ValidationRule;
  */
 readonly class InvoicePaymentOneMinuteRateLimitRule implements ValidationRule
 {
-    public function __construct(private int $salesInvoiceId) {}
+    public function __construct(
+        private int $salesInvoiceId,
+        private PaymentService $paymentService,
+    ) {}
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        $recentDuplicateExists = Payment::query()
+        $recentDuplicateExists = $this->paymentService
+            ->paymentsQuery(VenteStatsFilter::new()->inDateInterval(now()->subMinute(), null))
             ->where('sales_invoice_id', $this->salesInvoiceId)
             ->where('amount', $value)
-            ->where('created_at', '>=', now()->subMinute())
             ->exists();
 
         if ($recentDuplicateExists) {

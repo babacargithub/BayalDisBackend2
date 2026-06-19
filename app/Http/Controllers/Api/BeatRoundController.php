@@ -124,7 +124,10 @@ class BeatRoundController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if ($beat->templateStops()->whereNull('display_position')->exists()) {
+        // Recalculate proximity order only when NO stop has a position yet
+        // (fresh beat with directly-inserted stops). If some stops already have
+        // positions, leave them intact and let NULLS LAST handle stragglers.
+        if ($beat->templateStops()->whereNotNull('display_position')->doesntExist()) {
             $this->beatService->recalculateTemplateStopsDisplayPositionByProximity($beat);
         }
 
@@ -132,7 +135,7 @@ class BeatRoundController extends Controller
             ->with(['customer' => fn ($query) => $query->with([
                 'salesInvoices:id,customer_id,total_amount,total_payments',
             ])])
-            ->orderBy('display_position')
+            ->orderByRaw('display_position IS NULL ASC, display_position ASC')
             ->get()
             ->map(fn (BeatStop $stop) => [
                 'id' => $stop->customer->id,

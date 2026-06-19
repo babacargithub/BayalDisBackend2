@@ -4,6 +4,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Data\Vente\VenteStatsFilter;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvoicePaymentMismatchException;
 use App\Http\Controllers\Controller;
@@ -18,6 +19,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Services\Commission\DailyCommissionService;
+use App\Services\PaymentService;
 use App\Services\SalesInvoiceService;
 use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
@@ -31,6 +33,7 @@ class ApiSalesInvoiceController extends Controller
         private readonly SalesInvoiceService $salesInvoiceService,
         private readonly SalesInvoiceStatsService $salesInvoiceStatsService,
         private readonly DailyCommissionService $dailyCommissionService,
+        private readonly PaymentService $paymentService,
     ) {}
 
     public function createSalesInvoice(CreateSalesInvoiceRequest $request): JsonResponse
@@ -94,8 +97,13 @@ class ApiSalesInvoiceController extends Controller
             ->where('commercial_id', $commercial?->id)
             ->get();
 
-        $debtCollectionPayments = Payment::with('salesInvoice.customer')
-            ->whereDate('created_at', $date)
+        $debtCollectionPayments = $this->paymentService->paymentsQuery(
+            VenteStatsFilter::new()->inDateInterval(
+                Carbon::parse($date)->startOfDay(),
+                Carbon::parse($date)->endOfDay()
+            )
+        )
+            ->with('salesInvoice.customer')
             ->where('user_id', $request->user()->id)
             ->get()
             ->filter(fn (Payment $payment) => $payment->salesInvoice?->created_at?->toDateString() !== $date);

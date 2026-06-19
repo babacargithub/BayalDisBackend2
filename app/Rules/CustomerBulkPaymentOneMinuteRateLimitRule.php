@@ -2,10 +2,10 @@
 
 namespace App\Rules;
 
-use App\Models\Payment;
+use App\Data\Vente\VenteStatsFilter;
+use App\Services\PaymentService;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Rejects a bulk customer payment if the same total amount was already distributed
@@ -19,17 +19,18 @@ use Illuminate\Database\Eloquent\Builder;
  */
 readonly class CustomerBulkPaymentOneMinuteRateLimitRule implements ValidationRule
 {
-    public function __construct(private int $customerId) {}
+    public function __construct(
+        private int $customerId,
+        private PaymentService $paymentService,
+    ) {}
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        $recentPaymentsSumForCustomerInvoices = (int) Payment::query()
-            ->whereHas(
-                'salesInvoice',
-                fn (Builder $query) => $query->where('customer_id', $this->customerId)
-            )
-            ->where('created_at', '>=', now()->subMinute())
-            ->sum('amount');
+        $recentPaymentsSumForCustomerInvoices = $this->paymentService->sumPayments(
+            VenteStatsFilter::new()
+                ->forCustomer($this->customerId)
+                ->inDateInterval(now()->subMinute(), null)
+        );
 
         if ($recentPaymentsSumForCustomerInvoices === (int) $value) {
             $fail(

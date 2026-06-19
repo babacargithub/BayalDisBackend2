@@ -12,7 +12,6 @@ use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Depense;
-use App\Models\Payment;
 use App\Models\SalesInvoice;
 use App\Models\StockEntry;
 use App\Models\Vente;
@@ -35,6 +34,7 @@ readonly class SalesInvoiceStatsService
 {
     public function __construct(
         private CommissionRateResolverService $commissionRateResolverService,
+        private PaymentService $paymentService,
     ) {}
 
     // =========================================================================
@@ -99,8 +99,7 @@ readonly class SalesInvoiceStatsService
      *
      * Returns 0 when the invoice has no commercial assigned.
      */
-    public function
-    calculateEstimatedCommissionForInvoice(SalesInvoice $invoice): int
+    public function calculateEstimatedCommissionForInvoice(SalesInvoice $invoice): int
     {
         if ($invoice->commercial_id === null) {
             return 0;
@@ -323,8 +322,17 @@ readonly class SalesInvoiceStatsService
         ?Carbon $endDate,
         VenteStatsFilter $filter,
     ): int {
-        return (int) $this->buildBasePaymentQuery($startDate, $endDate, $filter)
-            ->sum('profit');
+        $paymentsFilter = $filter;
+
+        if ($startDate !== null) {
+            $paymentsFilter = $paymentsFilter->from($startDate->copy()->startOfDay());
+        }
+
+        if ($endDate !== null) {
+            $paymentsFilter = $paymentsFilter->to($endDate->copy()->endOfDay());
+        }
+
+        return (int) $this->paymentService->paymentsQuery($paymentsFilter)->sum('profit');
     }
 
     /**
@@ -472,11 +480,11 @@ readonly class SalesInvoiceStatsService
         $totalSales = ! empty($invoiceAggregates->total_sales) ? (int) $invoiceAggregates->total_sales : 0;
         $totalUnpaidAmount = ! empty($invoiceAggregates->total_unpaid) ? (int) $invoiceAggregates->total_unpaid : 0;
 
-        $paymentMethodBreakdown = Payment::whereHas(
-            'salesInvoice',
-            fn (Builder $invoiceQuery) => $invoiceQuery->where('commercial_id', $commercial->id)
+        $paymentMethodBreakdown = $this->paymentService->paymentsQuery(
+            VenteStatsFilter::new()
+                ->thatAreMadeByCommercial($commercial->id)
+                ->inDateInterval($startDate, $endDate)
         )
-            ->whereBetween('created_at', [$startDate, $endDate])
             ->selectRaw('payment_method, SUM(amount) as total')
             ->groupBy('payment_method')
             ->pluck('total', 'payment_method');
@@ -519,19 +527,24 @@ readonly class SalesInvoiceStatsService
         $allFilter = VenteStatsFilter::regardlessOfPaymentStatus();
 
         $customerQuery = Customer::query();
-        $paymentQuery = Payment::query()->whereNotNull('sales_invoice_id');
         $depenseQuery = Depense::query();
 
         if ($startDate !== null) {
             $customerQuery->where('created_at', '>=', $startDate);
-            $paymentQuery->where('created_at', '>=', $startDate);
             $depenseQuery->where('created_at', '>=', $startDate);
         }
 
         if ($endDate !== null) {
             $customerQuery->where('created_at', '<=', $endDate);
-            $paymentQuery->where('created_at', '<=', $endDate);
             $depenseQuery->where('created_at', '<=', $endDate);
+        }
+
+        $paymentFilter = VenteStatsFilter::new();
+        if ($startDate !== null) {
+            $paymentFilter = $paymentFilter->from($startDate);
+        }
+        if ($endDate !== null) {
+            $paymentFilter = $paymentFilter->to($endDate);
         }
 
         $totalCommissions = $this->totalCommercialCommissions($startDate, $endDate);
@@ -549,7 +562,7 @@ readonly class SalesInvoiceStatsService
             totalSales: $this->totalSales($startDate, $endDate, $allFilter),
             totalEstimatedProfit: $this->totalEstimatedProfits($startDate, $endDate, $allFilter),
             totalRealizedProfit: $totalRealizedProfit,
-            totalPaymentsReceived: (int) $paymentQuery->sum('amount'),
+            totalPaymentsReceived: $this->paymentService->sumPayments($paymentFilter),
             totalExpenses: (int) $depenseQuery->sum('amount'),
             totalCommissions: $totalCommissions,
             totalDeliveryCost: $totalDeliveryCost,
@@ -569,7 +582,7 @@ readonly class SalesInvoiceStatsService
 
     private function buildBaseInvoicePaymentsQuery(SalesInvoice $invoice): Builder
     {
-        return Payment::query()
+        return $this->paymentService->paymentsQuery(VenteStatsFilter::new())
             ->where('sales_invoice_id', $invoice->id);
     }
 
@@ -591,49 +604,6 @@ readonly class SalesInvoiceStatsService
 
         if ($filter?->customerIds !== null) {
             $query->whereIn('customer_id', $filter->customerIds);
-        }
-
-        return $query;
-    }
-
-    private function buildBasePaymentQuery(
-        ?Carbon $startDate,
-        ?Carbon $endDate,
-        VenteStatsFilter $filter,
-    ): Builder {
-        $query = Payment::query()->whereNotNull('sales_invoice_id');
-
-        if ($startDate !== null) {
-            $query->where('created_at', '>=', $startDate->copy()->startOfDay());
-        }
-
-        if ($endDate !== null) {
-            $query->where('created_at', '<=', $endDate->copy()->endOfDay());
-        }
-
-        $needsInvoiceScope = $filter->commercialId !== null
-            || $filter->customerId !== null
-            || $filter->customerIds !== null
-            || $filter->carLoadId !== null;
-
-        if ($needsInvoiceScope) {
-            $query->whereHas('salesInvoice', function (Builder $invoiceQuery) use ($filter) {
-                if ($filter->commercialId !== null) {
-                    $invoiceQuery->where('commercial_id', $filter->commercialId);
-                }
-
-                if ($filter->customerId !== null) {
-                    $invoiceQuery->where('customer_id', $filter->customerId);
-                }
-
-                if ($filter->customerIds !== null) {
-                    $invoiceQuery->whereIn('customer_id', $filter->customerIds);
-                }
-
-                if ($filter->carLoadId !== null) {
-                    $invoiceQuery->where('car_load_id', $filter->carLoadId);
-                }
-            });
         }
 
         return $query;
