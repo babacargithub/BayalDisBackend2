@@ -50,6 +50,13 @@
                             </div>
                         </div>
                         <div class="summary-stat-chip bg-white border rounded-lg pa-3 d-flex align-center gap-2">
+                            <v-icon icon="mdi-cart-off" size="20" color="orange-darken-2" />
+                            <div>
+                                <div class="text-caption text-grey">Non vendus</div>
+                                <div class="text-subtitle-2 font-weight-bold text-orange-darken-2">{{ roundData.no_sale }}</div>
+                            </div>
+                        </div>
+                        <div class="summary-stat-chip bg-white border rounded-lg pa-3 d-flex align-center gap-2">
                             <v-icon icon="mdi-clock-outline" size="20" color="warning" />
                             <div>
                                 <div class="text-caption text-grey">Prévus</div>
@@ -213,25 +220,36 @@ const roundData = ref(null);
 
 const completionPercentage = computed(() => {
     if (!roundData.value || roundData.value.total === 0) return 0;
-    return Math.round((roundData.value.completed / roundData.value.total) * 100);
+    return Math.round(((roundData.value.completed + (roundData.value.no_sale ?? 0)) / roundData.value.total) * 100);
 });
+
+const NO_SALE_STATUS_LABELS = {
+    stock_restant: 'Stock restant',
+    restaurant_ferme: 'Restaurant fermé',
+    produits_non_disponibles: 'Produits non disponibles',
+    dette_non_acceptee: 'Dette non acceptée',
+    reprogramme: 'Reprogrammé',
+};
 
 const statusColor = (status) => {
     if (status === 'completed') return 'success';
     if (status === 'cancelled') return 'error';
-    return 'warning';
+    if (status === 'planned') return 'warning';
+    return 'orange-darken-2';
 };
 
 const statusIcon = (status) => {
     if (status === 'completed') return 'mdi-check-circle';
     if (status === 'cancelled') return 'mdi-close-circle';
-    return 'mdi-clock-outline';
+    if (status === 'planned') return 'mdi-clock-outline';
+    return 'mdi-cart-off';
 };
 
 const statusLabel = (status) => {
     if (status === 'completed') return 'Visité';
     if (status === 'cancelled') return 'Annulé';
-    return 'Prévu';
+    if (status === 'planned') return 'Prévu';
+    return NO_SALE_STATUS_LABELS[status] ?? status;
 };
 
 const formatAmount = (amount) => {

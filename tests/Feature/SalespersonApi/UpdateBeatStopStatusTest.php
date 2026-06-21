@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\SalespersonApi;
 
+use App\Enums\BeatStopStatus;
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
 use App\Models\BeatStop;
@@ -201,12 +202,145 @@ class UpdateBeatStopStatusTest extends TestCase
             "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
         );
 
+        $expectedAvailableStatuses = array_map(
+            fn (BeatStopStatus $case) => ['status' => $case->value, 'label' => $case->label()],
+            BeatStopStatus::cases(),
+        );
+
         $response->assertOk()
-            ->assertJsonPath('data.available_statuses', [
-                ['status' => 'planned', 'label' => 'Prévu'],
-                ['status' => 'completed', 'label' => 'Visite effectuée'],
-                ['status' => 'cancelled', 'label' => 'Visite annulée'],
-            ]);
+            ->assertJsonPath('data.available_statuses', $expectedAvailableStatuses);
+    }
+
+    // =========================================================================
+    // New no-sale statuses
+    // =========================================================================
+
+    public function test_can_set_stop_to_stock_restant_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_STOCK_RESTANT, 'notes' => 'Client a encore du stock'],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_STOCK_RESTANT, $stop->status);
+        $this->assertSame('Client a encore du stock', $stop->notes);
+    }
+
+    public function test_can_set_stop_to_restaurant_ferme_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_RESTAURANT_FERME],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_RESTAURANT_FERME, $stop->status);
+    }
+
+    public function test_can_set_stop_to_produits_non_disponibles_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_PRODUITS_NON_DISPONIBLES],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_PRODUITS_NON_DISPONIBLES, $stop->status);
+    }
+
+    public function test_can_set_stop_to_dette_non_acceptee_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_DETTE_NON_ACCEPTEE],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_DETTE_NON_ACCEPTEE, $stop->status);
+    }
+
+    public function test_round_customers_response_includes_no_sale_count(): void
+    {
+        $customer = $this->makeCustomer();
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customer->id,
+            'status' => BeatStop::STATUS_PLANNED,
+            'visit_date' => null,
+        ]);
+
+        $response = $this->actingAs($this->user)->getJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('data.no_sale', 0);
+    }
+
+    public function test_can_set_stop_to_reprogramme_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_REPROGRAMME],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_REPROGRAMME, $stop->status);
+    }
+
+    public function test_no_sale_stops_are_counted_in_round_customers_no_sale_field(): void
+    {
+        $customerA = $this->makeCustomer();
+        $customerB = $this->makeCustomer();
+
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customerA->id,
+            'status' => BeatStop::STATUS_PLANNED,
+            'visit_date' => null,
+        ]);
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customerB->id,
+            'status' => BeatStop::STATUS_PLANNED,
+            'visit_date' => null,
+        ]);
+
+        $roundDate = self::ROUND_DATE;
+
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customerA->id,
+            'status' => BeatStop::STATUS_STOCK_RESTANT,
+            'visit_date' => $roundDate,
+        ]);
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customerB->id,
+            'status' => BeatStop::STATUS_DETTE_NON_ACCEPTEE,
+            'visit_date' => $roundDate,
+        ]);
+
+        $response = $this->actingAs($this->user)->getJson(
+            "/api/beats/{$this->beat->id}/rounds/{$roundDate}/customers",
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('data.no_sale', 2)
+            ->assertJsonPath('data.planned', 0)
+            ->assertJsonPath('data.completed', 0)
+            ->assertJsonPath('data.cancelled', 0);
     }
 
     // =========================================================================

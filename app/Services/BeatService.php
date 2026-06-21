@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Data\Beat\BeatForecastDTO;
 use App\Data\Vente\VenteStatsFilter;
+use App\Enums\BeatStopStatus;
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
 use App\Models\BeatStop;
@@ -290,6 +291,10 @@ readonly class BeatService
 
     public function getRoundsForBeat(Beat $beat): array
     {
+        $noSaleInClause = collect(BeatStopStatus::noSaleValues())
+            ->map(fn (string $value) => '"'.$value.'"')
+            ->implode(',');
+
         $existingRounds = BeatStop::where('beat_id', $beat->id)
             ->whereNotNull('visit_date')
             ->selectRaw('visit_date')
@@ -297,6 +302,7 @@ readonly class BeatService
             ->selectRaw('SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as completed')
             ->selectRaw('SUM(CASE WHEN status = "cancelled" THEN 1 ELSE 0 END) as cancelled')
             ->selectRaw('SUM(CASE WHEN status = "planned" THEN 1 ELSE 0 END) as planned')
+            ->selectRaw("SUM(CASE WHEN status IN ({$noSaleInClause}) THEN 1 ELSE 0 END) as no_sale")
             ->groupBy('visit_date')
             ->orderByDesc('visit_date')
             ->get();
@@ -315,6 +321,7 @@ readonly class BeatService
             'total' => $templateCustomerCount,
             'completed' => 0,
             'cancelled' => 0,
+            'no_sale' => 0,
             'planned' => $templateCustomerCount,
         ]);
 
@@ -328,6 +335,7 @@ readonly class BeatService
                 'total' => (int) $row->total,
                 'completed' => (int) $row->completed,
                 'cancelled' => (int) $row->cancelled,
+                'no_sale' => (int) $row->no_sale,
                 'planned' => (int) $row->planned,
             ];
         });
@@ -355,6 +363,7 @@ readonly class BeatService
         $completed = $stops->where('status', BeatStop::STATUS_COMPLETED)->count();
         $cancelled = $stops->where('status', BeatStop::STATUS_CANCELLED)->count();
         $planned = $stops->where('status', BeatStop::STATUS_PLANNED)->count();
+        $noSale = $stops->whereIn('status', BeatStopStatus::noSaleValues())->count();
 
         $totalDebtToCollect = (int) $stops->sum(
             fn (BeatStop $stop) => $stop->customer->salesInvoices->sum('total_remaining')
@@ -374,15 +383,15 @@ readonly class BeatService
             'total' => $stops->count(),
             'completed' => $completed,
             'cancelled' => $cancelled,
+            'no_sale' => $noSale,
             'planned' => $planned,
             'total_debt_to_collect' => $totalDebtToCollect,
             'total_collected' => (int) $totalCollected,
             'remaining_to_collect' => $totalDebtToCollect - (int) $totalCollected,
-            'available_statuses' => [
-                ['status' => BeatStop::STATUS_PLANNED, 'label' => 'Prévu'],
-                ['status' => BeatStop::STATUS_COMPLETED, 'label' => 'Visite effectuée'],
-                ['status' => BeatStop::STATUS_CANCELLED, 'label' => 'Visite annulée'],
-            ],
+            'available_statuses' => array_map(
+                fn (BeatStopStatus $statusCase) => ['status' => $statusCase->value, 'label' => $statusCase->label()],
+                BeatStopStatus::cases(),
+            ),
             'customers' => $stops->map(fn (BeatStop $stop) => [
                 'stop_id' => $stop->id,
                 'customer_id' => $stop->customer->id,

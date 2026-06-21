@@ -62,7 +62,7 @@
                             <div>
                                 <p class="text-sm text-gray-500">Statut</p>
                                 <v-chip
-                                    :color="stop.status === 'completed' ? 'success' : stop.status === 'cancelled' ? 'error' : 'warning'"
+                                    :color="stopStatusColor(stop.status)"
                                     size="small"
                                     class="mt-1"
                                 >
@@ -108,13 +108,24 @@ defineProps({
     }
 });
 
-const stopStatusText = (status) => {
-    switch (status) {
-        case 'planned': return 'Planifié';
-        case 'completed': return 'Terminé';
-        case 'cancelled': return 'Annulé';
-        default: return status;
-    }
+const BEAT_STOP_STATUS_LABELS = {
+    planned: 'Planifié',
+    completed: 'Terminé',
+    cancelled: 'Annulé',
+    stock_restant: 'Le client a un stock restant',
+    restaurant_ferme: 'Restaurant fermé lors du passage',
+    produits_non_disponibles: 'Produits demandés non disponibles',
+    dette_non_acceptee: 'Cumul de dette non accepté',
+    reprogramme: 'Reprogrammé',
+};
+
+const stopStatusText = (status) => BEAT_STOP_STATUS_LABELS[status] ?? status;
+
+const stopStatusColor = (status) => {
+    if (status === 'completed') return 'success';
+    if (status === 'cancelled') return 'error';
+    if (status === 'planned') return 'warning';
+    return 'orange-darken-2';
 };
 
 const formatDate = (date) => {

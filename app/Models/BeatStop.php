@@ -14,6 +14,16 @@ class BeatStop extends Model
 
     const STATUS_CANCELLED = 'cancelled';
 
+    const STATUS_STOCK_RESTANT = 'stock_restant';
+
+    const STATUS_RESTAURANT_FERME = 'restaurant_ferme';
+
+    const STATUS_PRODUITS_NON_DISPONIBLES = 'produits_non_disponibles';
+
+    const STATUS_DETTE_NON_ACCEPTEE = 'dette_non_acceptee';
+
+    const STATUS_REPROGRAMME = 'reprogramme';
+
     protected $fillable = [
         'customer_id',
         'beat_id',
