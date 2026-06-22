@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Data\Vente\VenteStatsFilter;
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -15,6 +16,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -32,7 +34,7 @@ class BeatStopController extends Controller
             'sector:id,name',
         ])
             ->withCount(['stops as template_stops_count' => function ($query) {
-                $query->whereNull('visit_date');
+                $query->whereNull('beat_round_id');
             }])
             ->latest()
             ->get()
@@ -140,7 +142,20 @@ class BeatStopController extends Controller
 
     public function show(Beat $beat): Response
     {
-        $beat->load(['templateStops.customer', 'commercial:id,name', 'sector:id,name']);
+        $beat->load(['templateStops' => fn ($q) => $q->orderByRaw('display_position IS NULL ASC, display_position ASC'), 'templateStops.customer', 'commercial:id,name', 'sector:id,name']);
+
+        $existingCustomerIds = $beat->templateStops->pluck('customer.id')->filter()->all();
+
+        $availableCustomers = Customer::whereNotIn('id', $existingCustomerIds)
+            ->select('id', 'name', 'phone_number', 'address')
+            ->orderBy('name')
+            ->get();
+
+        $currentBeatStopsByCustomer = BeatStop::whereNull('beat_round_id')
+            ->whereIn('customer_id', $availableCustomers->pluck('id')->all())
+            ->with('beat:id,name')
+            ->get()
+            ->keyBy('customer_id');
 
         return Inertia::render('Beats/Show', [
             'batch' => [
@@ -153,6 +168,7 @@ class BeatStopController extends Controller
                 'visits' => $beat->templateStops->map(function (BeatStop $stop) {
                     return [
                         'id' => $stop->id,
+                        'display_position' => $stop->display_position,
                         'customer' => [
                             'id' => $stop->customer->id,
                             'name' => $stop->customer->name,
@@ -164,13 +180,57 @@ class BeatStopController extends Controller
                     ];
                 }),
             ],
+            'availableCustomers' => $availableCustomers->map(function (Customer $customer) use ($currentBeatStopsByCustomer) {
+                $currentStop = $currentBeatStopsByCustomer->get($customer->id);
+
+                return [
+                    'id' => $customer->id,
+                    'name' => $customer->name,
+                    'phone_number' => $customer->phone_number,
+                    'address' => $customer->address,
+                    'current_beat' => $currentStop ? ['id' => $currentStop->beat_id, 'name' => $currentStop->beat->name] : null,
+                ];
+            }),
             'rounds' => $this->beatService->getRoundsForBeat($beat),
         ]);
     }
 
     public function getRoundDetail(Beat $beat, string $date): JsonResponse
     {
-        return response()->json($this->beatService->getRoundCustomers($beat, $date));
+        $data = $this->beatService->getRoundCustomers($beat, $date);
+
+        if ($data === null) {
+            return response()->json(['message' => 'Aucune tournée trouvée pour cette date'], 404);
+        }
+
+        return response()->json($data);
+    }
+
+    public function storeRound(Request $request, Beat $beat): \Illuminate\Http\RedirectResponse
+    {
+        $validated = $request->validate([
+            'planned_at' => ['required', 'date_format:Y-m-d'],
+        ], [
+            'planned_at.required' => 'La date de la tournée est obligatoire.',
+            'planned_at.date_format' => 'Le format de date doit être YYYY-MM-DD.',
+        ]);
+
+        if ($beat->findRoundForDate(\Carbon\Carbon::parse($validated['planned_at'])) !== null) {
+            return back()->withErrors(['planned_at' => 'Une tournée existe déjà pour cette date.']);
+        }
+
+        $this->beatService->createRound($beat, $validated['planned_at']);
+
+        return redirect()->route('beats.show', $beat)->with('success', 'Tournée créée avec succès.');
+    }
+
+    public function destroyRound(Beat $beat, BeatRound $beatRound): \Illuminate\Http\RedirectResponse
+    {
+        abort_unless($beatRound->beat_id === $beat->id, 404);
+
+        $beatRound->delete();
+
+        return redirect()->route('beats.show', $beat)->with('success', 'Tournée supprimée avec succès.');
     }
 
     public function edit(Beat $beat): Response
@@ -427,6 +487,25 @@ class BeatStopController extends Controller
         return $pdf->download($filename);
     }
 
+    public function reorderCustomers(Request $request, Beat $beat): \Illuminate\Http\JsonResponse
+    {
+        $validated = $request->validate([
+            'positions' => ['required', 'array'],
+            'positions.*.stop_id' => ['required', 'integer', 'exists:beat_stops,id'],
+            'positions.*.display_position' => ['required', 'integer', 'min:0'],
+        ]);
+
+        DB::transaction(function () use ($beat, $validated): void {
+            foreach ($validated['positions'] as $entry) {
+                $beat->templateStops()
+                    ->where('id', $entry['stop_id'])
+                    ->update(['display_position' => $entry['display_position']]);
+            }
+        });
+
+        return response()->json(['message' => 'Ordre mis à jour']);
+    }
+
     public function addCustomers(Request $request, Beat $beat)
     {
         $request->validate([
@@ -435,15 +514,23 @@ class BeatStopController extends Controller
         ]);
 
         $existingCustomerIds = $beat->templateStops()->pluck('customer_id')->toArray();
-        $newCustomerIds = array_diff($request->customer_ids, $existingCustomerIds);
+        $customerIdsToAdd = array_diff($request->customer_ids, $existingCustomerIds);
 
-        foreach ($newCustomerIds as $customerId) {
-            $beat->templateStops()->create([
-                'customer_id' => $customerId,
-                'status' => BeatStop::STATUS_PLANNED,
-            ]);
-        }
+        DB::transaction(function () use ($beat, $customerIdsToAdd): void {
+            // Remove these customers from any other beat they currently belong to.
+            BeatStop::whereNull('beat_round_id')
+                ->whereIn('customer_id', $customerIdsToAdd)
+                ->where('beat_id', '!=', $beat->id)
+                ->delete();
 
-        return back()->with('success', count($newCustomerIds).' client(s) ajouté(s) avec succès');
+            foreach ($customerIdsToAdd as $customerId) {
+                $beat->templateStops()->create([
+                    'customer_id' => $customerId,
+                    'status' => BeatStop::STATUS_PLANNED,
+                ]);
+            }
+        });
+
+        return back()->with('success', count($customerIdsToAdd).' client(s) ajouté(s) avec succès');
     }
 }

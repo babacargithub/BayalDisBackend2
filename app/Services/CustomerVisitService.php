@@ -42,7 +42,11 @@ class CustomerVisitService
         $allTodayStops = collect();
 
         foreach ($beatsForToday as $beat) {
-            $stops = $beat->getOrGenerateStopsForDate($today);
+            $round = $beat->findRoundForDate($today);
+            if ($round === null) {
+                continue;
+            }
+            $stops = $beat->getOrGenerateStopsForRound($round);
             $allTodayStops = $allTodayStops->merge($stops);
         }
 
@@ -115,7 +119,8 @@ class CustomerVisitService
     public function terminateBeatStopIfCustomerHasPlannedOne(Customer $customer): void
     {
         $beatStop = $customer->beatStops()
-            ->whereDate('visit_date', now()->toDateString())
+            ->whereNotNull('beat_round_id')
+            ->whereHas('round', fn ($q) => $q->whereDate('planned_at', now()->toDateString()))
             ->where('status', BeatStop::STATUS_PLANNED)
             ->first();
 

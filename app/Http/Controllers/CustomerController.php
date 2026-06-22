@@ -289,7 +289,7 @@ class CustomerController extends Controller
 
         $beatIdsByCustomerId = ! empty($customerIds)
             ? BeatStop::whereIn('customer_id', $customerIds)
-                ->whereNull('visit_date')
+                ->whereNull('beat_round_id')
                 ->select('customer_id', 'beat_id')
                 ->get()
                 ->groupBy('customer_id')

@@ -27,7 +27,7 @@ class BeatStop extends Model
     protected $fillable = [
         'customer_id',
         'beat_id',
-        'visit_date',
+        'beat_round_id',
         'display_position',
         'visit_planned_at',
         'visited_at',
@@ -38,7 +38,6 @@ class BeatStop extends Model
     ];
 
     protected $casts = [
-        'visit_date' => 'date',
         'visit_planned_at' => 'datetime',
         'visited_at' => 'datetime',
         'resulted_in_sale' => 'boolean',
@@ -52,6 +51,11 @@ class BeatStop extends Model
     public function beat(): BelongsTo
     {
         return $this->belongsTo(Beat::class);
+    }
+
+    public function round(): BelongsTo
+    {
+        return $this->belongsTo(BeatRound::class, 'beat_round_id');
     }
 
     public function complete(#[ArrayShape([

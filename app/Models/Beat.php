@@ -37,30 +37,44 @@ class Beat extends Model
         return $this->hasMany(BeatStop::class);
     }
 
+    public function rounds(): HasMany
+    {
+        return $this->hasMany(BeatRound::class);
+    }
+
     /**
-     * Template stops define the recurring customer list (visit_date IS NULL).
+     * Template stops define the recurring customer list (beat_round_id IS NULL).
      * These are the "blueprint" — they never get a status or visited_at.
      */
     public function templateStops(): HasMany
     {
-        return $this->hasMany(BeatStop::class)->whereNull('visit_date');
+        return $this->hasMany(BeatStop::class)->whereNull('beat_round_id');
     }
 
     /**
-     * Occurrence stops for a specific date. If none exist yet, generates them
-     * from the template stops so the commercial can start completing visits.
+     * Look up the BeatRound for this beat on the given date. Returns null if
+     * no round has been explicitly created for that date yet.
      */
-    public function getOrGenerateStopsForDate(Carbon $date): Collection
+    public function findRoundForDate(Carbon $date): ?BeatRound
     {
-        $dateString = $date->toDateString();
+        return BeatRound::where('beat_id', $this->id)
+            ->whereDate('planned_at', $date->toDateString())
+            ->first();
+    }
 
-        $existingOccurrenceStops = $this->stops()
-            ->whereDate('visit_date', $dateString)
+    /**
+     * Return stops for an existing round, generating them from template stops
+     * if the round has no stops yet. The round must already exist.
+     */
+    public function getOrGenerateStopsForRound(BeatRound $round): Collection
+    {
+        $existingStops = $this->stops()
+            ->where('beat_round_id', $round->id)
             ->with('customer')
             ->get();
 
-        if ($existingOccurrenceStops->isNotEmpty()) {
-            return $existingOccurrenceStops;
+        if ($existingStops->isNotEmpty()) {
+            return $existingStops;
         }
 
         $templateStops = $this->templateStops()->get(['customer_id', 'display_position']);
@@ -72,14 +86,14 @@ class Beat extends Model
         foreach ($templateStops as $template) {
             $this->stops()->create([
                 'customer_id' => $template->customer_id,
-                'visit_date' => $dateString,
+                'beat_round_id' => $round->id,
                 'status' => BeatStop::STATUS_PLANNED,
                 'display_position' => $template->display_position,
             ]);
         }
 
         return $this->stops()
-            ->whereDate('visit_date', $dateString)
+            ->where('beat_round_id', $round->id)
             ->with('customer')
             ->get();
     }

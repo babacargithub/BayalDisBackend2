@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -79,20 +80,22 @@ class BeatStopAutoCompleteTest extends TestCase
         $this->assertNotNull($mondayStop->visited_at);
     }
 
-    public function test_sale_before_beat_day_generates_and_completes_next_occurrence(): void
+    public function test_sale_before_beat_day_completes_next_occurrence_when_round_already_exists(): void
     {
-        // Invoice on Sunday June 14, beat is Monday — must complete Monday June 15, not Sunday.
+        // Invoice on Sunday June 14, beat is Monday. When the Monday round was already
+        // explicitly created, the sale should complete the Monday stop — not a Sunday one.
         $customer = $this->makeCustomer();
         $beat = $this->makeMondayBeat();
         $this->addTemplateStop($beat, $customer);
 
-        $this->assertCount(0, BeatStop::whereNotNull('visit_date')->get());
+        // Pre-create the Monday round explicitly (as required — rounds are never auto-created).
+        $this->beatService->createRound($beat, self::MONDAY_NEXT);
 
         $this->beatService->completeRoundStopForCustomerOnDate($customer->id, self::SUNDAY_SALE);
 
         $mondayStop = BeatStop::where('customer_id', $customer->id)
-            ->whereDate('visit_date', self::MONDAY_NEXT)
-            ->whereNotNull('visit_date')
+            ->whereNotNull('beat_round_id')
+            ->whereHas('round', fn ($q) => $q->whereDate('planned_at', self::MONDAY_NEXT))
             ->firstOrFail();
 
         $this->assertEquals(BeatStop::STATUS_COMPLETED, $mondayStop->status);
@@ -102,16 +105,57 @@ class BeatStopAutoCompleteTest extends TestCase
         // No phantom stop created for the wrong day (Sunday).
         $this->assertNull(
             BeatStop::where('customer_id', $customer->id)
-                ->whereDate('visit_date', self::SUNDAY_SALE)
-                ->whereNotNull('visit_date')
+                ->whereHas('round', fn ($q) => $q->whereDate('planned_at', self::SUNDAY_SALE))
                 ->first()
         );
     }
 
-    public function test_sale_also_completes_all_past_planned_stops(): void
+    public function test_sale_does_not_create_next_occurrence_when_no_round_exists(): void
     {
-        // Customer had a planned stop on June 8 that was never visited.
-        // Invoice on Sunday June 14 → completes June 8 (past) AND June 15 (next upcoming).
+        // Invoice on Sunday June 14, beat is Monday. If no round was created for Monday,
+        // the sale must NOT auto-create one — it simply completes nothing for the future.
+        $customer = $this->makeCustomer();
+        $beat = $this->makeMondayBeat();
+        $this->addTemplateStop($beat, $customer);
+
+        $this->assertCount(0, BeatStop::whereNotNull('beat_round_id')->get());
+
+        $this->beatService->completeRoundStopForCustomerOnDate($customer->id, self::SUNDAY_SALE);
+
+        // No occurrence stops must have been created.
+        $this->assertCount(0, BeatStop::whereNotNull('beat_round_id')->get());
+    }
+
+    public function test_sale_completes_past_stop_and_next_occurrence_when_both_rounds_exist(): void
+    {
+        // Customer had a planned stop on June 8 that was never visited, and the June 15
+        // round was explicitly created. Invoice on Sunday June 14 → completes June 8 (past)
+        // AND June 15 (next upcoming, because the round was pre-created).
+        $customer = $this->makeCustomer();
+        $beat = $this->makeMondayBeat();
+        $this->addTemplateStop($beat, $customer);
+
+        $pastStop = $this->makeOccurrenceStop($beat, $customer, self::MONDAY_PAST);
+
+        // Pre-create the next Monday round (explicit creation required).
+        $this->beatService->createRound($beat, self::MONDAY_NEXT);
+
+        $this->beatService->completeRoundStopForCustomerOnDate($customer->id, self::SUNDAY_SALE);
+
+        $pastStop->refresh();
+        $this->assertEquals(BeatStop::STATUS_COMPLETED, $pastStop->status);
+
+        $nextStop = BeatStop::where('customer_id', $customer->id)
+            ->whereNotNull('beat_round_id')
+            ->whereHas('round', fn ($q) => $q->whereDate('planned_at', self::MONDAY_NEXT))
+            ->firstOrFail();
+        $this->assertEquals(BeatStop::STATUS_COMPLETED, $nextStop->status);
+    }
+
+    public function test_sale_completes_only_past_stop_when_next_round_does_not_exist(): void
+    {
+        // Customer had a planned stop on June 8. No round was created for June 15.
+        // Invoice on Sunday June 14 → completes June 8 but does NOT auto-create June 15.
         $customer = $this->makeCustomer();
         $beat = $this->makeMondayBeat();
         $this->addTemplateStop($beat, $customer);
@@ -123,11 +167,12 @@ class BeatStopAutoCompleteTest extends TestCase
         $pastStop->refresh();
         $this->assertEquals(BeatStop::STATUS_COMPLETED, $pastStop->status);
 
-        $nextStop = BeatStop::where('customer_id', $customer->id)
-            ->whereDate('visit_date', self::MONDAY_NEXT)
-            ->whereNotNull('visit_date')
-            ->firstOrFail();
-        $this->assertEquals(BeatStop::STATUS_COMPLETED, $nextStop->status);
+        // No June 15 stop should have been auto-created.
+        $this->assertNull(
+            BeatStop::whereNotNull('beat_round_id')
+                ->whereHas('round', fn ($q) => $q->whereDate('planned_at', self::MONDAY_NEXT))
+                ->first()
+        );
     }
 
     public function test_already_completed_stop_is_not_overridden(): void
@@ -221,16 +266,24 @@ class BeatStopAutoCompleteTest extends TestCase
             'beat_id' => $beat->id,
             'customer_id' => $customer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
         ]);
     }
 
     private function makeOccurrenceStop(Beat $beat, Customer $customer, string $date): BeatStop
     {
+        $round = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => $date],
+            [
+                'name' => $beat->name.' - '.$date,
+                'week_day' => $beat->day_of_week?->value,
+                'commercial_id' => $beat->commercial_id,
+            ],
+        );
+
         return BeatStop::create([
             'beat_id' => $beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $customer->id,
-            'visit_date' => $date,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
     }

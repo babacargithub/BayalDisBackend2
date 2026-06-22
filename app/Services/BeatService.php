@@ -7,6 +7,7 @@ use App\Data\Vente\VenteStatsFilter;
 use App\Enums\BeatStopStatus;
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Customer;
 use Carbon\Carbon;
@@ -35,14 +36,12 @@ readonly class BeatService
      *
      * Two categories are completed:
      *
-     * 1. **Past planned stops** — any occurrence stop with visit_date < $date that is
-     *    still planned. These represent rounds the customer didn't attend before this sale.
+     * 1. **Past planned stops** — any occurrence stop linked to a round with planned_at < $date
+     *    that is still planned. These represent rounds the customer didn't attend before this sale.
      *
      * 2. **The first upcoming occurrence** — the occurrence on the beat's next scheduled
-     *    day on or after $date. If $date falls on the beat's day (e.g. Monday sale on a
-     *    Monday beat) that same day's stop is used; otherwise the next matching weekday is
-     *    used (e.g. Sunday sale on a Monday beat → Monday of that week). The occurrence is
-     *    generated if it doesn't exist yet.
+     *    day on or after $date, but only if a round has already been explicitly created for
+     *    that date. Rounds are never auto-created here.
      *
      * Only planned stops are transitioned — completed or cancelled stops are untouched.
      */
@@ -56,23 +55,26 @@ readonly class BeatService
             // 1. Complete every past planned stop (missed rounds before this sale).
             BeatStop::where('beat_id', $beat->id)
                 ->where('customer_id', $customerId)
-                ->whereNotNull('visit_date')
-                ->whereDate('visit_date', '<', $saleDate->toDateString())
+                ->whereNotNull('beat_round_id')
+                ->whereHas('round', fn ($q) => $q->whereDate('planned_at', '<', $saleDate->toDateString()))
                 ->where('status', BeatStop::STATUS_PLANNED)
                 ->each(fn (BeatStop $stop) => $stop->complete([
                     'notes' => 'Terminé avec une vente',
                     'resulted_in_sale' => true,
                 ]));
 
-            // 2. Find the beat's next scheduled day on or after the sale date, generate
-            //    the occurrence stop if needed, and complete it.
+            // 2. Complete the planned stop on the beat's next scheduled date — only if a
+            //    round was already explicitly created for that date.
             $targetDate = $this->computeNextBeatDateOnOrAfter($beat, $saleDate);
-            $beat->getOrGenerateStopsForDate($targetDate);
+            $targetRound = $beat->findRoundForDate($targetDate);
+
+            if ($targetRound === null) {
+                continue;
+            }
 
             BeatStop::where('beat_id', $beat->id)
                 ->where('customer_id', $customerId)
-                ->whereDate('visit_date', $targetDate->toDateString())
-                ->whereNotNull('visit_date')
+                ->where('beat_round_id', $targetRound->id)
                 ->where('status', BeatStop::STATUS_PLANNED)
                 ->first()
                 ?->complete([
@@ -80,6 +82,27 @@ readonly class BeatService
                     'resulted_in_sale' => true,
                 ]);
         }
+    }
+
+    /**
+     * Explicitly create a BeatRound for the given date and pre-populate it with
+     * occurrence stops cloned from the beat's template roster.
+     */
+    public function createRound(Beat $beat, string $date): BeatRound
+    {
+        $parsedDate = Carbon::parse($date)->startOfDay();
+
+        $round = BeatRound::create([
+            'beat_id' => $beat->id,
+            'planned_at' => $parsedDate->toDateString(),
+            'name' => $beat->name.' - '.$parsedDate->toDateString(),
+            'week_day' => $beat->day_of_week?->value,
+            'commercial_id' => $beat->commercial_id,
+        ]);
+
+        $beat->getOrGenerateStopsForRound($round);
+
+        return $round;
     }
 
     /**
@@ -137,7 +160,7 @@ readonly class BeatService
     /**
      * Bulk-add customers to a beat's template roster (idempotent).
      *
-     * Each customer_id that does not already have a template stop (visit_date IS NULL)
+     * Each customer_id that does not already have a template stop (beat_round_id IS NULL)
      * for this beat gets a new one created. Customers already on the roster are silently
      * skipped — re-adding is never an error.
      *
@@ -159,7 +182,6 @@ readonly class BeatService
                     'beat_id' => $beat->id,
                     'customer_id' => $customerId,
                     'status' => BeatStop::STATUS_PLANNED,
-                    'visit_date' => null,
                 ]);
             }
 
@@ -203,10 +225,16 @@ readonly class BeatService
      */
     public function updateStopStatus(Beat $beat, string $date, int $stopId, string $status, ?string $notes): void
     {
+        $round = BeatRound::where('beat_id', $beat->id)
+            ->whereDate('planned_at', $date)
+            ->first();
+
+        if ($round === null) {
+            throw new ModelNotFoundException('Aucun round trouvé pour ce beat et cette date.');
+        }
+
         $stop = BeatStop::where('id', $stopId)
-            ->where('beat_id', $beat->id)
-            ->whereDate('visit_date', $date)
-            ->whereNotNull('visit_date')
+            ->where('beat_round_id', $round->id)
             ->first();
 
         if ($stop === null) {
@@ -291,67 +319,47 @@ readonly class BeatService
 
     public function getRoundsForBeat(Beat $beat): array
     {
-        $noSaleInClause = collect(BeatStopStatus::noSaleValues())
-            ->map(fn (string $value) => '"'.$value.'"')
-            ->implode(',');
+        return BeatRound::where('beat_id', $beat->id)
+            ->withCount([
+                'stops as total',
+                'stops as completed' => fn ($q) => $q->where('status', BeatStop::STATUS_COMPLETED),
+                'stops as cancelled' => fn ($q) => $q->where('status', BeatStop::STATUS_CANCELLED),
+                'stops as planned' => fn ($q) => $q->where('status', BeatStop::STATUS_PLANNED),
+                'stops as no_sale' => fn ($q) => $q->whereIn('status', BeatStopStatus::noSaleValues()),
+            ])
+            ->orderByDesc('planned_at')
+            ->get()
+            ->map(function ($round) {
+                $dateString = $this->castToDateString($round->planned_at);
 
-        $existingRounds = BeatStop::where('beat_id', $beat->id)
-            ->whereNotNull('visit_date')
-            ->selectRaw('visit_date')
-            ->selectRaw('COUNT(*) as total')
-            ->selectRaw('SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as completed')
-            ->selectRaw('SUM(CASE WHEN status = "cancelled" THEN 1 ELSE 0 END) as cancelled')
-            ->selectRaw('SUM(CASE WHEN status = "planned" THEN 1 ELSE 0 END) as planned')
-            ->selectRaw("SUM(CASE WHEN status IN ({$noSaleInClause}) THEN 1 ELSE 0 END) as no_sale")
-            ->groupBy('visit_date')
-            ->orderByDesc('visit_date')
-            ->get();
-
-        $existingDates = $existingRounds->pluck('visit_date')
-            ->map(fn ($d) => $this->castToDateString($d))
-            ->all();
-
-        $templateCustomerCount = $beat->templateStops()->count();
-        $upcomingDates = $this->computeUpcomingRoundDates($beat, 4, $existingDates);
-
-        $upcomingRounds = collect($upcomingDates)->map(fn (string $date) => [
-            'date' => $date,
-            'label' => $this->formatRoundLabel($date),
-            'status' => 'upcoming',
-            'total' => $templateCustomerCount,
-            'completed' => 0,
-            'cancelled' => 0,
-            'no_sale' => 0,
-            'planned' => $templateCustomerCount,
-        ]);
-
-        $pastRounds = $existingRounds->map(function ($row) {
-            $dateString = $this->castToDateString($row->visit_date);
-
-            return [
-                'date' => $dateString,
-                'label' => $this->formatRoundLabel($dateString),
-                'status' => $this->deriveRoundStatus($dateString, (int) $row->planned),
-                'total' => (int) $row->total,
-                'completed' => (int) $row->completed,
-                'cancelled' => (int) $row->cancelled,
-                'no_sale' => (int) $row->no_sale,
-                'planned' => (int) $row->planned,
-            ];
-        });
-
-        return $upcomingRounds->concat($pastRounds)
-            ->sortByDesc('date')
+                return [
+                    'id' => $round->id,
+                    'date' => $dateString,
+                    'label' => $this->formatRoundLabel($dateString),
+                    'status' => $this->deriveRoundStatus($dateString, (int) $round->planned),
+                    'total' => (int) $round->total,
+                    'completed' => (int) $round->completed,
+                    'cancelled' => (int) $round->cancelled,
+                    'no_sale' => (int) $round->no_sale,
+                    'planned' => (int) $round->planned,
+                ];
+            })
             ->values()
             ->all();
     }
 
-    public function getRoundCustomers(Beat $beat, string $date): array
+    public function getRoundCustomers(Beat $beat, string $date): ?array
     {
-        $beat->getOrGenerateStopsForDate(Carbon::parse($date)->startOfDay());
+        $parsedDate = Carbon::parse($date)->startOfDay();
+        $round = $beat->findRoundForDate($parsedDate);
 
-        $stops = BeatStop::where('beat_id', $beat->id)
-            ->whereDate('visit_date', $date)
+        if ($round === null) {
+            return null;
+        }
+
+        $beat->getOrGenerateStopsForRound($round);
+
+        $stops = BeatStop::where('beat_round_id', $round->id)
             ->with([
                 'customer:id,name,address,phone_number',
                 'customer.salesInvoices' => fn ($q) => $q->select('id', 'customer_id', 'total_amount', 'total_payments')
@@ -424,39 +432,6 @@ readonly class BeatService
     private function castToDateString(mixed $date): string
     {
         return $date instanceof Carbon ? $date->toDateString() : (string) $date;
-    }
-
-    private function computeUpcomingRoundDates(Beat $beat, int $count, array $existingDates): array
-    {
-        if ($beat->day_of_week === null) {
-            return [];
-        }
-
-        $carbonDayOfWeek = match ($beat->day_of_week) {
-            DayOfWeek::Monday => Carbon::MONDAY,
-            DayOfWeek::Tuesday => Carbon::TUESDAY,
-            DayOfWeek::Wednesday => Carbon::WEDNESDAY,
-            DayOfWeek::Thursday => Carbon::THURSDAY,
-            DayOfWeek::Friday => Carbon::FRIDAY,
-            DayOfWeek::Saturday => Carbon::SATURDAY,
-            DayOfWeek::Sunday => Carbon::SUNDAY,
-        };
-
-        $cursor = now()->startOfDay();
-        if ($cursor->dayOfWeek !== $carbonDayOfWeek) {
-            $cursor = $cursor->next($carbonDayOfWeek);
-        }
-
-        $upcoming = [];
-        while (count($upcoming) < $count) {
-            $dateString = $cursor->toDateString();
-            if (! in_array($dateString, $existingDates)) {
-                $upcoming[] = $dateString;
-            }
-            $cursor = $cursor->copy()->addWeek();
-        }
-
-        return $upcoming;
     }
 
     /**

@@ -93,7 +93,7 @@ class SectorController extends Controller
         $beats = $sector->beats()
             ->with(['commercial:id,name'])
             ->withCount(['stops as template_stops_count' => function ($query) {
-                $query->whereNull('visit_date');
+                $query->whereNull('beat_round_id');
             }])
             ->latest()
             ->get()

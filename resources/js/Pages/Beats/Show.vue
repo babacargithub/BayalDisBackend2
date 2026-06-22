@@ -85,8 +85,8 @@
                     <v-window v-model="activeTab">
                         <!-- Clients récurrents tab -->
                         <v-window-item value="clients">
-                            <!-- Search -->
-                            <div class="p-4 border-b">
+                            <!-- Top bar -->
+                            <div class="flex items-center justify-between p-4 border-b gap-4">
                                 <v-text-field
                                     v-model="searchQuery"
                                     label="Rechercher un client"
@@ -96,6 +96,14 @@
                                     variant="outlined"
                                     class="max-w-sm"
                                 />
+                                <v-btn
+                                    color="primary"
+                                    prepend-icon="mdi-account-plus"
+                                    size="small"
+                                    @click="openAddCustomersDialog"
+                                >
+                                    Ajouter des clients
+                                </v-btn>
                             </div>
 
                             <div class="px-4 py-2 border-b bg-gray-50">
@@ -104,46 +112,94 @@
                                 </p>
                             </div>
 
-                            <v-data-table
-                                :headers="clientHeaders"
-                                :items="filteredStops"
-                                density="compact"
-                                :items-per-page="filteredStops.length"
-                                :items-per-page-options="[filteredStops.length]"
-                                class="elevation-0"
+                            <!-- Draggable clients list -->
+                            <div v-if="filteredStops.length === 0" class="py-10 text-center text-gray-400">
+                                <v-icon icon="mdi-account-off-outline" size="40" class="mb-2" />
+                                <p class="text-sm">Aucun client récurrent.</p>
+                            </div>
+
+                            <div
+                                v-else
+                                class="divide-y"
+                                @dragover.prevent
                             >
-                                <template v-slot:item.customer.name="{ item }">
-                                    <div>
-                                        <div class="font-medium">{{ item.customer.name }}</div>
-                                        <div class="text-sm text-gray-500">{{ item.customer.address }}</div>
-                                        <div class="text-sm text-gray-500">{{ item.customer.phone_number }}</div>
+                                <div
+                                    v-for="(stop, index) in filteredStops"
+                                    :key="stop.id"
+                                    draggable="true"
+                                    class="flex items-center gap-3 px-4 py-3 transition-colors"
+                                    :class="dragOverIndex === index ? 'bg-blue-50 border-t-2 border-blue-400' : (index % 2 === 0 ? 'bg-white' : 'bg-gray-50')"
+                                    @dragstart="onDragStart(index)"
+                                    @dragenter.prevent="onDragEnter(index)"
+                                    @dragleave="onDragLeave"
+                                    @drop.prevent="onDrop(index)"
+                                    @dragend="onDragEnd"
+                                >
+                                    <!-- Drag handle -->
+                                    <v-icon
+                                        icon="mdi-drag-vertical"
+                                        size="20"
+                                        color="grey-lighten-1"
+                                        class="cursor-grab flex-shrink-0"
+                                    />
+
+                                    <!-- Position number -->
+                                    <span class="text-xs text-gray-400 w-5 text-center flex-shrink-0">{{ index + 1 }}</span>
+
+                                    <!-- Customer info -->
+                                    <div class="flex-1 min-w-0">
+                                        <div class="font-medium text-sm text-gray-900">{{ stop.customer.name }}</div>
+                                        <div class="text-xs text-gray-500 truncate">
+                                            <span v-if="stop.customer.address">{{ stop.customer.address }}</span>
+                                            <span v-if="stop.customer.phone_number" class="ml-2">{{ stop.customer.phone_number }}</span>
+                                        </div>
                                     </div>
-                                </template>
 
-                                <template v-slot:item.notes="{ item }">
-                                    <span class="text-gray-500 text-sm">{{ item.notes || '—' }}</span>
-                                </template>
+                                    <!-- Notes -->
+                                    <span v-if="stop.notes" class="text-xs text-gray-400 hidden sm:block truncate max-w-[160px]">{{ stop.notes }}</span>
 
-                                <template v-slot:item.actions="{ item }">
+                                    <!-- Delete -->
                                     <v-btn
                                         icon="mdi-delete"
                                         variant="text"
                                         color="error"
                                         size="small"
-                                        @click="confirmRemoveStop(item)"
+                                        class="flex-shrink-0"
+                                        @click.stop="confirmRemoveStop(stop)"
                                     />
-                                </template>
-                            </v-data-table>
+                                </div>
+                            </div>
+
+                            <!-- Saving indicator -->
+                            <div v-if="reorderSaving" class="px-4 py-2 bg-blue-50 border-t flex items-center gap-2 text-sm text-blue-600">
+                                <v-progress-circular indeterminate size="14" width="2" color="primary" />
+                                Enregistrement de l'ordre…
+                            </div>
                         </v-window-item>
 
                         <!-- Tournées tab -->
                         <v-window-item value="rounds">
+                            <!-- Top bar -->
+                            <div class="flex items-center justify-between px-6 py-3 border-b bg-gray-50">
+                                <p class="text-sm text-gray-500">
+                                    {{ rounds.length }} tournée(s) enregistrée(s)
+                                </p>
+                                <v-btn
+                                    color="primary"
+                                    prepend-icon="mdi-plus"
+                                    size="small"
+                                    @click="createRoundDialog = true"
+                                >
+                                    Nouvelle tournée
+                                </v-btn>
+                            </div>
+
                             <!-- Empty state -->
                             <div v-if="rounds.length === 0" class="pa-16 text-center text-grey">
                                 <v-icon icon="mdi-calendar-blank-outline" size="56" class="mb-4" />
                                 <p class="text-subtitle-1">Aucune tournée enregistrée pour ce beat.</p>
                                 <p class="text-body-2 mt-1">
-                                    Les tournées apparaîtront ici lorsqu'elles seront créées automatiquement le {{ batch.day_of_week_label?.toLowerCase() }}.
+                                    Les tournées apparaîtront ici une fois créées depuis l'application mobile.
                                 </p>
                             </div>
 
@@ -201,7 +257,7 @@
                                         </div>
                                     </div>
 
-                                    <!-- Right: progress + chevron -->
+                                    <!-- Right: progress + delete + chevron -->
                                     <div class="flex items-center gap-4">
                                         <!-- Progress bar + % -->
                                         <div v-if="round.total > 0" class="text-right hidden sm:block">
@@ -216,6 +272,14 @@
                                                 />
                                             </div>
                                         </div>
+                                        <v-btn
+                                            v-if="round.id"
+                                            icon="mdi-delete-outline"
+                                            variant="text"
+                                            color="error"
+                                            size="small"
+                                            @click.stop="confirmDeleteRound(round)"
+                                        />
                                         <v-icon icon="mdi-chevron-right" color="grey" />
                                     </div>
                                 </div>
@@ -225,6 +289,88 @@
                 </div>
             </div>
         </div>
+
+        <!-- Add Customers Dialog -->
+        <v-dialog v-model="addCustomersDialog" max-width="640px" scrollable>
+            <v-card>
+                <v-card-title class="d-flex align-center justify-space-between pa-4 border-b">
+                    <span class="text-h6">Ajouter des clients au beat</span>
+                    <v-btn icon="mdi-close" variant="text" size="small" @click="addCustomersDialog = false" />
+                </v-card-title>
+
+                <div class="px-4 pt-3 pb-2 border-b">
+                    <v-text-field
+                        v-model="addCustomersSearch"
+                        label="Rechercher"
+                        prepend-inner-icon="mdi-magnify"
+                        hide-details
+                        density="compact"
+                        variant="outlined"
+                        clearable
+                    />
+                </div>
+
+                <v-card-text class="pa-0" style="max-height: 400px;">
+                    <div v-if="filteredAvailableCustomers.length === 0" class="pa-8 text-center text-grey">
+                        <v-icon icon="mdi-account-off-outline" size="40" class="mb-2" />
+                        <p class="text-body-2">Aucun client disponible.</p>
+                    </div>
+                    <v-list v-else class="pa-0">
+                        <v-list-item
+                            v-for="customer in filteredAvailableCustomers"
+                            :key="customer.id"
+                            :value="customer.id"
+                            class="border-b"
+                            @click="toggleCustomerSelection(customer.id)"
+                        >
+                            <template #prepend>
+                                <v-checkbox-btn
+                                    :model-value="selectedCustomerIds.includes(customer.id)"
+                                    color="primary"
+                                    @click.stop="toggleCustomerSelection(customer.id)"
+                                />
+                            </template>
+                            <v-list-item-title class="font-weight-medium">{{ customer.name }}</v-list-item-title>
+                            <v-list-item-subtitle class="text-caption">
+                                <span v-if="customer.address">{{ customer.address }}</span>
+                                <span v-if="customer.phone_number" class="ml-2">{{ customer.phone_number }}</span>
+                                <v-chip
+                                    v-if="customer.current_beat"
+                                    size="x-small"
+                                    color="warning"
+                                    variant="tonal"
+                                    prepend-icon="mdi-swap-horizontal"
+                                    class="ml-2"
+                                >
+                                    {{ customer.current_beat.name }}
+                                </v-chip>
+                            </v-list-item-subtitle>
+                        </v-list-item>
+                    </v-list>
+                </v-card-text>
+
+                <v-card-actions class="pa-4 border-t d-flex flex-column align-start gap-1">
+                    <div v-if="selectedTransferCount > 0" class="text-caption text-warning d-flex align-center gap-1 w-100">
+                        <v-icon icon="mdi-alert" size="14" color="warning" />
+                        {{ selectedTransferCount }} client(s) seront transférés depuis un autre beat.
+                    </div>
+                    <div class="d-flex align-center w-100">
+                        <span class="text-caption text-grey">{{ selectedCustomerIds.length }} sélectionné(s)</span>
+                        <v-spacer />
+                        <v-btn variant="text" @click="addCustomersDialog = false">Annuler</v-btn>
+                        <v-btn
+                            color="primary"
+                            variant="flat"
+                            :disabled="selectedCustomerIds.length === 0"
+                            :loading="addingCustomers"
+                            @click="submitAddCustomers"
+                        >
+                            Ajouter
+                        </v-btn>
+                    </div>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <!-- Remove Stop Confirmation Dialog -->
         <v-dialog v-model="deleteDialog" max-width="500px">
@@ -253,12 +399,62 @@
             :beat-id="batch.id"
             :round-date="selectedRoundDate"
         />
+
+        <!-- Create Round Dialog -->
+        <v-dialog v-model="createRoundDialog" max-width="420px">
+            <v-card>
+                <v-card-title class="text-h6 pt-5 px-6">Nouvelle tournée</v-card-title>
+                <v-card-text class="px-6">
+                    <v-text-field
+                        v-model="createRoundForm.planned_at"
+                        label="Date de la tournée"
+                        type="date"
+                        :error-messages="createRoundErrors.planned_at"
+                        variant="outlined"
+                        density="compact"
+                    />
+                </v-card-text>
+                <v-card-actions class="px-6 pb-4">
+                    <v-spacer />
+                    <v-btn variant="text" @click="closeCreateRoundDialog">Annuler</v-btn>
+                    <v-btn color="primary" variant="flat" :loading="creatingRound" @click="submitCreateRound">
+                        Créer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Delete Round Confirmation Dialog -->
+        <v-dialog v-model="deleteRoundDialog" max-width="480px">
+            <v-card>
+                <v-card-title class="text-h6 pt-5 px-6">
+                    Supprimer la tournée
+                </v-card-title>
+                <v-card-text class="px-6">
+                    <p>
+                        Êtes-vous sûr de vouloir supprimer la tournée du
+                        <strong>{{ roundToDelete?.label }}</strong> ?
+                    </p>
+                    <p class="mt-2 text-sm text-gray-500">
+                        Tous les arrêts liés à cette tournée seront également supprimés. Cette action est irréversible.
+                    </p>
+                </v-card-text>
+                <v-card-actions class="px-6 pb-4">
+                    <v-spacer />
+                    <v-btn variant="text" @click="deleteRoundDialog = false">Annuler</v-btn>
+                    <v-btn color="error" variant="flat" :loading="deletingRound" @click="deleteRound">
+                        Supprimer
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </AuthenticatedLayout>
 </template>
 
 <script setup>
-import { Link, router } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Link, router, useForm } from '@inertiajs/vue3';
+import axios from 'axios';
+import { computed, ref, watch } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import BeatRoundDetailDialog from './Partials/BeatRoundDetailDialog.vue';
 
@@ -268,6 +464,10 @@ const props = defineProps({
         required: true,
     },
     rounds: {
+        type: Array,
+        default: () => [],
+    },
+    availableCustomers: {
         type: Array,
         default: () => [],
     },
@@ -282,9 +482,9 @@ const activeTab = ref('clients');
 const searchQuery = ref('');
 
 const filteredStops = computed(() => {
-    if (!searchQuery.value) return props.batch.visits;
+    if (!searchQuery.value) return localVisits.value;
     const query = searchQuery.value.toLowerCase();
-    return props.batch.visits.filter(
+    return localVisits.value.filter(
         (stop) =>
             stop.customer.name.toLowerCase().includes(query) ||
             (stop.customer.address && stop.customer.address.toLowerCase().includes(query)) ||
@@ -292,11 +492,120 @@ const filteredStops = computed(() => {
     );
 });
 
-const clientHeaders = [
-    { title: 'Client', key: 'customer.name', align: 'start', sortable: true },
-    { title: 'Notes', key: 'notes', align: 'start' },
-    { title: 'Actions', key: 'actions', align: 'center', sortable: false },
-];
+// ─── Drag-to-reorder ─────────────────────────────────────────────────────────
+
+const localVisits = ref([...props.batch.visits]);
+const dragSourceIndex = ref(null);
+const dragOverIndex = ref(null);
+const reorderSaving = ref(false);
+
+watch(() => props.batch.visits, (newVisits) => {
+    localVisits.value = [...newVisits];
+});
+
+const onDragStart = (index) => {
+    dragSourceIndex.value = index;
+};
+
+const onDragEnter = (index) => {
+    if (dragSourceIndex.value !== null && dragSourceIndex.value !== index) {
+        dragOverIndex.value = index;
+    }
+};
+
+const onDragLeave = () => {
+    // keep dragOverIndex until drop or end to avoid flicker
+};
+
+const onDrop = (targetIndex) => {
+    if (dragSourceIndex.value === null || dragSourceIndex.value === targetIndex) return;
+
+    const sourceStop = filteredStops.value[dragSourceIndex.value];
+    const targetStop = filteredStops.value[targetIndex];
+
+    const sourceLocalIndex = localVisits.value.findIndex((s) => s.id === sourceStop.id);
+    const targetLocalIndex = localVisits.value.findIndex((s) => s.id === targetStop.id);
+
+    const items = [...localVisits.value];
+    const [moved] = items.splice(sourceLocalIndex, 1);
+    items.splice(targetLocalIndex, 0, moved);
+    localVisits.value = items;
+
+    dragOverIndex.value = null;
+    dragSourceIndex.value = null;
+    saveReorder();
+};
+
+const onDragEnd = () => {
+    dragSourceIndex.value = null;
+    dragOverIndex.value = null;
+};
+
+const saveReorder = () => {
+    reorderSaving.value = true;
+    const positions = localVisits.value.map((stop, index) => ({
+        stop_id: stop.id,
+        display_position: index,
+    }));
+    axios.put(route('beats.reorder-customers', props.batch.id), { positions })
+        .finally(() => {
+            reorderSaving.value = false;
+        });
+};
+
+// ─── Add customers ────────────────────────────────────────────────────────────
+
+const addCustomersDialog = ref(false);
+const addCustomersSearch = ref('');
+const selectedCustomerIds = ref([]);
+const addingCustomers = ref(false);
+
+const selectedTransferCount = computed(() =>
+    props.availableCustomers.filter(
+        (c) => selectedCustomerIds.value.includes(c.id) && c.current_beat !== null
+    ).length
+);
+
+const filteredAvailableCustomers = computed(() => {
+    if (!addCustomersSearch.value) return props.availableCustomers;
+    const query = addCustomersSearch.value.toLowerCase();
+    return props.availableCustomers.filter(
+        (c) =>
+            c.name.toLowerCase().includes(query) ||
+            (c.address && c.address.toLowerCase().includes(query)) ||
+            (c.phone_number && c.phone_number.toLowerCase().includes(query))
+    );
+});
+
+const openAddCustomersDialog = () => {
+    selectedCustomerIds.value = [];
+    addCustomersSearch.value = '';
+    addCustomersDialog.value = true;
+};
+
+const toggleCustomerSelection = (customerId) => {
+    const index = selectedCustomerIds.value.indexOf(customerId);
+    if (index === -1) {
+        selectedCustomerIds.value.push(customerId);
+    } else {
+        selectedCustomerIds.value.splice(index, 1);
+    }
+};
+
+const submitAddCustomers = () => {
+    addingCustomers.value = true;
+    router.post(route('beats.add-customers', props.batch.id), { customer_ids: selectedCustomerIds.value }, {
+        onSuccess: () => {
+            addCustomersDialog.value = false;
+            selectedCustomerIds.value = [];
+        },
+        onFinish: () => {
+            addingCustomers.value = false;
+        },
+    });
+};
+
+// ─── Remove stop ─────────────────────────────────────────────────────────────
 
 const deleteDialog = ref(false);
 const stopToDelete = ref(null);
@@ -317,7 +626,7 @@ const removeStop = () => {
 
 // ─── Rounds tab ───────────────────────────────────────────────────────────────
 
-const pastRoundsCount = computed(() => props.rounds.filter((r) => r.status !== 'upcoming').length);
+const pastRoundsCount = computed(() => props.rounds.filter((r) => r.status === 'done' || r.status === 'in_progress').length);
 
 const roundDetailDialogOpen = ref(false);
 const selectedRoundDate = ref(null);
@@ -325,6 +634,60 @@ const selectedRoundDate = ref(null);
 const openRoundDetail = (round) => {
     selectedRoundDate.value = round.date;
     roundDetailDialogOpen.value = true;
+};
+
+// ─── Create Round ─────────────────────────────────────────────────────────────
+
+const createRoundDialog = ref(false);
+const creatingRound = ref(false);
+const createRoundForm = useForm({ planned_at: '' });
+const createRoundErrors = ref({});
+
+const closeCreateRoundDialog = () => {
+    createRoundDialog.value = false;
+    createRoundForm.reset();
+    createRoundErrors.value = {};
+};
+
+const submitCreateRound = () => {
+    creatingRound.value = true;
+    createRoundErrors.value = {};
+    router.post(route('beats.rounds.store', props.batch.id), { planned_at: createRoundForm.planned_at }, {
+        onSuccess: () => {
+            createRoundDialog.value = false;
+            createRoundForm.reset();
+        },
+        onError: (errors) => {
+            createRoundErrors.value = errors;
+        },
+        onFinish: () => {
+            creatingRound.value = false;
+        },
+    });
+};
+
+// ─── Delete Round ──────────────────────────────────────────────────────────────
+
+const deleteRoundDialog = ref(false);
+const roundToDelete = ref(null);
+const deletingRound = ref(false);
+
+const confirmDeleteRound = (round) => {
+    roundToDelete.value = round;
+    deleteRoundDialog.value = true;
+};
+
+const deleteRound = () => {
+    deletingRound.value = true;
+    router.delete(route('beats.rounds.destroy', [props.batch.id, roundToDelete.value.id]), {
+        onSuccess: () => {
+            deleteRoundDialog.value = false;
+            roundToDelete.value = null;
+        },
+        onFinish: () => {
+            deletingRound.value = false;
+        },
+    });
 };
 
 const roundStatusColor = (status) => {

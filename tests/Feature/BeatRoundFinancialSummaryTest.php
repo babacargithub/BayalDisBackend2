@@ -71,6 +71,9 @@ class BeatRoundFinancialSummaryTest extends TestCase
             'day_of_week' => DayOfWeek::Wednesday->value,
             'commercial_id' => $this->commercial->id,
         ]);
+
+        // Rounds must be explicitly created — they are never auto-generated.
+        $this->beatService->createRound($this->beat, self::ROUND_DATE);
     }
 
     // =========================================================================
@@ -183,7 +186,6 @@ class BeatRoundFinancialSummaryTest extends TestCase
             'beat_id' => $this->beat->id,
             'customer_id' => $customer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
         ]);
     }
 

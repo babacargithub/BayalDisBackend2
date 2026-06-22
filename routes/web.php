@@ -115,11 +115,14 @@ Route::middleware('auth')->group(function () {
         Route::put('/{beat}', [BeatStopController::class, 'update'])->name('update');
         Route::delete('/{beat}', [BeatStopController::class, 'destroy'])->name('destroy');
         Route::post('/{beat}/add-customers', [BeatStopController::class, 'addCustomers'])->name('add-customers');
+        Route::put('/{beat}/reorder-customers', [BeatStopController::class, 'reorderCustomers'])->name('reorder-customers');
         Route::get('/{beat}/pdf', [BeatStopController::class, 'exportPdf'])->name('pdf');
         Route::get('/{beat}/history', [BeatStopController::class, 'getHistory'])->name('history');
         Route::get('/{beat}/left-out-customers', [BeatStopController::class, 'getLeftOutCustomersForDate'])->name('left-out-customers');
         Route::get('/{beat}/left-out-customers/pdf', [BeatStopController::class, 'exportLeftOutCustomersPdf'])->name('left-out-customers.pdf');
         Route::get('/{beat}/rounds/{date}', [BeatStopController::class, 'getRoundDetail'])->name('rounds.detail');
+        Route::post('/{beat}/rounds', [BeatStopController::class, 'storeRound'])->name('rounds.store');
+        Route::delete('/{beat}/rounds/{beatRound}', [BeatStopController::class, 'destroyRound'])->name('rounds.destroy');
 
         // Beat Stops
         Route::get('/beat-stops/{beatStop}', [BeatController::class, 'show'])->name('beat-stops.show');

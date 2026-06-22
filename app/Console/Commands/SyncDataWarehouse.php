@@ -894,7 +894,7 @@ class SyncDataWarehouse extends Command
                 (`visit_date_key`, `commercial_id`, `customer_id`,
                  `beat_stop_id`, `beat_name`, `visit_status`, `resulted_in_sale`)
             SELECT
-                CAST(DATE_FORMAT(bs.`visit_date`, '%Y%m%d') AS UNSIGNED),
+                CAST(DATE_FORMAT(br.`planned_at`, '%Y%m%d') AS UNSIGNED),
                 b.`commercial_id`,
                 bs.`customer_id`,
                 bs.`id`,
@@ -903,7 +903,8 @@ class SyncDataWarehouse extends Command
                 bs.`resulted_in_sale`
             FROM {$this->src('beat_stops')} bs
             JOIN {$this->src('beats')} b ON b.`id` = bs.`beat_id`
-            WHERE bs.`visit_date` IS NOT NULL
+            JOIN {$this->src('beat_rounds')} br ON br.`id` = bs.`beat_round_id`
+            WHERE bs.`beat_round_id` IS NOT NULL
         ");
     }
 

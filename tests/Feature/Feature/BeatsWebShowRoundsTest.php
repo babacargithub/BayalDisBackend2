@@ -4,6 +4,7 @@ namespace Tests\Feature\Feature;
 
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -69,12 +70,11 @@ class BeatsWebShowRoundsTest extends TestCase
             'commercial_id' => $this->commercial->id,
         ]);
 
-        // Template stop (no visit_date — defines recurring roster)
+        // Template stop (no round — defines recurring roster)
         BeatStop::create([
             'beat_id' => $this->beat->id,
             'customer_id' => $this->customer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
         ]);
     }
 
@@ -98,7 +98,7 @@ class BeatsWebShowRoundsTest extends TestCase
             );
     }
 
-    public function test_show_page_rounds_prop_includes_upcoming_round(): void
+    public function test_show_page_rounds_prop_is_empty_when_no_rounds_created(): void
     {
         $response = $this->actingAs($this->user)
             ->get(route('beats.show', $this->beat));
@@ -106,18 +106,23 @@ class BeatsWebShowRoundsTest extends TestCase
         $response->assertOk();
 
         $rounds = $response->original->getData()['page']['props']['rounds'];
-        $this->assertNotEmpty($rounds);
-
-        $upcomingRounds = array_filter($rounds, fn ($r) => $r['status'] === 'upcoming');
-        $this->assertCount(4, $upcomingRounds, 'Expected exactly 4 upcoming rounds when template stops exist');
+        $this->assertEmpty($rounds, 'Expected no rounds when none have been explicitly created');
     }
 
     public function test_show_page_rounds_includes_past_round_when_occurrence_stops_exist(): void
     {
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => DayOfWeek::Monday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.self::ROUND_DATE,
+        ]);
+
         BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $this->customer->id,
-            'visit_date' => self::ROUND_DATE,
             'status' => BeatStop::STATUS_COMPLETED,
         ]);
 
@@ -143,10 +148,18 @@ class BeatsWebShowRoundsTest extends TestCase
 
     public function test_get_round_detail_returns_json_with_correct_structure(): void
     {
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => DayOfWeek::Monday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.self::ROUND_DATE,
+        ]);
+
         BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $this->customer->id,
-            'visit_date' => self::ROUND_DATE,
             'status' => BeatStop::STATUS_COMPLETED,
             'visited_at' => Carbon::parse(self::ROUND_DATE)->setTime(10, 30),
         ]);
@@ -181,17 +194,25 @@ class BeatsWebShowRoundsTest extends TestCase
             'commercial_id' => $this->commercial->id,
         ]);
 
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => DayOfWeek::Monday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.self::ROUND_DATE,
+        ]);
+
         BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $this->customer->id,
-            'visit_date' => self::ROUND_DATE,
             'status' => BeatStop::STATUS_COMPLETED,
         ]);
 
         BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $anotherCustomer->id,
-            'visit_date' => self::ROUND_DATE,
             'status' => BeatStop::STATUS_CANCELLED,
         ]);
 
@@ -199,7 +220,6 @@ class BeatsWebShowRoundsTest extends TestCase
         BeatStop::create([
             'beat_id' => $this->beat->id,
             'customer_id' => $anotherCustomer->id,
-            'visit_date' => null,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
@@ -218,10 +238,18 @@ class BeatsWebShowRoundsTest extends TestCase
 
     public function test_get_round_detail_customers_include_required_fields(): void
     {
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => DayOfWeek::Monday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.self::ROUND_DATE,
+        ]);
+
         BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $this->customer->id,
-            'visit_date' => self::ROUND_DATE,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 

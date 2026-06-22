@@ -98,7 +98,8 @@ class BeatController extends Controller
 
         $beatStop = BeatStop::where('customer_id', $validated['customer_id'])
             ->where('status', BeatStop::STATUS_PLANNED)
-            ->whereDate('visit_date', now()->toDateString())
+            ->whereNotNull('beat_round_id')
+            ->whereHas('round', fn ($q) => $q->whereDate('planned_at', now()->toDateString()))
             ->first();
 
         if (! $beatStop) {

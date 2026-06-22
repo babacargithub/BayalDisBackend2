@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/beats/{beat}/customers/reorder', [ApiCustomerVisitController::class, 'reorderBeatCustomers']);
     Route::delete('/beats/{beat}/customers/{customer}', [ApiCustomerVisitController::class, 'removeCustomerFromBeat']);
     Route::get('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'listBeatRounds']);
+    Route::post('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'createBeatRound']);
     Route::get('/beats/{beat}/rounds/{date}/customers', [ApiCustomerVisitController::class, 'listBeatRoundCustomers']);
     Route::patch('/beats/{beat}/rounds/{date}/stops/{stop}', [ApiCustomerVisitController::class, 'updateStopStatus']);
 

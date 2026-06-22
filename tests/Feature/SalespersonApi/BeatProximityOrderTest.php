@@ -10,7 +10,6 @@ use App\Models\Customer;
 use App\Models\Team;
 use App\Models\User;
 use App\Services\BeatService;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -145,11 +144,11 @@ class BeatProximityOrderTest extends TestCase
 
         $this->beatService->addCustomersToBeat($this->beat, [$farCustomer->id, $closeCustomer->id]);
 
-        // Generate occurrence stops for a future Monday.
-        $this->beat->getOrGenerateStopsForDate(Carbon::parse('2026-06-15')->startOfDay());
+        // Generate occurrence stops for a future Monday via explicit round creation.
+        $this->beatService->createRound($this->beat, '2026-06-15');
 
-        $closeOccurrence = BeatStop::where('customer_id', $closeCustomer->id)->whereNotNull('visit_date')->firstOrFail();
-        $farOccurrence = BeatStop::where('customer_id', $farCustomer->id)->whereNotNull('visit_date')->firstOrFail();
+        $closeOccurrence = BeatStop::where('customer_id', $closeCustomer->id)->whereNotNull('beat_round_id')->firstOrFail();
+        $farOccurrence = BeatStop::where('customer_id', $farCustomer->id)->whereNotNull('beat_round_id')->firstOrFail();
 
         $this->assertEquals(0, $closeOccurrence->display_position);
         $this->assertEquals(1, $farOccurrence->display_position);
@@ -183,7 +182,6 @@ class BeatProximityOrderTest extends TestCase
                 'beat_id' => $this->beat->id,
                 'customer_id' => $customer->id,
                 'status' => BeatStop::STATUS_PLANNED,
-                'visit_date' => null,
                 // display_position intentionally omitted → NULL
             ]);
         }
@@ -225,7 +223,7 @@ class BeatProximityOrderTest extends TestCase
         foreach ($expectedPositionsByCustomerId as $customerId => $expectedPosition) {
             $stop = BeatStop::where('beat_id', $this->beat->id)
                 ->where('customer_id', $customerId)
-                ->whereNull('visit_date')
+                ->whereNull('beat_round_id')
                 ->firstOrFail();
 
             $this->assertEquals(

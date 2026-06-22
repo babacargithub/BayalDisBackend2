@@ -5,6 +5,7 @@ namespace Tests\Feature\SalespersonApi;
 use App\Enums\BeatStopStatus;
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -141,10 +142,18 @@ class UpdateBeatStopStatusTest extends TestCase
     public function test_stop_on_different_date_returns_404(): void
     {
         // Stop exists but on a different date than the route requests
+        $differentDate = '2025-06-11';
+        $roundForDifferentDate = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => $differentDate,
+            'week_day' => DayOfWeek::Wednesday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.$differentDate,
+        ]);
         $stopOnDifferentDate = BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $roundForDifferentDate->id,
             'customer_id' => $this->makeCustomer()->id,
-            'visit_date' => '2025-06-11',
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
@@ -195,7 +204,14 @@ class UpdateBeatStopStatusTest extends TestCase
             'beat_id' => $this->beat->id,
             'customer_id' => $customer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
+        ]);
+
+        BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => $this->beat->day_of_week?->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => $this->beat->name.' - '.self::ROUND_DATE,
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
@@ -275,7 +291,14 @@ class UpdateBeatStopStatusTest extends TestCase
             'beat_id' => $this->beat->id,
             'customer_id' => $customer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
+        ]);
+
+        BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => $this->beat->day_of_week?->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => $this->beat->name.' - '.self::ROUND_DATE,
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
@@ -308,32 +331,36 @@ class UpdateBeatStopStatusTest extends TestCase
             'beat_id' => $this->beat->id,
             'customer_id' => $customerA->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
         ]);
         BeatStop::create([
             'beat_id' => $this->beat->id,
             'customer_id' => $customerB->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
         ]);
 
-        $roundDate = self::ROUND_DATE;
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => DayOfWeek::Wednesday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.self::ROUND_DATE,
+        ]);
 
         BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $customerA->id,
             'status' => BeatStop::STATUS_STOCK_RESTANT,
-            'visit_date' => $roundDate,
         ]);
         BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $customerB->id,
             'status' => BeatStop::STATUS_DETTE_NON_ACCEPTEE,
-            'visit_date' => $roundDate,
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
-            "/api/beats/{$this->beat->id}/rounds/{$roundDate}/customers",
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
         );
 
         $response->assertOk()
@@ -351,10 +378,20 @@ class UpdateBeatStopStatusTest extends TestCase
         string $status = BeatStop::STATUS_PLANNED,
         ?Beat $beat = null,
     ): BeatStop {
+        $targetBeat = $beat ?? $this->beat;
+        $round = BeatRound::firstOrCreate(
+            ['beat_id' => $targetBeat->id, 'planned_at' => self::ROUND_DATE],
+            [
+                'name' => $targetBeat->name.' - '.self::ROUND_DATE,
+                'week_day' => $targetBeat->day_of_week?->value,
+                'commercial_id' => $targetBeat->commercial_id,
+            ],
+        );
+
         return BeatStop::create([
-            'beat_id' => ($beat ?? $this->beat)->id,
+            'beat_id' => $targetBeat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $this->makeCustomer()->id,
-            'visit_date' => self::ROUND_DATE,
             'status' => $status,
         ]);
     }
