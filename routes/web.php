@@ -202,6 +202,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/{client}', [CustomerController::class, 'show'])->name('show');
         Route::put('/{client}', [CustomerController::class, 'update'])->name('update');
         Route::delete('/{client}', [CustomerController::class, 'destroy'])->name('destroy');
+        Route::post('/{client}/prospection-events', [CustomerController::class, 'storeProspectionEvent'])->name('prospection-events.store');
+        Route::get('/{client}/invoices', [CustomerController::class, 'customerInvoicesJson'])->name('invoices');
     });
     Route::resource('customer-categories', CustomerCategoryController::class);
     Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');

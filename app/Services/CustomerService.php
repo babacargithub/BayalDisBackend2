@@ -4,11 +4,22 @@ namespace App\Services;
 
 use App\Models\Commercial;
 use App\Models\Customer;
+use App\Repositories\CustomerRepository;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
+use Illuminate\Database\Eloquent\Collection;
 
 class CustomerService
 {
+    public function __construct(private readonly CustomerRepository $customerRepository) {}
+
+    /**
+     * Return all customers visible to the given commercial, served from cache.
+     */
+    public function getCustomersForCommercial(Commercial $commercial): Collection
+    {
+        return $this->customerRepository->getAllForCommercial($commercial);
+    }
+
     /**
      * Returns a base query of customers visible to the given commercial.
      *
@@ -41,21 +52,62 @@ class CustomerService
     }
 
     /**
-     * Create a new customer assigned to the given commercial.
+     * Create a new customer assigned to the given commercial (mobile API path).
      */
     public function createCustomer(Commercial $commercial, array $validatedData): Customer
     {
-        return $commercial->customers()->create($validatedData);
+        $customer = $commercial->customers()->create($validatedData);
+        $this->customerRepository->invalidateAllCaches();
+
+        return $customer;
     }
 
     /**
-     * Update an existing customer with the given data.
+     * Create a customer with tag associations (back-office path).
+     *
+     * @param  int[]  $tagIds
+     */
+    public function storeCustomerWithTags(array $validatedData, array $tagIds): Customer
+    {
+        $customer = Customer::create($validatedData);
+        $customer->tags()->sync($tagIds);
+        $this->customerRepository->invalidateAllCaches();
+
+        return $customer;
+    }
+
+    /**
+     * Update an existing customer with the given data (mobile API path).
      */
     public function updateCustomer(Customer $customer, array $validatedData): Customer
     {
         $customer->update($validatedData);
+        $this->customerRepository->invalidateAllCaches();
 
         return $customer->fresh();
+    }
+
+    /**
+     * Update a customer with tag associations (back-office path).
+     *
+     * @param  int[]  $tagIds
+     */
+    public function updateCustomerWithTags(Customer $customer, array $validatedData, array $tagIds): Customer
+    {
+        $customer->update($validatedData);
+        $customer->tags()->sync($tagIds);
+        $this->customerRepository->invalidateAllCaches();
+
+        return $customer->fresh();
+    }
+
+    /**
+     * Delete a customer and invalidate the customer cache.
+     */
+    public function deleteCustomer(Customer $customer): void
+    {
+        $customer->delete();
+        $this->customerRepository->invalidateAllCaches();
     }
 
     /**

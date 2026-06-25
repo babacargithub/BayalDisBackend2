@@ -39,7 +39,7 @@ class ApiCustomerController extends Controller
             $todayCount = $this->customerService->getTodayCustomersCount($commercial);
         }
 
-        $customers = $this->customerService->getCustomersQueryForCommercial($commercial)->get();
+        $customers = $this->customerService->getCustomersForCommercial($commercial);
 
         return response()->json([
             'customers' => $customers,
@@ -191,7 +191,7 @@ class ApiCustomerController extends Controller
         $overdueCount = SalesInvoice::where('status', '<>', SalesInvoiceStatus::FullyPaid->value)
             ->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
 //            ->whereHas('customer', fn ($query) => $query->where('commercial_id', $commercial->id))
-                //TODO create global filter in SalesInvoice
+                // TODO create global filter in SalesInvoice
             ->whereDate('created_at', '>=', '2026-03-29')
             ->whereNotNull('should_be_paid_at')
             ->whereDate('should_be_paid_at', '<', now()->toDateString())
