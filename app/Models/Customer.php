@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Customer extends Model
 {
@@ -23,6 +24,7 @@ class Customer extends Model
         'description',
         'is_prospect',
         'customer_category_id',
+        'current_prospect_status',
     ];
 
     protected $casts = [
@@ -30,7 +32,6 @@ class Customer extends Model
         'updated_at' => 'datetime',
         'is_prospect' => 'boolean',
     ];
-
 
     public function commercial(): BelongsTo
     {
@@ -119,6 +120,16 @@ class Customer extends Model
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(CustomerTag::class);
+    }
+
+    public function prospectionEvents(): HasMany
+    {
+        return $this->hasMany(CustomerProspectionEvent::class)->latest();
+    }
+
+    public function latestProspectionEvent(): HasOne
+    {
+        return $this->hasOne(CustomerProspectionEvent::class)->latestOfMany();
     }
 
     public function getHasDebtAttribute(): bool

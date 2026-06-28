@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ApiSalesInvoiceController;
 use App\Http\Controllers\Api\ApiVersementController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BeatRoundController as ApiCustomerVisitController;
+use App\Http\Controllers\Api\CustomerProspectionEventController;
 use App\Http\Controllers\BeatController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProductController;
@@ -31,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/beats/{beat}/customers/reorder', [ApiCustomerVisitController::class, 'reorderBeatCustomers']);
     Route::delete('/beats/{beat}/customers/{customer}', [ApiCustomerVisitController::class, 'removeCustomerFromBeat']);
     Route::get('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'listBeatRounds']);
+    Route::post('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'createBeatRound']);
     Route::get('/beats/{beat}/rounds/{date}/customers', [ApiCustomerVisitController::class, 'listBeatRoundCustomers']);
     Route::patch('/beats/{beat}/rounds/{date}/stops/{stop}', [ApiCustomerVisitController::class, 'updateStopStatus']);
 
@@ -72,6 +74,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // Customer history
         Route::get('customers/{customer}/ventes', [ApiCustomerController::class, 'getCustomerVentes']);
         Route::get('customers/{customer}/invoices', [ApiCustomerController::class, 'getCustomerInvoices']);
+
+        // Customer prospection events
+        Route::post('customers/{customer}/prospection-events', [CustomerProspectionEventController::class, 'store'])->name('salesperson.customers.prospection-events.store');
+        Route::get('customers/{customer}/prospection-events', [CustomerProspectionEventController::class, 'index'])->name('salesperson.customers.prospection-events.index');
 
         // Vente payment
         Route::post('ventes/{vente}/pay', [ApiSalesInvoiceController::class, 'paySalesInvoice']);

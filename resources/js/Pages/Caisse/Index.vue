@@ -6,6 +6,10 @@
             <div class="flex flex-wrap justify-between items-center gap-2">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight">Gestion des Caisses</h2>
                 <div class="flex flex-wrap gap-2">
+                    <v-btn color="success" variant="tonal" @click="openEntreeDeCaisseDialog">
+                        <v-icon start>mdi-cash-plus</v-icon>
+                        <span class="hidden sm:inline">Entrée de caisse</span>
+                    </v-btn>
                     <v-btn color="error" variant="tonal" @click="openSortieDeCaisseDialog">
                         <v-icon start>mdi-cash-minus</v-icon>
                         <span class="hidden sm:inline">Sortie de caisse</span>
@@ -566,6 +570,92 @@
                 </v-card-actions>
             </v-card>
         </v-dialog>
+        <!-- Entrée de caisse dialog -->
+        <v-dialog v-model="entreeDeCaisseDialog" max-width="520px">
+            <v-card>
+                <v-card-title class="text-h6 pt-5 px-6">Entrée de caisse</v-card-title>
+                <v-card-text class="px-6">
+                    <div class="space-y-4">
+                        <!-- Destination caisse -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Vers la caisse</label>
+                            <select
+                                v-model="entreeForm.caisse_id"
+                                class="block w-full rounded-md border border-gray-300 shadow-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            >
+                                <option value="">Sélectionner une caisse</option>
+                                <option
+                                    v-for="caisse in nonCommercialCaisses"
+                                    :key="caisse.id"
+                                    :value="caisse.id"
+                                >
+                                    {{ caisse.name }} — {{ formatAmount(caisse.balance) }}
+                                </option>
+                            </select>
+                            <p v-if="entreeForm.errors.caisse_id" class="mt-1 text-sm text-red-600">{{ entreeForm.errors.caisse_id }}</p>
+                        </div>
+
+                        <!-- Amount -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Montant (F CFA)</label>
+                            <input
+                                v-model.number="entreeForm.amount"
+                                type="number"
+                                min="1"
+                                class="block w-full rounded-md border border-gray-300 shadow-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                placeholder="Ex: 376 998"
+                            />
+                            <p v-if="entreeForm.errors.amount" class="mt-1 text-sm text-red-600">{{ entreeForm.errors.amount }}</p>
+                        </div>
+
+                        <!-- Label -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Libellé</label>
+                            <input
+                                v-model="entreeForm.label"
+                                type="text"
+                                class="block w-full rounded-md border border-gray-300 shadow-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                                placeholder="Ex: Emprunt partenaire, Apport capital..."
+                            />
+                            <p v-if="entreeForm.errors.label" class="mt-1 text-sm text-red-600">{{ entreeForm.errors.label }}</p>
+                        </div>
+
+                        <!-- Source account -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Compte à créditer</label>
+                            <select
+                                v-model="entreeForm.account_id"
+                                class="block w-full rounded-md border border-gray-300 shadow-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                            >
+                                <option value="">Sélectionner un compte</option>
+                                <option
+                                    v-for="account in creditableAccounts"
+                                    :key="account.id"
+                                    :value="account.id"
+                                >
+                                    {{ account.name }} — {{ formatAmount(account.balance) }}
+                                </option>
+                            </select>
+                            <p v-if="entreeForm.errors.account_id" class="mt-1 text-sm text-red-600">{{ entreeForm.errors.account_id }}</p>
+                        </div>
+                    </div>
+                </v-card-text>
+                <v-card-actions class="px-6 pb-5">
+                    <v-spacer />
+                    <v-btn variant="text" @click="entreeDeCaisseDialog = false">Annuler</v-btn>
+                    <v-btn
+                        color="success"
+                        variant="flat"
+                        :loading="entreeForm.processing"
+                        :disabled="!entreeDeCaisseFormIsValid"
+                        @click="submitEntreeDeCaisse"
+                    >
+                        Confirmer l'entrée
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <!-- Sortie de caisse dialog -->
         <v-dialog v-model="sortieDeCaisseDialog" max-width="560px">
             <v-card>
@@ -848,6 +938,7 @@ const props = defineProps({
     totalCaissesBalance: Number,
     totalAccountsBalance: Number,
     debitableAccounts: Array,
+    creditableAccounts: Array,
 });
 
 const balanceDifference = computed(() => props.totalCaissesBalance - props.totalAccountsBalance);
@@ -889,6 +980,38 @@ const resetReconciliationAmounts = () => {
         cashInHand: null,
         totalDebtsOwedToOthers: null,
     };
+};
+
+// ─── Entrée de caisse ──────────────────────────────────────────────────────
+const entreeDeCaisseDialog = ref(false);
+
+const entreeForm = useForm({
+    caisse_id: '',
+    account_id: '',
+    amount: '',
+    label: '',
+});
+
+const entreeDeCaisseFormIsValid = computed(() =>
+    entreeForm.caisse_id !== '' &&
+    entreeForm.account_id !== '' &&
+    entreeForm.amount > 0 &&
+    entreeForm.label.trim() !== ''
+);
+
+const openEntreeDeCaisseDialog = () => {
+    entreeForm.reset();
+    entreeDeCaisseDialog.value = true;
+};
+
+const submitEntreeDeCaisse = () => {
+    entreeForm.post(route('caisses.entree-de-caisse'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            entreeDeCaisseDialog.value = false;
+            entreeForm.reset();
+        },
+    });
 };
 
 // ─── Sortie de caisse ──────────────────────────────────────────────────────

@@ -251,7 +251,41 @@ class BeatRoundController extends Controller
             return response()->json(['message' => 'Format de date invalide (YYYY-MM-DD requis)'], 422);
         }
 
-        return response()->json(['data' => $this->beatService->getRoundCustomers($beat, $date)]);
+        $data = $this->beatService->getRoundCustomers($beat, $date);
+
+        if ($data === null) {
+            return response()->json(['message' => 'Aucune tournée trouvée pour cette date'], 404);
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function createBeatRound(Request $request, Beat $beat): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'planned_at' => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $existingRound = $beat->findRoundForDate(Carbon::parse($validated['planned_at']));
+        if ($existingRound !== null) {
+            return response()->json(['message' => 'Une tournée existe déjà pour cette date'], 422);
+        }
+
+        $round = $this->beatService->createRound($beat, $validated['planned_at']);
+
+        return response()->json([
+            'data' => [
+                'id' => $round->id,
+                'planned_at' => $round->planned_at->toDateString(),
+                'name' => $round->name,
+            ],
+        ], 201);
     }
 
     public function listBeatsWithCustomerCount(Request $request): JsonResponse
@@ -260,7 +294,7 @@ class BeatRoundController extends Controller
 
         $beats = Beat::where('commercial_id', $commercial->id)
             ->withCount(['stops as customers_count' => function ($query) {
-                $query->whereNull('visit_date');
+                $query->whereNull('beat_round_id');
             }])
             ->orderBy('id')
             ->get()

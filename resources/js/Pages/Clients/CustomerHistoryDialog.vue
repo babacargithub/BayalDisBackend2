@@ -1,405 +1,401 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+import { router } from '@inertiajs/vue3';
+import PaymentsDialog from '@/Pages/SalesInvoices/Partials/PaymentsDialog.vue';
 
 const props = defineProps({
     modelValue: Boolean,
     customer: Object,
-    orders: Array,
-    ventes: Array,
+    prospectionEvents: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const emit = defineEmits(['update:modelValue']);
 
 const dialog = computed({
     get: () => props.modelValue,
-    set: (value) => emit('update:modelValue', value)
+    set: (value) => emit('update:modelValue', value),
 });
 
-const currentTab = ref('ventes'); // 'ventes' or 'orders'
-const paymentFilter = ref('all'); // 'all', 'paid', 'unpaid'
-const orderStatusFilter = ref('all'); // 'all', 'DELIVERED', 'WAITING', 'CANCELLED'
+const currentTab = ref('factures');
+const invoices = ref([]);
+const isLoadingInvoices = ref(false);
+const selectedInvoiceId = ref(null);
+const isPaymentsDialogOpen = ref(false);
+const invoiceToDeleteId = ref(null);
+const isDeleteDialogOpen = ref(false);
 
-// Filter ventes based on payment status
-const filteredVentes = computed(() => {
-    if (paymentFilter.value === 'all') return props.ventes;
-    return props.ventes.filter(vente => 
-        paymentFilter.value === 'paid' ? vente.is_paid : !vente.is_paid
-    );
-});
+const selectedInvoiceForPayments = computed(() =>
+    invoices.value.find((invoice) => invoice.id === selectedInvoiceId.value) ?? null
+);
 
-// Filter orders based on status
-const filteredOrders = computed(() => {
-    if (orderStatusFilter.value === 'all') return props.orders;
-    return props.orders.filter(order => order.status === orderStatusFilter.value);
-});
+const totalDebt = computed(() =>
+    invoices.value
+        .filter((invoice) => !invoice.paid)
+        .reduce((sum, invoice) => sum + invoice.total_remaining, 0)
+);
 
-// Calculate ventes statistics
-const ventesStats = computed(() => {
-    const stats = {};
-    
-    props.ventes.forEach(vente => {
-        const productId = vente.product.id;
-        if (!stats[productId]) {
-            stats[productId] = {
-                name: vente.product.name,
-                total_quantity: 0,
-                total_quantity_paid: 0,
-                total_quantity_unpaid: 0,
-                total_amount: 0,
-                total_amount_paid: 0,
-                total_amount_unpaid: 0,
-            };
-        }
-        
-        const amount = vente.price * vente.quantity;
-        stats[productId].total_quantity += vente.quantity;
-        stats[productId].total_amount += amount;
-        
-        if (vente.is_paid) {
-            stats[productId].total_quantity_paid += vente.quantity;
-            stats[productId].total_amount_paid += amount;
-        } else {
-            stats[productId].total_quantity_unpaid += vente.quantity;
-            stats[productId].total_amount_unpaid += amount;
-        }
-    });
-    
-    // Format currency values
-    return Object.values(stats).map(stat => ({
-        ...stat,
-        total_amount: formatCurrency(stat.total_amount),
-        total_amount_paid: formatCurrency(stat.total_amount_paid),
-        total_amount_unpaid: formatCurrency(stat.total_amount_unpaid)
-    }));
-});
+const allPayments = computed(() =>
+    invoices.value
+        .flatMap((invoice) =>
+            (invoice.payments || []).map((payment) => ({
+                ...payment,
+                invoice_id: invoice.id,
+            }))
+        )
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+);
 
-// Calculate ventes totals
-const ventesTotals = computed(() => {
-    if (!props.ventes || !props.ventes.length) return {
-        total: 0,
-        total_paid: 0,
-        total_unpaid: 0
-    };
-
-    const totals = props.ventes.reduce((acc, vente) => {
-        const amount = vente.price * vente.quantity;
-        acc.total += amount;
-        if (vente.is_paid) {
-            acc.total_paid += amount;
-        } else {
-            acc.total_unpaid += amount;
-        }
-        return acc;
-    }, {
-        total: 0,
-        total_paid: 0,
-        total_unpaid: 0
-    });
-
-    return {
-        total: formatCurrency(totals.total),
-        total_paid: formatCurrency(totals.total_paid),
-        total_unpaid: formatCurrency(totals.total_unpaid)
-    };
-});
-
-// Calculate orders statistics
-const orderStats = computed(() => {
-    const stats = {
-        DELIVERED: 0,
-        WAITING: 0,
-        CANCELLED: 0,
-    };
-    
-    props.orders.forEach(order => {
-        stats[order.status]++;
-    });
-    
-    return stats;
-});
-
-// Add the formatCurrency function
-const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('fr-FR', { 
-        style: 'currency', 
-        currency: 'XOF',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }).format(amount || 0);
+const fetchInvoices = async () => {
+    if (!props.customer) {
+        return;
+    }
+    isLoadingInvoices.value = true;
+    try {
+        const response = await fetch(route('clients.invoices', props.customer.id), {
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        const data = await response.json();
+        invoices.value = data.invoices;
+    } catch (error) {
+        console.error('Failed to fetch customer invoices:', error);
+    } finally {
+        isLoadingInvoices.value = false;
+    }
 };
 
-// Add the formatDate function after formatCurrency
+watch(
+    [() => props.modelValue, () => props.customer?.id],
+    ([isOpen]) => {
+        if (isOpen && props.customer) {
+            invoices.value = [];
+            fetchInvoices();
+        } else if (!isOpen) {
+            selectedInvoiceId.value = null;
+            isPaymentsDialogOpen.value = false;
+        }
+    }
+);
+
+const openPaymentsDialog = (invoice) => {
+    selectedInvoiceId.value = invoice.id;
+    isPaymentsDialogOpen.value = true;
+};
+
+const handlePaymentsUpdated = () => {
+    fetchInvoices();
+};
+
+const openDeleteDialog = (invoice) => {
+    if (invoice.total_payments > 0) {
+        alert("Impossible de supprimer une facture avec des paiements. Supprimez d'abord les paiements.");
+        return;
+    }
+    invoiceToDeleteId.value = invoice.id;
+    isDeleteDialogOpen.value = true;
+};
+
+const confirmDeleteInvoice = () => {
+    router.delete(route('sales-invoices.destroy', invoiceToDeleteId.value), {
+        preserveScroll: true,
+        onSuccess: () => {
+            isDeleteDialogOpen.value = false;
+            invoiceToDeleteId.value = null;
+            fetchInvoices();
+        },
+    });
+};
+
+const getInvoiceStatusColor = (invoice) => {
+    if (invoice.paid) {
+        return 'success';
+    }
+    if (invoice.total_payments > 0) {
+        return 'warning';
+    }
+    return 'error';
+};
+
+const getInvoiceStatusLabel = (invoice) => {
+    if (invoice.paid) {
+        return 'Soldée';
+    }
+    if (invoice.total_payments > 0) {
+        return 'Partielle';
+    }
+    return 'Impayée';
+};
+
+const formatCurrency = (amount) =>
+    new Intl.NumberFormat('fr-FR', {
+        style: 'currency',
+        currency: 'XOF',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(amount || 0);
+
 const formatDate = (date) => {
-    if (!date) return '';
+    if (!date) {
+        return '';
+    }
     return new Date(date).toLocaleDateString('fr-FR', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
     });
 };
 </script>
 
 <template>
-    <v-dialog
-        v-model="dialog"
-        
-    >
-        <v-card>
-            <v-toolbar dark color="primary">
-                <v-btn
-                    icon
-                    dark
-                    @click="dialog = false"
-                >
-                    <v-icon>mdi-close</v-icon>
-                </v-btn>
-                <v-toolbar-title>Historique - {{ customer?.name }}</v-toolbar-title>
-                <v-spacer></v-spacer>
-            </v-toolbar>
+    <div>
+        <v-dialog v-model="dialog" max-width="900px">
+            <v-card>
+                <v-toolbar dark color="primary">
+                    <v-btn icon dark @click="dialog = false">
+                        <v-icon>mdi-close</v-icon>
+                    </v-btn>
+                    <v-toolbar-title>Historique — {{ customer?.name }}</v-toolbar-title>
+                </v-toolbar>
 
-            <v-card-text>
-                <div class="py-4">
-                    <!-- Tabs -->
-                    <v-card class="mb-6">
-                        <v-tabs v-model="currentTab">
-                            <v-tab value="ventes">Ventes</v-tab>
-                            <v-tab value="orders">Commandes</v-tab>
-                        </v-tabs>
-                    </v-card>
+                <v-card-text class="pa-4">
+                    <v-tabs v-model="currentTab" class="mb-4">
+                        <v-tab value="factures">
+                            Factures
+                            <v-badge
+                                v-if="invoices.length"
+                                :content="invoices.length"
+                                color="primary"
+                                inline
+                                class="ml-1"
+                            />
+                        </v-tab>
+                        <v-tab value="paiements">
+                            Paiements
+                            <v-badge
+                                v-if="allPayments.length"
+                                :content="allPayments.length"
+                                color="green"
+                                inline
+                                class="ml-1"
+                            />
+                        </v-tab>
+                        <v-tab value="prospection">
+                            Prospection
+                            <v-badge
+                                v-if="prospectionEvents.length"
+                                :content="prospectionEvents.length"
+                                color="purple"
+                                inline
+                                class="ml-1"
+                            />
+                        </v-tab>
+                    </v-tabs>
 
-                    <!-- Ventes Tab Content -->
-                    <div v-if="currentTab === 'ventes'">
-                        <!-- Payment Status Filter -->
-                        <div class="mb-6">
-                            <v-btn-group>
-                                <v-btn 
-                                    :color="paymentFilter === 'all' ? 'primary' : undefined"
-                                    @click="paymentFilter = 'all'"
-                                >
-                                    Toutes les ventes
-                                </v-btn>
-                                <v-btn 
-                                    :color="paymentFilter === 'paid' ? 'primary' : undefined"
-                                    @click="paymentFilter = 'paid'"
-                                >
-                                    Payées
-                                </v-btn>
-                                <v-btn 
-                                    :color="paymentFilter === 'unpaid' ? 'primary' : undefined"
-                                    @click="paymentFilter = 'unpaid'"
-                                >
-                                    Non payées
-                                </v-btn>
-                            </v-btn-group>
+                    <!-- Factures Tab -->
+                    <div v-if="currentTab === 'factures'">
+                        <v-progress-linear v-if="isLoadingInvoices" indeterminate color="primary" class="mb-4" />
+
+                        <v-alert
+                            v-if="totalDebt > 0"
+                            type="error"
+                            variant="tonal"
+                            icon="mdi-alert-circle"
+                            class="mb-4"
+                        >
+                            <strong>Dette totale : {{ formatCurrency(totalDebt) }}</strong>
+                        </v-alert>
+
+                        <div v-if="!isLoadingInvoices && invoices.length === 0" class="text-center text-grey py-8">
+                            <v-icon size="48" color="grey-lighten-1">mdi-receipt-text-outline</v-icon>
+                            <div class="mt-2">Aucune facture trouvée</div>
                         </div>
 
-                        <!-- Rest of the ventes content... -->
-                        <!-- [Previous ventes content remains the same] -->
-                        
-                        <!-- Ventes Total Statistics -->
-                        <v-card class="mb-6">
-                            <v-card-text>
-                                <div class="grid grid-cols-3 gap-4">
-                                    <div class="text-center">
-                                        <div class="text-h6">Total des ventes</div>
-                                        <div class="text-h4">{{ ventesTotals.total }}</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-h6 text-success">Total payé</div>
-                                        <div class="text-h4 text-success">{{ ventesTotals.total_paid }}</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-h6 text-error">Total non payé</div>
-                                        <div class="text-h4 text-error">{{ ventesTotals.total_unpaid }}</div>
-                                    </div>
-                                </div>
-                            </v-card-text>
-                        </v-card>
-
-                        <!-- Ventes Product Statistics -->
-                        <v-card class="mb-6">
-                            <v-card-title>Statistiques par produit</v-card-title>
-                            <v-card-text>
-                                <v-table>
-                                    <thead>
-                                        <tr>
-                                            <th>Produit</th>
-                                            <th class="text-right">Quantité totale</th>
-                                            <th class="text-right">Quantité payée</th>
-                                            <th class="text-right">Quantité non payée</th>
-                                            <th class="text-right">Montant total</th>
-                                            <th class="text-right">Montant payé</th>
-                                            <th class="text-right">Montant non payé</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="stat in ventesStats" :key="stat.name">
-                                            <td>{{ stat.name }}</td>
-                                            <td class="text-right">{{ stat.total_quantity }}</td>
-                                            <td class="text-right text-success">{{ stat.total_quantity_paid }}</td>
-                                            <td class="text-right text-error">{{ stat.total_quantity_unpaid }}</td>
-                                            <td class="text-right">{{ stat.total_amount }}</td>
-                                            <td class="text-right text-success">{{ stat.total_amount_paid }}</td>
-                                            <td class="text-right text-error">{{ stat.total_amount_unpaid }}</td>
-                                        </tr>
-                                    </tbody>
-                                </v-table>
-                            </v-card-text>
-                        </v-card>
-
-                        <!-- Ventes List -->
-                        <v-card>
-                            <v-card-title>Liste des ventes</v-card-title>
-                            <v-card-text>
-                                <v-table>
-                                    <thead>
-                                        <tr>
-                                            <th>Date</th>
-                                            <th>Produit</th>
-                                            <th class="text-right">Quantité</th>
-                                            <th class="text-right">Prix unitaire</th>
-                                            <th class="text-right">Total</th>
-                                            <th>Paiement</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="vente in filteredVentes" :key="vente.id">
-                                            <td>{{ formatDate(vente.created_at) }}</td>
-                                            <td>{{ vente.product.name }}</td>
-                                            <td class="text-right">{{ vente.quantity }}</td>
-                                            <td class="text-right">{{ formatCurrency(vente.price) }}</td>
-                                            <td class="text-right">{{ formatCurrency(vente.price * vente.quantity) }}</td>
-                                            <td>
-                                                <v-chip
-                                                    :color="vente.is_paid ? 'success' : 'error'"
-                                                    small
-                                                >
-                                                    {{ vente.is_paid ? 'Payée' : 'Non payée' }}
-                                                </v-chip>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </v-table>
-                            </v-card-text>
-                        </v-card>
-                    </div>
-
-                    <!-- Orders Tab Content -->
-                    <div v-if="currentTab === 'orders'">
-                        <!-- Order Status Filter -->
-                        <div class="mb-6">
-                            <v-btn-group>
-                                <v-btn 
-                                    :color="orderStatusFilter === 'all' ? 'primary' : undefined"
-                                    @click="orderStatusFilter = 'all'"
-                                >
-                                    Toutes les commandes
-                                </v-btn>
-                                <v-btn 
-                                    :color="orderStatusFilter === 'DELIVERED' ? 'success' : undefined"
-                                    @click="orderStatusFilter = 'DELIVERED'"
-                                >
-                                    Livrées
-                                </v-btn>
-                                <v-btn 
-                                    :color="orderStatusFilter === 'WAITING' ? 'warning' : undefined"
-                                    @click="orderStatusFilter = 'WAITING'"
-                                >
-                                    En attente
-                                </v-btn>
-                                <v-btn 
-                                    :color="orderStatusFilter === 'CANCELLED' ? 'error' : undefined"
-                                    @click="orderStatusFilter = 'CANCELLED'"
-                                >
-                                    Annulées
-                                </v-btn>
-                            </v-btn-group>
-                        </div>
-
-                        <!-- Orders Statistics -->
-                        <v-card class="mb-6">
-                            <v-card-text>
-                                <div class="grid grid-cols-3 gap-4">
-                                    <div class="text-center">
-                                        <div class="text-h6 text-success">Livrées</div>
-                                        <div class="text-h4 text-success">{{ orderStats.DELIVERED }}</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-h6 text-warning">En attente</div>
-                                        <div class="text-h4 text-warning">{{ orderStats.WAITING }}</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-h6 text-error">Annulées</div>
-                                        <div class="text-h4 text-error">{{ orderStats.CANCELLED }}</div>
-                                    </div>
-                                </div>
-                            </v-card-text>
-                        </v-card>
-
-                        <!-- Orders List -->
-                        <v-card>
-                            <v-card-title>Liste des commandes</v-card-title>
-                            <v-card-text>
-                                <div class="space-y-4">
-                                    <v-expansion-panels>
-                                        <v-expansion-panel
-                                            v-for="order in filteredOrders"
-                                            :key="order.id"
+                        <v-expansion-panels v-else variant="accordion">
+                            <v-expansion-panel v-for="invoice in invoices" :key="invoice.id">
+                                <v-expansion-panel-title>
+                                    <div class="d-flex align-center gap-3 w-100 pr-2">
+                                        <span class="text-body-2 text-grey">{{ formatDate(invoice.created_at) }}</span>
+                                        <v-chip
+                                            :color="getInvoiceStatusColor(invoice)"
+                                            size="x-small"
+                                            variant="flat"
+                                            class="text-white"
                                         >
-                                            <template #title>
-                                                <div class="flex items-center justify-between w-full">
-                                                    <div>
-                                                        {{ formatDate(order.created_at) }}
-                                                        <v-chip
-                                                            :color="order.status === 'DELIVERED' ? 'success' : 
-                                                                   order.status === 'WAITING' ? 'warning' : 'error'"
-                                                            class="ml-2"
-                                                            small
-                                                        >
-                                                            {{ order.status === 'DELIVERED' ? 'Livrée' :
-                                                               order.status === 'WAITING' ? 'En attente' : 'Annulée' }}
-                                                        </v-chip>
-                                                        <v-chip
-                                                            :color="order.is_paid ? 'success' : 'error'"
-                                                            class="ml-2"
-                                                            small
-                                                        >
-                                                            {{ order.is_paid ? 'Payée' : 'Non payée' }}
-                                                        </v-chip>
-                                                    </div>
-                                                    <div class="text-right">
-                                                        Total: {{ order.total_price }} FCFA
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <v-expansion-panel-text>
-                                                <v-table>
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Produit</th>
-                                                            <th class="text-right">Quantité</th>
-                                                            <th class="text-right">Prix unitaire</th>
-                                                            <th class="text-right">Total</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        <tr v-for="item in order.items" :key="item.id">
-                                                            <td>{{ item.product.name }}</td>
-                                                            <td class="text-right">{{ item.quantity }}</td>
-                                                            <td class="text-right">{{ item.price }} FCFA</td>
-                                                            <td class="text-right">{{ item.total_price }} FCFA</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </v-table>
-                                            </v-expansion-panel-text>
-                                        </v-expansion-panel>
-                                    </v-expansion-panels>
-                                </div>
-                            </v-card-text>
-                        </v-card>
+                                            {{ getInvoiceStatusLabel(invoice) }}
+                                        </v-chip>
+                                        <span class="font-weight-medium">{{ formatCurrency(invoice.total) }}</span>
+                                        <span v-if="!invoice.paid" class="text-error text-body-2">
+                                            Reste: {{ formatCurrency(invoice.total_remaining) }}
+                                        </span>
+                                        <v-spacer />
+                                        <v-btn
+                                            icon
+                                            size="small"
+                                            color="deep-purple"
+                                            variant="tonal"
+                                            title="Gérer les paiements"
+                                            @click.stop="openPaymentsDialog(invoice)"
+                                        >
+                                            <v-icon>mdi-cash</v-icon>
+                                        </v-btn>
+                                        <v-btn
+                                            icon
+                                            size="small"
+                                            color="error"
+                                            variant="tonal"
+                                            title="Supprimer la facture"
+                                            class="ml-1"
+                                            @click.stop="openDeleteDialog(invoice)"
+                                        >
+                                            <v-icon>mdi-delete</v-icon>
+                                        </v-btn>
+                                    </div>
+                                </v-expansion-panel-title>
+                                <v-expansion-panel-text>
+                                    <v-table density="compact">
+                                        <thead>
+                                            <tr>
+                                                <th>Produit</th>
+                                                <th class="text-right">Quantité</th>
+                                                <th class="text-right">Prix unitaire</th>
+                                                <th class="text-right">Sous-total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="item in invoice.items" :key="item.id">
+                                                <td>{{ item.product.name }}</td>
+                                                <td class="text-right">{{ item.quantity }}</td>
+                                                <td class="text-right">{{ formatCurrency(item.price) }}</td>
+                                                <td class="text-right font-weight-medium">
+                                                    {{ formatCurrency(item.price * item.quantity) }}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </v-table>
+                                </v-expansion-panel-text>
+                            </v-expansion-panel>
+                        </v-expansion-panels>
                     </div>
-                </div>
-            </v-card-text>
-        </v-card>
-    </v-dialog>
-</template> 
+
+                    <!-- Paiements Tab -->
+                    <div v-if="currentTab === 'paiements'">
+                        <v-progress-linear v-if="isLoadingInvoices" indeterminate color="primary" class="mb-4" />
+
+                        <div
+                            v-if="!isLoadingInvoices && allPayments.length === 0"
+                            class="text-center text-grey py-8"
+                        >
+                            <v-icon size="48" color="grey-lighten-1">mdi-cash-remove</v-icon>
+                            <div class="mt-2">Aucun paiement enregistré</div>
+                        </div>
+
+                        <v-table v-else density="compact">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Facture #</th>
+                                    <th class="text-right">Montant</th>
+                                    <th>Méthode</th>
+                                    <th class="text-right">Commission</th>
+                                    <th>Statut</th>
+                                    <th>Commentaire</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="payment in allPayments"
+                                    :key="payment.id"
+                                    :style="payment.cancelled_at ? 'opacity: 0.55; text-decoration: line-through' : ''"
+                                >
+                                    <td>{{ formatDate(payment.created_at) }}</td>
+                                    <td class="text-grey">#{{ payment.invoice_id }}</td>
+                                    <td class="text-right font-weight-medium">{{ formatCurrency(payment.amount) }}</td>
+                                    <td>{{ payment.payment_method }}</td>
+                                    <td class="text-right text-deep-purple">
+                                        {{ formatCurrency(payment.commercial_commission ?? 0) }}
+                                    </td>
+                                    <td>
+                                        <v-chip
+                                            v-if="payment.cancelled_at"
+                                            color="error"
+                                            size="x-small"
+                                            variant="flat"
+                                        >
+                                            Annulé
+                                        </v-chip>
+                                        <v-chip v-else color="success" size="x-small" variant="flat">Actif</v-chip>
+                                    </td>
+                                    <td class="text-grey">{{ payment.comment }}</td>
+                                </tr>
+                            </tbody>
+                        </v-table>
+                    </div>
+
+                    <!-- Prospection Tab -->
+                    <div v-if="currentTab === 'prospection'">
+                        <div v-if="prospectionEvents.length === 0" class="text-center text-grey py-8">
+                            <v-icon size="48" color="grey-lighten-1">mdi-account-clock-outline</v-icon>
+                            <div class="mt-2">Aucune interaction enregistrée</div>
+                        </div>
+                        <v-timeline v-else density="compact" align="start">
+                            <v-timeline-item
+                                v-for="event in prospectionEvents"
+                                :key="event.id"
+                                :dot-color="event.status_color"
+                                size="small"
+                            >
+                                <div class="d-flex align-center gap-2 mb-1">
+                                    <v-chip
+                                        :color="event.status_color"
+                                        size="x-small"
+                                        variant="flat"
+                                        class="text-white"
+                                    >
+                                        {{ event.status_label }}
+                                    </v-chip>
+                                    <span class="text-caption text-grey">{{ formatDate(event.created_at) }}</span>
+                                    <span v-if="event.commercial_name" class="text-caption text-grey">
+                                        — {{ event.commercial_name }}
+                                    </span>
+                                </div>
+                                <div v-if="event.notes" class="text-body-2 mt-1">{{ event.notes }}</div>
+                                <div v-if="event.scheduled_revisit_date" class="text-caption text-orange mt-1">
+                                    <v-icon size="12" class="mr-1">mdi-calendar-clock</v-icon>
+                                    Revisiter le {{ formatDate(event.scheduled_revisit_date) }}
+                                </div>
+                            </v-timeline-item>
+                        </v-timeline>
+                    </div>
+                </v-card-text>
+            </v-card>
+        </v-dialog>
+
+        <!-- Payments sub-dialog — teleports to body so it renders above the history dialog -->
+        <PaymentsDialog
+            v-if="selectedInvoiceForPayments"
+            v-model="isPaymentsDialogOpen"
+            :invoice="selectedInvoiceForPayments"
+            @updated="handlePaymentsUpdated"
+        />
+
+        <!-- Delete invoice confirmation -->
+        <v-dialog v-model="isDeleteDialogOpen" max-width="420px">
+            <v-card>
+                <v-card-title>Supprimer la facture</v-card-title>
+                <v-card-text>
+                    Êtes-vous sûr de vouloir supprimer cette facture ? Cette action est irréversible.
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn @click="isDeleteDialogOpen = false">Annuler</v-btn>
+                    <v-btn color="error" @click="confirmDeleteInvoice">Supprimer</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+    </div>
+</template>

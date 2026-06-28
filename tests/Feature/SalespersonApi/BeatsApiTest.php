@@ -3,6 +3,7 @@
 namespace Tests\Feature\SalespersonApi;
 
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -72,13 +73,12 @@ class BeatsApiTest extends TestCase
             'commercial_id' => $this->commercial->id,
         ]);
 
-        // Add 3 template stops (visit_date IS NULL) to the first beat
+        // Add 3 template stops to the first beat
         foreach (range(1, 3) as $_) {
             $customer = $this->makeCustomer();
             BeatStop::create([
                 'beat_id' => $beatWithThreeCustomers->id,
                 'customer_id' => $customer->id,
-                'visit_date' => null,
             ]);
         }
 
@@ -87,14 +87,17 @@ class BeatsApiTest extends TestCase
         BeatStop::create([
             'beat_id' => $beatWithOneCustomer->id,
             'customer_id' => $customer->id,
-            'visit_date' => null,
         ]);
 
-        // Add an occurrence stop (with visit_date) — must NOT be counted as a customer
+        // Add an occurrence stop (has a round) — must NOT be counted as a customer
+        $todayRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beatWithThreeCustomers->id, 'planned_at' => now()->toDateString()],
+            ['name' => 'Marché Central - '.now()->toDateString(), 'commercial_id' => $this->commercial->id],
+        );
         BeatStop::create([
             'beat_id' => $beatWithThreeCustomers->id,
             'customer_id' => $customer->id,
-            'visit_date' => now()->toDateString(),
+            'beat_round_id' => $todayRound->id,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
@@ -183,7 +186,7 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Marché Sandaga', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
 
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
         $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
 
@@ -202,7 +205,7 @@ class BeatsApiTest extends TestCase
     {
         $beat = Beat::create(['name' => 'Zone Test', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
         // Partially paid invoice: 10 000 total, 4 000 paid → 6 000 remaining
         $this->makeSalesInvoice($customer, totalAmount: 10000, totalPayments: 4000);
@@ -223,13 +226,17 @@ class BeatsApiTest extends TestCase
         $occurrenceOnlyCustomer = $this->makeCustomer();
 
         // Template stop — should appear
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $templateCustomer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $templateCustomer->id]);
 
-        // Occurrence stop only (has a date) — must NOT appear
+        // Occurrence stop only (has a round) — must NOT appear
+        $todayRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => now()->toDateString()],
+            ['name' => 'Zone Exclusion - '.now()->toDateString(), 'commercial_id' => $this->commercial->id],
+        );
         BeatStop::create([
             'beat_id' => $beat->id,
             'customer_id' => $occurrenceOnlyCustomer->id,
-            'visit_date' => now()->toDateString(),
+            'beat_round_id' => $todayRound->id,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
@@ -274,7 +281,7 @@ class BeatsApiTest extends TestCase
     {
         $beat = Beat::create(['name' => 'Zone Position', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null, 'display_position' => 2]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'display_position' => 2]);
 
         $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
 
@@ -292,9 +299,9 @@ class BeatsApiTest extends TestCase
         $customerC = $this->makeCustomer();
 
         // Insert in reverse order with explicit positions — expect them back sorted
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerC->id, 'visit_date' => null, 'display_position' => 2]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'visit_date' => null, 'display_position' => 0]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => null, 'display_position' => 1]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerC->id, 'display_position' => 2]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'display_position' => 0]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'display_position' => 1]);
 
         $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
 
@@ -310,8 +317,8 @@ class BeatsApiTest extends TestCase
         $positioned = $this->makeCustomer();
         $unpositioned = $this->makeCustomer();
 
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $unpositioned->id, 'visit_date' => null, 'display_position' => null]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $positioned->id, 'visit_date' => null, 'display_position' => 0]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $unpositioned->id, 'display_position' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $positioned->id, 'display_position' => 0]);
 
         $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
 
@@ -357,9 +364,9 @@ class BeatsApiTest extends TestCase
         $customerB = $this->makeCustomer();
         $customerC = $this->makeCustomer();
 
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'visit_date' => null, 'display_position' => 0]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => null, 'display_position' => 1]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerC->id, 'visit_date' => null, 'display_position' => 2]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'display_position' => 0]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'display_position' => 1]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerC->id, 'display_position' => 2]);
 
         // Reverse the order
         $response = $this->actingAs($this->user)->putJson("/api/beats/{$beat->id}/customers/reorder", [
@@ -383,11 +390,15 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Zone Occurrence', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
 
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null, 'display_position' => 0]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'display_position' => 0]);
+        $todayRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => now()->toDateString()],
+            ['name' => 'Zone Occurrence - '.now()->toDateString(), 'commercial_id' => $this->commercial->id],
+        );
         $occurrenceStop = BeatStop::create([
             'beat_id' => $beat->id,
             'customer_id' => $customer->id,
-            'visit_date' => now()->toDateString(),
+            'beat_round_id' => $todayRound->id,
             'status' => BeatStop::STATUS_PLANNED,
             'display_position' => null,
         ]);
@@ -438,10 +449,14 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Zone Occurrence Only', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
 
+        $todayRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => now()->toDateString()],
+            ['name' => 'Zone Occurrence Only - '.now()->toDateString(), 'commercial_id' => $this->commercial->id],
+        );
         BeatStop::create([
             'beat_id' => $beat->id,
             'customer_id' => $customer->id,
-            'visit_date' => now()->toDateString(),
+            'beat_round_id' => $todayRound->id,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
@@ -458,7 +473,6 @@ class BeatsApiTest extends TestCase
         $templateStop = BeatStop::create([
             'beat_id' => $beat->id,
             'customer_id' => $customer->id,
-            'visit_date' => null,
         ]);
 
         $response = $this->actingAs($this->user)
@@ -473,11 +487,15 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Zone Keep Occurrence', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
 
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
+        $todayRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => now()->toDateString()],
+            ['name' => 'Zone Keep Occurrence - '.now()->toDateString(), 'commercial_id' => $this->commercial->id],
+        );
         $occurrenceStop = BeatStop::create([
             'beat_id' => $beat->id,
             'customer_id' => $customer->id,
-            'visit_date' => now()->toDateString(),
+            'beat_round_id' => $todayRound->id,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
@@ -502,7 +520,7 @@ class BeatsApiTest extends TestCase
         $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds")->assertForbidden();
     }
 
-    public function test_list_rounds_returns_upcoming_dates_based_on_day_of_week(): void
+    public function test_list_rounds_returns_empty_when_no_rounds_created(): void
     {
         $beat = Beat::create([
             'name' => 'Beat Lundi Test',
@@ -512,20 +530,43 @@ class BeatsApiTest extends TestCase
 
         $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
 
+        $response->assertOk()->assertJson(['data' => []]);
+    }
+
+    public function test_list_rounds_returns_explicitly_created_future_round_with_upcoming_status(): void
+    {
+        $beat = Beat::create([
+            'name' => 'Beat Lundi Test',
+            'commercial_id' => $this->commercial->id,
+            'day_of_week' => 'monday',
+        ]);
+        $customer = $this->makeCustomer();
+
+        $futureDate = '2030-06-10'; // Guaranteed future date
+        $round = BeatRound::create([
+            'beat_id' => $beat->id,
+            'planned_at' => $futureDate,
+            'week_day' => 'monday',
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Lundi Test - '.$futureDate,
+        ]);
+        // A planned stop ensures planned > 0 so deriveRoundStatus returns 'upcoming'.
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $round->id, 'status' => BeatStop::STATUS_PLANNED]);
+
+        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
+
         $response->assertOk();
         $data = $response->json('data');
 
-        // Must return 4 upcoming Mondays
-        $this->assertCount(4, $data);
-        foreach ($data as $round) {
-            $this->assertEquals('upcoming', $round['status']);
-            $this->assertEquals('Monday', \Carbon\Carbon::parse($round['date'])->englishDayOfWeek);
-            $this->assertArrayHasKey('label', $round);
-            $this->assertArrayHasKey('total', $round);
-            $this->assertArrayHasKey('completed', $round);
-            $this->assertArrayHasKey('cancelled', $round);
-            $this->assertArrayHasKey('planned', $round);
-        }
+        $this->assertCount(1, $data);
+        $this->assertEquals('upcoming', $data[0]['status']);
+        $this->assertEquals($futureDate, $data[0]['date']);
+        $this->assertArrayHasKey('id', $data[0]);
+        $this->assertArrayHasKey('label', $data[0]);
+        $this->assertArrayHasKey('total', $data[0]);
+        $this->assertArrayHasKey('completed', $data[0]);
+        $this->assertArrayHasKey('cancelled', $data[0]);
+        $this->assertArrayHasKey('planned', $data[0]);
     }
 
     public function test_list_rounds_returns_empty_when_no_day_of_week_and_no_past_rounds(): void
@@ -545,13 +586,21 @@ class BeatsApiTest extends TestCase
             'day_of_week' => 'monday',
         ]);
         $customer = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
         $pastDate = '2026-01-05'; // A Monday in the past
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => $pastDate, 'status' => BeatStop::STATUS_COMPLETED]);
+        $pastRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => $pastDate],
+            ['name' => $beat->name.' - '.$pastDate, 'week_day' => 'monday', 'commercial_id' => $this->commercial->id],
+        );
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $pastRound->id, 'status' => BeatStop::STATUS_COMPLETED]);
 
         $inProgressDate = '2026-01-12'; // A Monday in the past with remaining planned
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => $inProgressDate, 'status' => BeatStop::STATUS_PLANNED]);
+        $inProgressRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => $inProgressDate],
+            ['name' => $beat->name.' - '.$inProgressDate, 'week_day' => 'monday', 'commercial_id' => $this->commercial->id],
+        );
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $inProgressRound->id, 'status' => BeatStop::STATUS_PLANNED]);
 
         $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
         $response->assertOk();
@@ -562,7 +611,7 @@ class BeatsApiTest extends TestCase
         $this->assertEquals('in_progress', $byDate[$inProgressDate]['status']);
     }
 
-    public function test_list_rounds_does_not_duplicate_dates_that_already_have_stops(): void
+    public function test_list_rounds_returns_only_real_db_rounds_with_no_duplicates(): void
     {
         $beat = Beat::create([
             'name' => 'Beat No Dupe',
@@ -570,20 +619,42 @@ class BeatsApiTest extends TestCase
             'day_of_week' => 'monday',
         ]);
         $customer = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
-        // Generate the next Monday's round manually so it appears as existing
+        // Explicitly create two rounds for this beat
         $nextMonday = \Carbon\Carbon::now()->next(\Carbon\Carbon::MONDAY)->toDateString();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => $nextMonday, 'status' => BeatStop::STATUS_PLANNED]);
+        $nextMondayRound = BeatRound::create([
+            'beat_id' => $beat->id,
+            'planned_at' => $nextMonday,
+            'week_day' => 'monday',
+            'commercial_id' => $this->commercial->id,
+            'name' => $beat->name.' - '.$nextMonday,
+        ]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $nextMondayRound->id, 'status' => BeatStop::STATUS_PLANNED]);
+
+        $pastDate = '2026-01-05';
+        $pastRound = BeatRound::create([
+            'beat_id' => $beat->id,
+            'planned_at' => $pastDate,
+            'week_day' => 'monday',
+            'commercial_id' => $this->commercial->id,
+            'name' => $beat->name.' - '.$pastDate,
+        ]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $pastRound->id, 'status' => BeatStop::STATUS_COMPLETED]);
 
         $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
         $response->assertOk();
 
-        $dates = collect($response->json('data'))->pluck('date')->all();
+        $data = $response->json('data');
+        $this->assertCount(2, $data);
+
+        $dates = collect($data)->pluck('date')->all();
         $this->assertEquals(count($dates), count(array_unique($dates)), 'Round dates must be unique');
-        // Next Monday shows as "upcoming" from existing rounds + 4 newly computed upcoming dates = 5 total
-        $upcomingCount = collect($response->json('data'))->where('status', 'upcoming')->count();
-        $this->assertEquals(5, $upcomingCount);
+
+        // Future round is upcoming, past round is done
+        $byDate = collect($data)->keyBy('date');
+        $this->assertEquals('upcoming', $byDate[$nextMonday]['status']);
+        $this->assertEquals('done', $byDate[$pastDate]['status']);
     }
 
     // ─── GET /api/beats/{beat}/rounds/{date}/customers ────────────────────────
@@ -612,15 +683,20 @@ class BeatsApiTest extends TestCase
             ->assertUnprocessable();
     }
 
-    public function test_list_round_customers_auto_generates_stops_for_new_date(): void
+    public function test_list_round_customers_generates_stops_after_explicit_round_creation(): void
     {
         $beat = Beat::create(['name' => 'Beat AutoGen', 'commercial_id' => $this->commercial->id]);
         $customerA = $this->makeCustomer();
         $customerB = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'visit_date' => null, 'display_position' => 0]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => null, 'display_position' => 1]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'display_position' => 0]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'display_position' => 1]);
 
-        $futureDate = '2030-06-10'; // far future, guaranteed no stops
+        $futureDate = '2030-06-10';
+
+        // Round must be created explicitly before stops can be fetched.
+        $this->actingAs($this->user)
+            ->postJson("/api/beats/{$beat->id}/rounds", ['planned_at' => $futureDate])
+            ->assertCreated();
 
         $response = $this->actingAs($this->user)
             ->getJson("/api/beats/{$beat->id}/rounds/{$futureDate}/customers");
@@ -628,10 +704,21 @@ class BeatsApiTest extends TestCase
         $response->assertOk();
         $this->assertCount(2, $response->json('data.customers'));
 
-        // Calling again must not duplicate stops
+        // Calling again must not duplicate stops.
         $response2 = $this->actingAs($this->user)
             ->getJson("/api/beats/{$beat->id}/rounds/{$futureDate}/customers");
         $this->assertCount(2, $response2->json('data.customers'));
+    }
+
+    public function test_list_round_customers_returns_404_when_no_round_exists_for_date(): void
+    {
+        $beat = Beat::create(['name' => 'Beat NoRound', 'commercial_id' => $this->commercial->id]);
+        $customer = $this->makeCustomer();
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
+
+        $this->actingAs($this->user)
+            ->getJson("/api/beats/{$beat->id}/rounds/2030-06-10/customers")
+            ->assertNotFound();
     }
 
     public function test_list_round_customers_copies_display_position_from_template_on_generation(): void
@@ -639,8 +726,13 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Beat Position Copy', 'commercial_id' => $this->commercial->id]);
         $customerA = $this->makeCustomer();
         $customerB = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'visit_date' => null, 'display_position' => 1]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => null, 'display_position' => 0]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'display_position' => 1]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'display_position' => 0]);
+
+        // Explicitly create the round first.
+        $this->actingAs($this->user)
+            ->postJson("/api/beats/{$beat->id}/rounds", ['planned_at' => '2030-06-17'])
+            ->assertCreated();
 
         $response = $this->actingAs($this->user)
             ->getJson("/api/beats/{$beat->id}/rounds/2030-06-17/customers");
@@ -648,7 +740,7 @@ class BeatsApiTest extends TestCase
         $response->assertOk();
         $customerIds = collect($response->json('data.customers'))->pluck('customer_id')->all();
 
-        // customerB has position 0, so it must come first
+        // customerB has position 0, so it must come first.
         $this->assertEquals($customerB->id, $customerIds[0]);
         $this->assertEquals($customerA->id, $customerIds[1]);
     }
@@ -658,12 +750,16 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Beat Shape', 'commercial_id' => $this->commercial->id]);
         $customerA = $this->makeCustomer();
         $customerB = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'visit_date' => null]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id]);
 
         $date = '2026-01-05';
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'visit_date' => $date, 'status' => BeatStop::STATUS_COMPLETED, 'visited_at' => now()]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => $date, 'status' => BeatStop::STATUS_PLANNED]);
+        $dateRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => $date],
+            ['name' => 'Beat Shape - '.$date, 'commercial_id' => $this->commercial->id],
+        );
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'beat_round_id' => $dateRound->id, 'status' => BeatStop::STATUS_COMPLETED, 'visited_at' => now()]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'beat_round_id' => $dateRound->id, 'status' => BeatStop::STATUS_PLANNED]);
 
         $response = $this->actingAs($this->user)
             ->getJson("/api/beats/{$beat->id}/rounds/{$date}/customers");
@@ -696,8 +792,12 @@ class BeatsApiTest extends TestCase
 
         $beat = Beat::create(['name' => 'Beat Debt Filter', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => $roundDate, 'status' => BeatStop::STATUS_PLANNED]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
+        $roundDateRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => $roundDate],
+            ['name' => 'Beat Debt Filter - '.$roundDate, 'commercial_id' => $this->commercial->id],
+        );
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $roundDateRound->id, 'status' => BeatStop::STATUS_PLANNED]);
 
         // Invoice created the day before the round — must be included in debt
         $previousInvoice = $this->makeSalesInvoice($customer, totalAmount: 10000, totalPayments: 4000);
@@ -723,8 +823,12 @@ class BeatsApiTest extends TestCase
 
         $beat = Beat::create(['name' => 'Beat No Prior Debt', 'commercial_id' => $this->commercial->id]);
         $customer = $this->makeCustomer();
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => $roundDate, 'status' => BeatStop::STATUS_PLANNED]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
+        $roundDateRound = BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => $roundDate],
+            ['name' => 'Beat No Prior Debt - '.$roundDate, 'commercial_id' => $this->commercial->id],
+        );
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $roundDateRound->id, 'status' => BeatStop::STATUS_PLANNED]);
 
         // Invoice created on the round date — must not count
         $sameDayInvoice = $this->makeSalesInvoice($customer, totalAmount: 8000, totalPayments: 0);

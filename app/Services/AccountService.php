@@ -286,6 +286,47 @@ class AccountService
         ];
     }
 
+    // ── Entrée de caisse ────────────────────────────────────────────────────
+
+    /**
+     * Process an "entrée de caisse" (cash-in): deposit into a caisse and credit
+     * a single account.
+     *
+     * Symmetric counterpart of processSortieDeCaisse. Typical use: recording
+     * borrowed money or any external cash inflow — the caisse balance increases
+     * and the credited account tracks the origin of the funds (e.g. "Emprunt").
+     *
+     * The company-wide invariant SUM(caisse.balance) == SUM(account.balance) is
+     * preserved: one caisse deposit offset by one account credit of the same amount.
+     *
+     * @throws InvalidArgumentException if amount is not positive
+     */
+    public function processEntreeDeCaisse(
+        Caisse $caisse,
+        Account $account,
+        int $amount,
+        string $label,
+    ): void {
+        if ($amount <= 0) {
+            throw new InvalidArgumentException(
+                "Le montant de l'entrée de caisse doit être un entier strictement positif. Reçu : {$amount}."
+            );
+        }
+
+        DB::transaction(function () use ($caisse, $account, $amount, $label): void {
+            $caisse->transactions()->create([
+                'amount' => $amount,
+                'transaction_type' => Caisse::TRANSACTION_TYPE_DEPOSIT,
+                'label' => $label,
+            ]);
+            $caisse->updateBalanceFromLedger();
+
+            $this->credit($account, $amount, $label, 'ENTREE_DE_CAISSE');
+
+            $this->assertGlobalInvariantHolds();
+        });
+    }
+
     // ── Sortie de caisse ────────────────────────────────────────────────────
 
     /**

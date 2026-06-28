@@ -80,7 +80,7 @@ class DailySalesInvoicesService
         }
 
         return BeatStop::where('beat_id', $beatId)
-            ->whereNull('visit_date')
+            ->whereNull('beat_round_id')
             ->pluck('customer_id')
             ->all();
     }

@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\SalespersonApi;
 
+use App\Enums\BeatStopStatus;
 use App\Enums\DayOfWeek;
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -140,10 +142,18 @@ class UpdateBeatStopStatusTest extends TestCase
     public function test_stop_on_different_date_returns_404(): void
     {
         // Stop exists but on a different date than the route requests
+        $differentDate = '2025-06-11';
+        $roundForDifferentDate = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => $differentDate,
+            'week_day' => DayOfWeek::Wednesday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.$differentDate,
+        ]);
         $stopOnDifferentDate = BeatStop::create([
             'beat_id' => $this->beat->id,
+            'beat_round_id' => $roundForDifferentDate->id,
             'customer_id' => $this->makeCustomer()->id,
-            'visit_date' => '2025-06-11',
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
@@ -194,7 +204,101 @@ class UpdateBeatStopStatusTest extends TestCase
             'beat_id' => $this->beat->id,
             'customer_id' => $customer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
+        ]);
+
+        BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => $this->beat->day_of_week?->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => $this->beat->name.' - '.self::ROUND_DATE,
+        ]);
+
+        $response = $this->actingAs($this->user)->getJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
+        );
+
+        $expectedAvailableStatuses = array_map(
+            fn (BeatStopStatus $case) => ['status' => $case->value, 'label' => $case->label()],
+            BeatStopStatus::cases(),
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('data.available_statuses', $expectedAvailableStatuses);
+    }
+
+    // =========================================================================
+    // New no-sale statuses
+    // =========================================================================
+
+    public function test_can_set_stop_to_stock_restant_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_STOCK_RESTANT, 'notes' => 'Client a encore du stock'],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_STOCK_RESTANT, $stop->status);
+        $this->assertSame('Client a encore du stock', $stop->notes);
+    }
+
+    public function test_can_set_stop_to_restaurant_ferme_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_RESTAURANT_FERME],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_RESTAURANT_FERME, $stop->status);
+    }
+
+    public function test_can_set_stop_to_produits_non_disponibles_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_PRODUITS_NON_DISPONIBLES],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_PRODUITS_NON_DISPONIBLES, $stop->status);
+    }
+
+    public function test_can_set_stop_to_dette_non_acceptee_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_DETTE_NON_ACCEPTEE],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_DETTE_NON_ACCEPTEE, $stop->status);
+    }
+
+    public function test_round_customers_response_includes_no_sale_count(): void
+    {
+        $customer = $this->makeCustomer();
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customer->id,
+            'status' => BeatStop::STATUS_PLANNED,
+        ]);
+
+        BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => $this->beat->day_of_week?->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => $this->beat->name.' - '.self::ROUND_DATE,
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
@@ -202,11 +306,68 @@ class UpdateBeatStopStatusTest extends TestCase
         );
 
         $response->assertOk()
-            ->assertJsonPath('data.available_statuses', [
-                ['status' => 'planned', 'label' => 'Prévu'],
-                ['status' => 'completed', 'label' => 'Visite effectuée'],
-                ['status' => 'cancelled', 'label' => 'Visite annulée'],
-            ]);
+            ->assertJsonPath('data.no_sale', 0);
+    }
+
+    public function test_can_set_stop_to_reprogramme_status(): void
+    {
+        $stop = $this->makeOccurrenceStop();
+
+        $this->actingAs($this->user)->patchJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            ['status' => BeatStop::STATUS_REPROGRAMME],
+        )->assertNoContent();
+
+        $stop->refresh();
+        $this->assertSame(BeatStop::STATUS_REPROGRAMME, $stop->status);
+    }
+
+    public function test_no_sale_stops_are_counted_in_round_customers_no_sale_field(): void
+    {
+        $customerA = $this->makeCustomer();
+        $customerB = $this->makeCustomer();
+
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customerA->id,
+            'status' => BeatStop::STATUS_PLANNED,
+        ]);
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'customer_id' => $customerB->id,
+            'status' => BeatStop::STATUS_PLANNED,
+        ]);
+
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => self::ROUND_DATE,
+            'week_day' => DayOfWeek::Wednesday->value,
+            'commercial_id' => $this->commercial->id,
+            'name' => 'Beat Test - '.self::ROUND_DATE,
+        ]);
+
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
+            'customer_id' => $customerA->id,
+            'status' => BeatStop::STATUS_STOCK_RESTANT,
+        ]);
+        BeatStop::create([
+            'beat_id' => $this->beat->id,
+            'beat_round_id' => $round->id,
+            'customer_id' => $customerB->id,
+            'status' => BeatStop::STATUS_DETTE_NON_ACCEPTEE,
+        ]);
+
+        $response = $this->actingAs($this->user)->getJson(
+            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
+        );
+
+        $response->assertOk()
+            ->assertJsonPath('data.no_sale', 2)
+            ->assertJsonPath('data.planned', 0)
+            ->assertJsonPath('data.completed', 0)
+            ->assertJsonPath('data.cancelled', 0);
     }
 
     // =========================================================================
@@ -217,10 +378,20 @@ class UpdateBeatStopStatusTest extends TestCase
         string $status = BeatStop::STATUS_PLANNED,
         ?Beat $beat = null,
     ): BeatStop {
+        $targetBeat = $beat ?? $this->beat;
+        $round = BeatRound::firstOrCreate(
+            ['beat_id' => $targetBeat->id, 'planned_at' => self::ROUND_DATE],
+            [
+                'name' => $targetBeat->name.' - '.self::ROUND_DATE,
+                'week_day' => $targetBeat->day_of_week?->value,
+                'commercial_id' => $targetBeat->commercial_id,
+            ],
+        );
+
         return BeatStop::create([
-            'beat_id' => ($beat ?? $this->beat)->id,
+            'beat_id' => $targetBeat->id,
+            'beat_round_id' => $round->id,
             'customer_id' => $this->makeCustomer()->id,
-            'visit_date' => self::ROUND_DATE,
             'status' => $status,
         ]);
     }

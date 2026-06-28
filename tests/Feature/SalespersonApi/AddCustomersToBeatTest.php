@@ -62,11 +62,11 @@ class AddCustomersToBeatTest extends TestCase
         $this->assertDatabaseHas('beat_stops', [
             'beat_id' => $this->beat->id,
             'customer_id' => $customerA->id,
-            'visit_date' => null,
+            'beat_round_id' => null,
             'status' => BeatStop::STATUS_PLANNED,
         ]);
-        $this->assertDatabaseHas('beat_stops', ['beat_id' => $this->beat->id, 'customer_id' => $customerB->id, 'visit_date' => null]);
-        $this->assertDatabaseHas('beat_stops', ['beat_id' => $this->beat->id, 'customer_id' => $customerC->id, 'visit_date' => null]);
+        $this->assertDatabaseHas('beat_stops', ['beat_id' => $this->beat->id, 'customer_id' => $customerB->id, 'beat_round_id' => null]);
+        $this->assertDatabaseHas('beat_stops', ['beat_id' => $this->beat->id, 'customer_id' => $customerC->id, 'beat_round_id' => null]);
     }
 
     public function test_re_adding_existing_customers_is_idempotent(): void
@@ -100,7 +100,6 @@ class AddCustomersToBeatTest extends TestCase
             'beat_id' => $this->beat->id,
             'customer_id' => $existingCustomer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
         ]);
 
         $response = $this->actingAs($this->user)->postJson(

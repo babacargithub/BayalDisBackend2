@@ -98,7 +98,6 @@ class BeatServiceForecastTest extends TestCase
             'beat_id' => $beat->id,
             'customer_id' => $customer->id,
             'status' => BeatStop::STATUS_PLANNED,
-            'visit_date' => null,
         ]);
     }
 

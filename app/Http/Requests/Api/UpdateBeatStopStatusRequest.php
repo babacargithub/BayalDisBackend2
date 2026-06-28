@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests\Api;
 
-use App\Models\BeatStop;
+use App\Enums\BeatStopStatus;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Enum;
 
 class UpdateBeatStopStatusRequest extends FormRequest
 {
@@ -16,20 +16,18 @@ class UpdateBeatStopStatusRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['required', 'string', Rule::in([
-                BeatStop::STATUS_PLANNED,
-                BeatStop::STATUS_COMPLETED,
-                BeatStop::STATUS_CANCELLED,
-            ])],
+            'status' => ['required', 'string', new Enum(BeatStopStatus::class)],
             'notes' => ['nullable', 'string'],
         ];
     }
 
     public function messages(): array
     {
+        $validValues = implode(', ', array_column(BeatStopStatus::cases(), 'value'));
+
         return [
             'status.required' => 'Le statut est obligatoire',
-            'status.in' => 'Le statut doit être l\'un des suivants : planned, completed, cancelled',
+            'status.Illuminate\Validation\Rules\Enum' => "Le statut doit être l'un des suivants : {$validValues}",
         ];
     }
 }

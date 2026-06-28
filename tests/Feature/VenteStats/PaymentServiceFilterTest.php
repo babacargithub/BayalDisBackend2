@@ -324,7 +324,7 @@ class PaymentServiceFilterTest extends TestCase
     public function test_sum_payments_filtered_by_beat_id_returns_only_payments_for_customers_in_beat(): void
     {
         $beat = Beat::create(['name' => 'Beat A', 'commercial_id' => $this->defaultCommercial->id]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $this->defaultCustomer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $this->defaultCustomer->id]);
 
         $customerNotInBeat = $this->makeCustomer($this->defaultCommercial);
 
@@ -343,8 +343,8 @@ class PaymentServiceFilterTest extends TestCase
         $beat = Beat::create(['name' => 'Beat Multi', 'commercial_id' => $this->defaultCommercial->id]);
         $customerB = $this->makeCustomer($this->defaultCommercial);
 
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $this->defaultCustomer->id, 'visit_date' => null]);
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $this->defaultCustomer->id]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id]);
 
         $this->makeInvoiceWithPayment(amount: 1500);
         $this->makeInvoiceWithPayment(amount: 2500, customer: $customerB);

@@ -115,11 +115,14 @@ Route::middleware('auth')->group(function () {
         Route::put('/{beat}', [BeatStopController::class, 'update'])->name('update');
         Route::delete('/{beat}', [BeatStopController::class, 'destroy'])->name('destroy');
         Route::post('/{beat}/add-customers', [BeatStopController::class, 'addCustomers'])->name('add-customers');
+        Route::put('/{beat}/reorder-customers', [BeatStopController::class, 'reorderCustomers'])->name('reorder-customers');
         Route::get('/{beat}/pdf', [BeatStopController::class, 'exportPdf'])->name('pdf');
         Route::get('/{beat}/history', [BeatStopController::class, 'getHistory'])->name('history');
         Route::get('/{beat}/left-out-customers', [BeatStopController::class, 'getLeftOutCustomersForDate'])->name('left-out-customers');
         Route::get('/{beat}/left-out-customers/pdf', [BeatStopController::class, 'exportLeftOutCustomersPdf'])->name('left-out-customers.pdf');
         Route::get('/{beat}/rounds/{date}', [BeatStopController::class, 'getRoundDetail'])->name('rounds.detail');
+        Route::post('/{beat}/rounds', [BeatStopController::class, 'storeRound'])->name('rounds.store');
+        Route::delete('/{beat}/rounds/{beatRound}', [BeatStopController::class, 'destroyRound'])->name('rounds.destroy');
 
         // Beat Stops
         Route::get('/beat-stops/{beatStop}', [BeatController::class, 'show'])->name('beat-stops.show');
@@ -199,6 +202,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/{client}', [CustomerController::class, 'show'])->name('show');
         Route::put('/{client}', [CustomerController::class, 'update'])->name('update');
         Route::delete('/{client}', [CustomerController::class, 'destroy'])->name('destroy');
+        Route::post('/{client}/prospection-events', [CustomerController::class, 'storeProspectionEvent'])->name('prospection-events.store');
+        Route::get('/{client}/invoices', [CustomerController::class, 'customerInvoicesJson'])->name('invoices');
     });
     Route::resource('customer-categories', CustomerCategoryController::class);
     Route::post('customer-categories/{customerCategory}/add-customers', [CustomerCategoryController::class, 'addCustomers'])->name('customer-categories.add-customers');
@@ -239,6 +244,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('caisses/{caisse}/transactions/{transaction}', [CaisseController::class, 'destroyTransaction'])->name('caisses.transactions.destroy');
     Route::post('caisses/transfer', [CaisseController::class, 'transfer'])->name('caisses.transfer');
     Route::post('caisses/sortie-de-caisse', [CaisseController::class, 'sortieDeCaisse'])->name('caisses.sortie-de-caisse');
+    Route::post('caisses/entree-de-caisse', [CaisseController::class, 'entreeDeCaisse'])->name('caisses.entree-de-caisse');
     Route::resource('caisses', CaisseController::class)->parameters(['caisses' => 'caisse']);
 
     // Sector routes

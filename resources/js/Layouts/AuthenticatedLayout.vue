@@ -29,12 +29,14 @@ const menuItems = [
         icon: 'mdi-cash-register',
         isDropdown: true,
         items: [
-            { name: 'Ventes du jour', route: 'ventes.index', icon: 'mdi-cash-register' },
+            { name: 'Factures du jour', route: 'ventes.index', icon: 'mdi-cash-register' },
             { name: 'Dettes clients', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
+            { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
+          {  name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
         ]
     },
     {
-        name: 'Clients',
+        name: 'CRM',
         icon: 'mdi-account-group',
         isDropdown: true,
         items: [
@@ -44,8 +46,7 @@ const menuItems = [
             { name: 'Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
             { name: 'Analyse de zones', route: 'clients.area-analysis', icon: 'mdi-map-search' },
             { name: 'Secteurs', route: 'sectors.index', icon: 'mdi-map-marker-multiple' },
-            { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
-            { name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },
+
             { name: 'Catégories client', route: 'customer-categories.index', icon: 'mdi-folder-account' },
             { name: 'Étiquettes client', route: 'customer-tags.index', icon: 'mdi-tag-multiple' },
             { name: 'Zones', route: 'zones.index', icon: 'mdi-map-marker-radius' },

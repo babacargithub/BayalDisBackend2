@@ -64,8 +64,8 @@ class AddCustomersToBeatTest extends TestCase
 
         $response->assertOk()->assertJson(['message' => 'Clients ajoutés au beat']);
 
-        $this->assertDatabaseHas('beat_stops', ['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'visit_date' => null]);
-        $this->assertDatabaseHas('beat_stops', ['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'visit_date' => null]);
+        $this->assertDatabaseHas('beat_stops', ['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'beat_round_id' => null]);
+        $this->assertDatabaseHas('beat_stops', ['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'beat_round_id' => null]);
     }
 
     public function test_add_customers_to_beat_returns_403_for_other_commercials_beat(): void
@@ -110,13 +110,13 @@ class AddCustomersToBeatTest extends TestCase
             'commercial_id' => $this->commercial->id,
         ]);
 
-        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'visit_date' => null]);
+        BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
         $response = $this->actingAs($this->user)->postJson("/api/beats/{$beat->id}/customers", [
             'customer_ids' => [$customer->id],
         ]);
 
         $response->assertOk();
-        $this->assertCount(1, BeatStop::where('beat_id', $beat->id)->where('customer_id', $customer->id)->whereNull('visit_date')->get());
+        $this->assertCount(1, BeatStop::where('beat_id', $beat->id)->where('customer_id', $customer->id)->whereNull('beat_round_id')->get());
     }
 }
