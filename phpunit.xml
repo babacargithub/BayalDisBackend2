@@ -50,6 +50,9 @@
             <file>tests/Feature/CustomerCacheTest.php</file>
             <directory>tests/Feature/Feature</directory>
         </testsuite>
+        <testsuite name="Caisse">
+            <directory>tests/Feature/Caisse</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

@@ -71,6 +71,13 @@ enum AccountType: string
      */
     case Profit = 'PROFIT';
 
+    /**
+     * General business-running account not tied to a vehicle or commercial.
+     * Examples: loans ("Emprunt"), rent, utilities, caution deposits, etc.
+     * The account's name column carries the specific purpose.
+     */
+    case Management = 'MANAGEMENT';
+
     public function label(): string
     {
         return match ($this) {
@@ -85,6 +92,7 @@ enum AccountType: string
             self::CommercialCollected => 'Encaissements en attente',
             self::FixedCost => 'Charge fixe',
             self::Profit => 'Bénéfice net',
+            self::Management => 'Compte de gestion',
         };
     }
 

@@ -29,6 +29,10 @@ class CaisseController extends Controller
                 ->where('balance', '>', 0)
                 ->orderBy('name')
                 ->get(['id', 'name', 'balance']),
+            'creditableAccounts' => Account::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'balance']),
         ]);
     }
 
@@ -94,6 +98,36 @@ class CaisseController extends Controller
         } catch (\Exception $e) {
             return redirect()->back()->withErrors(['error' => 'Erreur lors de la suppression de la caisse']);
         }
+    }
+
+    public function entreeDeCaisse(Request $request, AccountService $accountService)
+    {
+        $validated = $request->validate([
+            'caisse_id' => ['required', 'integer', 'exists:caisses,id'],
+            'account_id' => ['required', 'integer', 'exists:accounts,id'],
+            'amount' => ['required', 'integer', 'min:1'],
+            'label' => ['required', 'string', 'max:255'],
+        ], [
+            'caisse_id.required' => 'La caisse de destination est obligatoire.',
+            'caisse_id.exists' => 'La caisse sélectionnée est introuvable.',
+            'account_id.required' => 'Le compte source est obligatoire.',
+            'account_id.exists' => 'Le compte sélectionné est introuvable.',
+            'amount.required' => 'Le montant est obligatoire.',
+            'amount.min' => 'Le montant doit être supérieur à zéro.',
+            'label.required' => 'Le libellé est obligatoire.',
+        ]);
+
+        $caisse = Caisse::findOrFail($validated['caisse_id']);
+        $account = Account::findOrFail($validated['account_id']);
+
+        $accountService->processEntreeDeCaisse(
+            caisse: $caisse,
+            account: $account,
+            amount: $validated['amount'],
+            label: $validated['label'],
+        );
+
+        return back()->with('success', 'Entrée de caisse enregistrée avec succès.');
     }
 
     public function sortieDeCaisse(Request $request, AccountService $accountService)
