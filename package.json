@@ -28,6 +28,7 @@
         "sweetalert2": "^11.16.0",
         "vite-plugin-vuetify": "^2.0.4",
         "vue3-apexcharts": "^1.11.1",
+        "vuedraggable": "^4.1.0",
         "vuetify": "^3.7.6"
     }
 }

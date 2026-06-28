@@ -173,59 +173,76 @@
                                 />
                             </div>
 
-                            <div v-for="(item, index) in form.items" :key="index" class="mb-4">
-                                <v-row>
-                                    <v-col cols="12" md="4">
-                                        <v-autocomplete
-                                            v-model="item.product_id"
-                                            :items="filteredProducts"
-                                            item-title="name"
-                                            item-value="id"
-                                            label="Produit"
-                                            required
-                                            clearable
-                                            :disabled="!!editingInvoice?.is_stocked"
-                                            :error-messages="form.errors[`items.${index}.product_id`]"
-                                        />
-                                    </v-col>
-                                    <v-col cols="12" md="2">
-                                        <v-text-field
-                                            v-model.number="item.quantity"
-                                            label="Quantité"
-                                            type="number"
-                                            required
-                                            :disabled="!!editingInvoice?.is_stocked"
-                                            :error-messages="form.errors[`items.${index}.quantity`]"
-                                        />
-                                    </v-col>
-                                    <v-col cols="12" md="2">
-                                        <v-text-field
-                                            v-model.number="item.unit_price"
-                                            label="Prix unitaire"
-                                            type="number"
-                                            required
-                                            :disabled="!!editingInvoice?.is_stocked"
-                                            :error-messages="form.errors[`items.${index}.unit_price`]"
-                                        />
-                                    </v-col>
-                                    <v-col cols="12" md="3">
-                                        <div class="d-flex align-center h-100">
-                                            <span class="text-subtitle-1 text-gray-600">
-                                               {{ formatPrice(calculateItemTotal(item)) }}
-                                            </span>
-                                        </div>
-                                    </v-col>
-                                    <v-col cols="12" md="1">
-                                        <v-btn
-                                            v-if="!editingInvoice?.is_stocked"
-                                            icon="mdi-delete"
-                                            variant="text"
-                                            color="error"
-                                            @click="removeItem(index)"
-                                        />
-                                    </v-col>
-                                </v-row>
-                            </div>
+                            <draggable
+                                v-model="form.items"
+                                item-key="product_id"
+                                handle=".drag-handle"
+                                ghost-class="drag-ghost"
+                            >
+                                <template #item="{ element: item, index }">
+                                    <div class="mb-4">
+                                        <v-row align="center">
+                                            <v-col cols="auto" class="pr-0">
+                                                <v-icon
+                                                    class="drag-handle"
+                                                    style="cursor: grab"
+                                                    color="grey-lighten-1"
+                                                    title="Glisser pour réordonner"
+                                                >mdi-drag-vertical</v-icon>
+                                            </v-col>
+                                            <v-col cols="12" md="3">
+                                                <v-autocomplete
+                                                    v-model="item.product_id"
+                                                    :items="filteredProducts"
+                                                    item-title="name"
+                                                    item-value="id"
+                                                    label="Produit"
+                                                    required
+                                                    clearable
+                                                    :disabled="!!editingInvoice?.is_stocked"
+                                                    :error-messages="form.errors[`items.${index}.product_id`]"
+                                                />
+                                            </v-col>
+                                            <v-col cols="12" md="2">
+                                                <v-text-field
+                                                    v-model.number="item.quantity"
+                                                    label="Quantité"
+                                                    type="number"
+                                                    required
+                                                    :disabled="!!editingInvoice?.is_stocked"
+                                                    :error-messages="form.errors[`items.${index}.quantity`]"
+                                                />
+                                            </v-col>
+                                            <v-col cols="12" md="2">
+                                                <v-text-field
+                                                    v-model.number="item.unit_price"
+                                                    label="Prix unitaire"
+                                                    type="number"
+                                                    required
+                                                    :disabled="!!editingInvoice?.is_stocked"
+                                                    :error-messages="form.errors[`items.${index}.unit_price`]"
+                                                />
+                                            </v-col>
+                                            <v-col cols="12" md="3">
+                                                <div class="d-flex align-center h-100">
+                                                    <span class="text-subtitle-1 text-medium-emphasis">
+                                                        {{ formatPrice(calculateItemTotal(item)) }}
+                                                    </span>
+                                                </div>
+                                            </v-col>
+                                            <v-col cols="12" md="1">
+                                                <v-btn
+                                                    v-if="!editingInvoice?.is_stocked"
+                                                    icon="mdi-delete"
+                                                    variant="text"
+                                                    color="error"
+                                                    @click="removeItem(index)"
+                                                />
+                                            </v-col>
+                                        </v-row>
+                                    </div>
+                                </template>
+                            </draggable>
                             <div v-if="!editingInvoice?.is_stocked" class="d-flex justify-center">
                                 <v-btn icon color="primary" @click="addItem">
                                     <v-icon>mdi-plus</v-icon>
@@ -305,23 +322,42 @@
                     <v-table>
                         <thead>
                             <tr>
+                                <th style="width: 40px"></th>
                                 <th>Produit</th>
                                 <th class="text-right">Quantité</th>
                                 <th class="text-right">Prix unitaire</th>
                                 <th class="text-right">Total</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr v-for="item in selectedInvoice?.items" :key="item.id">
-                                <td>{{ item.product?.name }}</td>
-                                <td class="text-right">{{ item.quantity }}</td>
-                                <td class="text-right">{{ formatPrice(item.unit_price) }}</td>
-                                <td class="text-right">{{ formatPrice(item.total_price) }}</td>
-                            </tr>
-                        </tbody>
+                        <draggable
+                            v-model="viewSortedItems"
+                            tag="tbody"
+                            item-key="id"
+                            handle=".drag-handle"
+                            ghost-class="drag-ghost"
+                            @end="saveViewSortOrder"
+                        >
+                            <template #item="{ element: item }">
+                                <tr>
+                                    <td>
+                                        <v-icon
+                                            class="drag-handle"
+                                            style="cursor: grab"
+                                            color="grey-lighten-1"
+                                            size="small"
+                                            title="Glisser pour réordonner"
+                                        >mdi-drag-vertical</v-icon>
+                                    </td>
+                                    <td>{{ item.product?.name }}</td>
+                                    <td class="text-right">{{ item.quantity }}</td>
+                                    <td class="text-right">{{ formatPrice(item.unit_price) }}</td>
+                                    <td class="text-right">{{ formatPrice(item.total_price) }}</td>
+                                </tr>
+                            </template>
+                        </draggable>
                         <tfoot>
                             <tr>
-                                <td colspan="3" class="text-right font-weight-bold">Total</td>
+                                <td colspan="4" class="text-right font-weight-bold">Total</td>
                                 <td class="text-right font-weight-bold">{{ formatPrice(selectedInvoice?.total_amount || 0) }}</td>
                             </tr>
                         </tfoot>
@@ -391,6 +427,9 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import draggable from 'vuedraggable';
+import { useForm, router } from '@inertiajs/vue3';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const showParentProductsOnly = ref(false);
 
@@ -400,8 +439,6 @@ const filteredProducts = computed(() => {
     }
     return props.products;
 });
-import { useForm, router } from '@inertiajs/vue3';
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     purchaseInvoices: {
@@ -432,8 +469,32 @@ const editingInvoice = ref(null);
 const invoiceToDelete = ref(null);
 const viewDialog = ref(false);
 const selectedInvoice = ref(null);
+const viewSortedItems = ref([]);
 const putInStockDialog = ref(false);
 const invoiceForPutInStock = ref(null);
+
+const VIEW_SORT_ORDER_KEY_PREFIX = 'purchase_invoice_view_order_';
+
+function loadViewSortedItems(invoice) {
+    const savedOrderJson = localStorage.getItem(`${VIEW_SORT_ORDER_KEY_PREFIX}${invoice.id}`);
+    if (!savedOrderJson) {
+        viewSortedItems.value = [...invoice.items];
+        return;
+    }
+    const savedItemIds = JSON.parse(savedOrderJson);
+    const itemsById = Object.fromEntries(invoice.items.map((item) => [item.id, item]));
+    const orderedItems = savedItemIds.map((id) => itemsById[id]).filter(Boolean);
+    const missingItems = invoice.items.filter((item) => !savedItemIds.includes(item.id));
+    viewSortedItems.value = [...orderedItems, ...missingItems];
+}
+
+function saveViewSortOrder() {
+    if (!selectedInvoice.value) {
+        return;
+    }
+    const orderedIds = viewSortedItems.value.map((item) => item.id);
+    localStorage.setItem(`${VIEW_SORT_ORDER_KEY_PREFIX}${selectedInvoice.value.id}`, JSON.stringify(orderedIds));
+}
 
 const form = useForm({
     supplier_id: '',
@@ -551,6 +612,7 @@ function editInvoice(invoice) {
 
 function viewInvoice(invoice) {
     selectedInvoice.value = invoice;
+    loadViewSortedItems(invoice);
     viewDialog.value = true;
 }
 
@@ -689,3 +751,11 @@ function closeDialog() {
     }
 }
 </script>
+
+<style scoped>
+.drag-ghost {
+    opacity: 0.4;
+    background: rgb(var(--v-theme-primary), 0.08);
+    border-radius: 4px;
+}
+</style>
