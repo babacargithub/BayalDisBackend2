@@ -23,8 +23,19 @@ const checkMobile = () => {
 };
 
 const menuItems = [
-    { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
+    // { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
     {
+        name: 'Données',
+        icon: 'mdi-view-dashboard',
+        isDropdown: true,
+        items: [
+          { name: 'Tableau de bord', route: 'dashboard', icon: 'mdi-view-dashboard' },
+          { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
+          { name: 'Statistiques', route: 'admin.statistiques', icon: 'mdi-chart-line' },
+          { name: 'Zones & Lignes', route: 'admin.geo-stats', icon: 'mdi-map-marker-path' },
+        ]
+    },
+  {
         name: 'Ventes',
         icon: 'mdi-cash-register',
         isDropdown: true,
@@ -43,7 +54,7 @@ const menuItems = [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
             { name: 'Beats', route: 'beats.index', icon: 'mdi-map-marker-check' },
             { name: 'Activités', route: 'clients.activity-map', icon: 'mdi-map-marker-star' },
-            { name: 'Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
+            { name: '/Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
             { name: 'Analyse de zones', route: 'clients.area-analysis', icon: 'mdi-map-search' },
             { name: 'Secteurs', route: 'sectors.index', icon: 'mdi-map-marker-multiple' },
 
@@ -91,9 +102,6 @@ const menuItems = [
         isDropdown: true,
         items: [
             { name: 'RH', route: 'admin.rh', icon: 'mdi-account-hard-hat' },
-            { name: 'Rapports', route: 'admin.rapport', icon: 'mdi-chart-box' },
-            { name: 'Statistiques', route: 'admin.statistiques', icon: 'mdi-chart-line' },
-            { name: 'Zones & Lignes', route: 'admin.geo-stats', icon: 'mdi-map-marker-path' },
             { name: 'Utilisateurs', route: 'users.index', icon: 'mdi-account-multiple' },
             { name: 'Investissements', route: 'investments.index', icon: 'mdi-cash-multiple' },
             { name: 'Coûts d\'exploitation', route: 'monthly-fixed-costs.index', icon: 'mdi-office-building-cog' },

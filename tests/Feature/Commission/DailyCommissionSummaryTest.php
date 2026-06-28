@@ -5,6 +5,8 @@ namespace Tests\Feature\Commission;
 use App\Data\Commission\DailyCommissionSummaryData;
 use App\Enums\CarLoadItemSource;
 use App\Enums\CarLoadStatus;
+use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
@@ -162,6 +164,18 @@ class DailyCommissionSummaryTest extends TestCase
     {
         Carbon::setTestNow();
         parent::tearDown();
+    }
+
+    private function ensureOdometerForToday(): void
+    {
+        $beat = Beat::firstOrCreate(
+            ['commercial_id' => $this->commercial->id, 'name' => '__odometer__'],
+        );
+
+        BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => today()],
+            ['name' => 'Tournée '.today()->toDateString(), 'commercial_id' => $this->commercial->id, 'odometer_start_km' => 10000],
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -597,6 +611,7 @@ class DailyCommissionSummaryTest extends TestCase
         ]);
 
         Carbon::setTestNow('2026-03-03');
+        $this->ensureOdometerForToday();
 
         // Salesperson sells 10 × 10 000 = 100 000 XOF → hits tier 1
         // base_commission = 100 000 × 1 % = 1 000

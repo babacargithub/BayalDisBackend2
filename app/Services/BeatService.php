@@ -320,6 +320,7 @@ readonly class BeatService
     public function getRoundsForBeat(Beat $beat): array
     {
         return BeatRound::where('beat_id', $beat->id)
+            ->with('vehicle:id,name,plate_number')
             ->withCount([
                 'stops as total',
                 'stops as completed' => fn ($q) => $q->where('status', BeatStop::STATUS_COMPLETED),
@@ -329,7 +330,7 @@ readonly class BeatService
             ])
             ->orderByDesc('planned_at')
             ->get()
-            ->map(function ($round) {
+            ->map(function (BeatRound $round) {
                 $dateString = $this->castToDateString($round->planned_at);
 
                 return [
@@ -342,6 +343,14 @@ readonly class BeatService
                     'cancelled' => (int) $round->cancelled,
                     'no_sale' => (int) $round->no_sale,
                     'planned' => (int) $round->planned,
+                    'vehicle' => $round->vehicle ? [
+                        'id' => $round->vehicle->id,
+                        'name' => $round->vehicle->name,
+                        'plate_number' => $round->vehicle->plate_number,
+                    ] : null,
+                    'odometer_start_km' => $round->odometer_start_km,
+                    'odometer_end_km' => $round->odometer_end_km,
+                    'distance_km' => $round->distance_km,
                 ];
             })
             ->values()
@@ -384,6 +393,8 @@ readonly class BeatService
             VenteStatsFilter::regardlessOfPaymentStatus()->forCustomers($customerIds),
         );
 
+        $round->load('vehicle:id,name,plate_number');
+
         return [
             'date' => $date,
             'label' => $this->formatRoundLabel($date),
@@ -396,6 +407,14 @@ readonly class BeatService
             'total_debt_to_collect' => $totalDebtToCollect,
             'total_collected' => (int) $totalCollected,
             'remaining_to_collect' => $totalDebtToCollect - (int) $totalCollected,
+            'vehicle' => $round->vehicle ? [
+                'id' => $round->vehicle->id,
+                'name' => $round->vehicle->name,
+                'plate_number' => $round->vehicle->plate_number,
+            ] : null,
+            'odometer_start_km' => $round->odometer_start_km,
+            'odometer_end_km' => $round->odometer_end_km,
+            'distance_km' => $round->distance_km,
             'available_statuses' => array_map(
                 fn (BeatStopStatus $statusCase) => ['status' => $statusCase->value, 'label' => $statusCase->label()],
                 BeatStopStatus::cases(),

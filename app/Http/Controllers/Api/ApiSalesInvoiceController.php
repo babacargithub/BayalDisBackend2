@@ -7,12 +7,14 @@ namespace App\Http\Controllers\Api;
 use App\Data\Vente\VenteStatsFilter;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvoicePaymentMismatchException;
+use App\Exceptions\OdometerNotRecordedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\BulkPayCustomerInvoicesRequest;
 use App\Http\Requests\Api\CreateSalesInvoiceRequest;
 use App\Http\Requests\Api\PaySalesInvoiceRequest;
 use App\Http\Resources\CustomerResource;
 use App\Http\Resources\ProductResource;
+use App\Models\BeatRound;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -25,6 +27,7 @@ use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Throwable;
 
 class ApiSalesInvoiceController extends Controller
@@ -39,7 +42,13 @@ class ApiSalesInvoiceController extends Controller
     public function createSalesInvoice(CreateSalesInvoiceRequest $request): JsonResponse
     {
         try {
+            $this->assertOdometerRecordedForToday($request->user()->commercial);
             $this->salesInvoiceService->createSalesInvoice($request->validated());
+        } catch (OdometerNotRecordedException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error_code' => OdometerNotRecordedException::ERROR_CODE,
+            ], 422);
         } catch (InsufficientStockException|InvoicePaymentMismatchException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (Throwable $e) {
@@ -47,6 +56,28 @@ class ApiSalesInvoiceController extends Controller
         }
 
         return response()->json(['message' => 'Facture créée avec succès'], 201);
+    }
+
+    /**
+     * @throws OdometerNotRecordedException
+     */
+    private function assertOdometerRecordedForToday(Commercial $commercial): void
+    {
+        $todayRound = BeatRound::where('commercial_id', $commercial->id)
+            ->whereDate('planned_at', today())
+            ->first();
+
+        if ($todayRound === null) {
+            throw new OdometerNotRecordedException(
+                "Vous devez d'abord créer une tournée pour aujourd'hui avant de pouvoir faire des ventes."
+            );
+        }
+
+        if ($todayRound->odometer_start_km === null) {
+            throw new OdometerNotRecordedException(
+                'Vous devez enregistrer le kilométrage de départ de votre véhicule avant de faire des ventes.'
+            );
+        }
     }
 
     /**
@@ -61,7 +92,7 @@ class ApiSalesInvoiceController extends Controller
                 paymentMethod: $request->string('payment_method')->value(),
                 userId: $request->user()->id,
             );
-        } catch (\Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException $e) {
+        } catch (UnprocessableEntityHttpException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 

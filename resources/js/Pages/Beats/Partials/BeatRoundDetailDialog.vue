@@ -87,6 +87,27 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="encaissement-chip pa-3 border rounded-lg bg-white d-flex align-center gap-2">
+                            <v-icon icon="mdi-map-marker-distance" size="20" color="purple-darken-2" />
+                            <div>
+                                <div class="text-caption text-grey">Distance parcourue</div>
+                                <div class="text-subtitle-2 font-weight-bold text-purple-darken-2">
+                                    {{ roundData.distance_km != null ? roundData.distance_km + ' km' : '— km' }}
+                                </div>
+                            </div>
+                        </div>
+                        <div v-if="roundData.vehicle" class="encaissement-chip pa-3 border rounded-lg bg-white d-flex align-center gap-2">
+                            <v-icon icon="mdi-truck-outline" size="20" color="grey-darken-2" />
+                            <div>
+                                <div class="text-caption text-grey">Véhicule</div>
+                                <div class="text-subtitle-2 font-weight-bold text-grey-darken-2">
+                                    {{ roundData.vehicle.name }}
+                                    <span v-if="roundData.vehicle.plate_number" class="text-caption font-weight-regular ml-1">
+                                        ({{ roundData.vehicle.plate_number }})
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

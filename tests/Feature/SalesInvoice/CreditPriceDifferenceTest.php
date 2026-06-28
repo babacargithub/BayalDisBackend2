@@ -3,6 +3,8 @@
 namespace Tests\Feature\SalesInvoice;
 
 use App\Enums\CarLoadStatus;
+use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
@@ -95,6 +97,15 @@ class CreditPriceDifferenceTest extends TestCase
 
         $this->loadStockIntoCarLoad($this->carLoad, $this->productWithCreditPrice, 100);
         $this->loadStockIntoCarLoad($this->carLoad, $this->productWithoutCreditPrice, 100);
+
+        $beat = Beat::create(['name' => 'Beat Test', 'commercial_id' => $this->commercial->id]);
+        BeatRound::create([
+            'beat_id' => $beat->id,
+            'planned_at' => today(),
+            'name' => 'Tournée '.today()->toDateString(),
+            'commercial_id' => $this->commercial->id,
+            'odometer_start_km' => 10000,
+        ]);
 
         $this->customer = Customer::create([
             'name' => 'Client Test',

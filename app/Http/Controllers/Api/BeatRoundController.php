@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AddCustomersToBeatRequest;
 use App\Http\Requests\Api\CompleteVisitRequest;
+use App\Http\Requests\Api\RecordBeatRoundOdometerRequest;
 use App\Http\Requests\Api\StoreCustomerVisitRequest;
 use App\Http\Requests\Api\UpdateBeatStopStatusRequest;
 use App\Http\Resources\CustomerVisitResource;
 use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Customer;
 use App\Services\BeatService;
@@ -320,6 +322,72 @@ class BeatRoundController extends Controller
         $commercial = $request->user()->commercial;
 
         return response()->json($this->visitService->getTodayStops($commercial));
+    }
+
+    public function recordOdometer(RecordBeatRoundOdometerRequest $request, Beat $beat, string $date): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        if ($beat->commercial_id !== $commercial->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        try {
+            Carbon::createFromFormat('Y-m-d', $date);
+        } catch (\Exception) {
+            return response()->json(['message' => 'Format de date invalide (YYYY-MM-DD requis)'], 422);
+        }
+
+        $round = BeatRound::where('beat_id', $beat->id)
+            ->whereDate('planned_at', $date)
+            ->first();
+
+        if ($round === null) {
+            return response()->json(['message' => 'Aucune tournée trouvée pour cette date'], 404);
+        }
+
+        $validated = $request->validated();
+
+        if ($validated['type'] === 'start') {
+            $round->update([
+                'vehicle_id' => $validated['vehicle_id'],
+                'odometer_start_km' => $validated['km'],
+                'odometer_end_km' => null,
+            ]);
+
+            return response()->json([
+                'message' => 'Kilométrage de départ enregistré',
+                'data' => $this->buildOdometerResponse($round),
+            ]);
+        }
+
+        if ($round->odometer_start_km === null) {
+            return response()->json(['message' => 'Le kilométrage de départ doit être enregistré en premier'], 422);
+        }
+
+        if ($validated['km'] < $round->odometer_start_km) {
+            return response()->json([
+                'message' => "Le kilométrage d'arrivée ({$validated['km']} km) ne peut pas être inférieur au kilométrage de départ ({$round->odometer_start_km} km)",
+            ], 422);
+        }
+
+        $round->update(['odometer_end_km' => $validated['km']]);
+
+        return response()->json([
+            'message' => "Kilométrage d'arrivée enregistré",
+            'data' => $this->buildOdometerResponse($round),
+        ]);
+    }
+
+    private function buildOdometerResponse(BeatRound $round): array
+    {
+        return [
+            'round_id' => $round->id,
+            'vehicle_id' => $round->vehicle_id,
+            'odometer_start_km' => $round->odometer_start_km,
+            'odometer_end_km' => $round->odometer_end_km,
+            'distance_km' => $round->distance_km,
+        ];
     }
 
     public function getBeatDetails(Beat $beat): JsonResponse
