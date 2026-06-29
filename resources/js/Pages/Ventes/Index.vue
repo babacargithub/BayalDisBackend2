@@ -1,7 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import { Head } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useForm, router } from '@inertiajs/vue3'
 
 const props = defineProps({
@@ -188,6 +188,56 @@ const deletePayment = () => {
     })
 }
 
+// ─── Product stats dialog ─────────────────────────────────────────────────────
+const productStatsDialog = ref(false)
+const productStatsLoading = ref(false)
+const productStatsData = ref([])
+const productStatsPeriodStart = ref(props.filters?.date || new Date().toISOString().split('T')[0])
+const productStatsPeriodEnd = ref(props.filters?.date || new Date().toISOString().split('T')[0])
+
+const productStatsHeaders = [
+    { title: 'Produit', key: 'product_name', align: 'start', sortable: true },
+    { title: 'Qté vendue', key: 'total_quantity_sold', align: 'end', sortable: true },
+    { title: 'Clients', key: 'distinct_customers_count', align: 'end', sortable: true },
+    { title: 'Chiffre d\'affaires', key: 'total_amount_sold', align: 'end', sortable: true },
+    { title: 'Profit estimé', key: 'total_estimated_profit', align: 'end', sortable: true },
+    { title: '% CA', key: 'sales_contribution_percentage', align: 'end', sortable: true },
+    { title: '% Profit', key: 'profit_contribution_percentage', align: 'end', sortable: true },
+]
+
+const productStatsTotals = computed(() => ({
+    totalAmount: productStatsData.value.reduce((sum, row) => sum + row.total_amount_sold, 0),
+    totalProfit: productStatsData.value.reduce((sum, row) => sum + row.total_estimated_profit, 0),
+    totalQuantity: productStatsData.value.reduce((sum, row) => sum + row.total_quantity_sold, 0),
+    totalProducts: productStatsData.value.length,
+}))
+
+const openProductStats = async () => {
+    productStatsDialog.value = true
+    await fetchProductStats()
+}
+
+const fetchProductStats = async () => {
+    productStatsLoading.value = true
+    try {
+        const url = new URL(route('ventes.product-stats'), window.location.origin)
+        url.searchParams.set('date_start', productStatsPeriodStart.value)
+        url.searchParams.set('date_end', productStatsPeriodEnd.value)
+
+        const response = await fetch(url.toString(), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+        if (response.ok) {
+            const data = await response.json()
+            productStatsData.value = data.stats || []
+        }
+    } catch {
+        productStatsData.value = []
+    } finally {
+        productStatsLoading.value = false
+    }
+}
+
 // ─── Cancel payment dialog ────────────────────────────────────────────────────
 const cancelPaymentDialog = ref(false)
 const paymentToCancel = ref(null)
@@ -267,6 +317,9 @@ const confirmCancelPayment = () => {
                             Impayées
                         </v-btn>
                     </v-btn-group>
+                    <v-btn color="indigo" variant="tonal" @click="openProductStats" prepend-icon="mdi-chart-bar">
+                        Stats Produits
+                    </v-btn>
                     <v-btn color="secondary" @click="filterDialog = true" prepend-icon="mdi-tune">
                         Filtres
                     </v-btn>
@@ -697,6 +750,169 @@ const confirmCancelPayment = () => {
                 </v-card-actions>
             </v-card>
         </v-dialog>
+        <!-- ─── Product Stats Dialog ──────────────────────────────────────── -->
+        <v-dialog v-model="productStatsDialog" max-width="1200px" scrollable>
+            <v-card>
+                <v-card-title class="d-flex align-center pa-5 pb-3">
+                    <v-icon color="indigo" class="mr-3" size="28">mdi-chart-bar</v-icon>
+                    <span class="text-h5 font-weight-bold">Statistiques par Produit</span>
+                    <v-spacer />
+                    <v-btn icon="mdi-close" variant="text" @click="productStatsDialog = false" />
+                </v-card-title>
+
+                <v-divider />
+
+                <!-- Date range filter -->
+                <v-card-text class="pa-5 pb-3">
+                    <v-row align="center" class="mb-4">
+                        <v-col cols="12" sm="4">
+                            <v-text-field
+                                v-model="productStatsPeriodStart"
+                                label="Date début"
+                                type="date"
+                                density="compact"
+                                variant="outlined"
+                                hide-details
+                                prepend-inner-icon="mdi-calendar-start"
+                            />
+                        </v-col>
+                        <v-col cols="12" sm="4">
+                            <v-text-field
+                                v-model="productStatsPeriodEnd"
+                                label="Date fin"
+                                type="date"
+                                density="compact"
+                                variant="outlined"
+                                hide-details
+                                prepend-inner-icon="mdi-calendar-end"
+                            />
+                        </v-col>
+                        <v-col cols="12" sm="4">
+                            <v-btn
+                                color="indigo"
+                                variant="tonal"
+                                block
+                                prepend-icon="mdi-refresh"
+                                :loading="productStatsLoading"
+                                @click="fetchProductStats"
+                            >
+                                Actualiser
+                            </v-btn>
+                        </v-col>
+                    </v-row>
+
+                    <!-- KPI summary cards -->
+                    <v-row class="mb-4">
+                        <v-col cols="6" sm="3">
+                            <v-card variant="tonal" color="indigo" class="pa-3 text-center">
+                                <div class="text-caption text-indigo-darken-2 mb-1">Produits vendus</div>
+                                <div class="text-h6 font-weight-bold text-indigo">{{ productStatsTotals.totalProducts }}</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="6" sm="3">
+                            <v-card variant="tonal" color="blue" class="pa-3 text-center">
+                                <div class="text-caption text-blue-darken-2 mb-1">Total unités</div>
+                                <div class="text-h6 font-weight-bold text-blue">{{ formatNumber(productStatsTotals.totalQuantity) }}</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="6" sm="3">
+                            <v-card variant="tonal" color="primary" class="pa-3 text-center">
+                                <div class="text-caption text-primary-darken-2 mb-1">Chiffre d'affaires</div>
+                                <div class="text-h6 font-weight-bold text-primary">{{ formatCurrency(productStatsTotals.totalAmount) }}</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="6" sm="3">
+                            <v-card variant="tonal" color="success" class="pa-3 text-center">
+                                <div class="text-caption text-success-darken-2 mb-1">Profit estimé</div>
+                                <div class="text-h6 font-weight-bold text-success">{{ formatCurrency(productStatsTotals.totalProfit) }}</div>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- Stats table -->
+                    <v-data-table
+                        :headers="productStatsHeaders"
+                        :items="productStatsData"
+                        :loading="productStatsLoading"
+                        :items-per-page="25"
+                        density="comfortable"
+                        class="elevation-1 rounded-lg"
+                        :sort-by="[{ key: 'total_amount_sold', order: 'desc' }]"
+                    >
+                        <template #item.total_amount_sold="{ item }">
+                            <span class="font-weight-medium text-primary">{{ formatCurrency(item.total_amount_sold) }}</span>
+                        </template>
+
+                        <template #item.total_estimated_profit="{ item }">
+                            <span
+                                class="font-weight-medium"
+                                :class="item.total_estimated_profit >= 0 ? 'text-success' : 'text-error'"
+                            >
+                                {{ formatCurrency(item.total_estimated_profit) }}
+                            </span>
+                        </template>
+
+                        <template #item.total_quantity_sold="{ item }">
+                            <v-chip size="small" color="blue" variant="tonal">
+                                {{ formatNumber(item.total_quantity_sold) }}
+                            </v-chip>
+                        </template>
+
+                        <template #item.distinct_customers_count="{ item }">
+                            <v-chip size="small" color="purple" variant="tonal">
+                                {{ item.distinct_customers_count }}
+                            </v-chip>
+                        </template>
+
+                        <template #item.sales_contribution_percentage="{ item }">
+                            <div class="d-flex align-center gap-2" style="min-width: 100px">
+                                <v-progress-linear
+                                    :model-value="item.sales_contribution_percentage"
+                                    color="primary"
+                                    bg-color="grey-lighten-3"
+                                    rounded
+                                    height="6"
+                                    class="flex-grow-1"
+                                />
+                                <span class="text-caption font-weight-medium" style="min-width: 40px">
+                                    {{ item.sales_contribution_percentage }}%
+                                </span>
+                            </div>
+                        </template>
+
+                        <template #item.profit_contribution_percentage="{ item }">
+                            <div class="d-flex align-center gap-2" style="min-width: 100px">
+                                <v-progress-linear
+                                    :model-value="item.profit_contribution_percentage"
+                                    color="success"
+                                    bg-color="grey-lighten-3"
+                                    rounded
+                                    height="6"
+                                    class="flex-grow-1"
+                                />
+                                <span class="text-caption font-weight-medium" style="min-width: 40px">
+                                    {{ item.profit_contribution_percentage }}%
+                                </span>
+                            </div>
+                        </template>
+
+                        <template #no-data>
+                            <div class="d-flex flex-column align-center justify-center py-10 text-grey">
+                                <v-icon size="48" class="mb-3">mdi-chart-bar-stacked</v-icon>
+                                <span class="text-body-1">Aucune vente sur cette période</span>
+                            </div>
+                        </template>
+                    </v-data-table>
+                </v-card-text>
+
+                <v-divider />
+                <v-card-actions class="pa-4">
+                    <v-spacer />
+                    <v-btn color="primary" variant="tonal" @click="productStatsDialog = false">Fermer</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
     </AuthenticatedLayout>
 </template>
 

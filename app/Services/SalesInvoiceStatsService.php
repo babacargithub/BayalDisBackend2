@@ -5,13 +5,16 @@ namespace App\Services;
 use App\Data\ActivityReport\CommercialActivityReportDTO;
 use App\Data\Dashboard\DashboardStats;
 use App\Data\Vente\PaidStatus;
+use App\Data\Vente\ProductSalesStatsDTO;
 use App\Data\Vente\VenteStatsFilter;
 use App\Enums\SalesInvoiceStatus;
+use App\Models\BeatStop;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Depense;
+use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\StockEntry;
 use App\Models\Vente;
@@ -405,6 +408,120 @@ readonly class SalesInvoiceStatsService
         return $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)
             ->whereIn('status', [SalesInvoiceStatus::Draft, SalesInvoiceStatus::Issued])
             ->count();
+    }
+
+    // =========================================================================
+    // Per-product aggregate statistics
+    // =========================================================================
+
+    /**
+     * Compute per-product sales statistics scoped to the given filter.
+     *
+     * Returns one ProductSalesStatsDTO per product that had at least one sale matching the filter,
+     * sorted descending by total revenue. Percentage contributions are relative to the grand totals
+     * across all matching products.
+     *
+     * All VenteStatsFilter fields are supported: date range, paidStatus, commercialId, carLoadId,
+     * customerId, customerIds, type, teamId, beatId, and tagIds. Callers compose the filter via
+     * VenteStatsFilter's fluent API and pass it in — no extra parameters needed.
+     *
+     * The distinct customer count uses COALESCE(ventes.customer_id, sales_invoices.customer_id)
+     * to handle both legacy SINGLE ventes (customer on the vente row) and current INVOICE_ITEM
+     * ventes (customer on the invoice).
+     *
+     * @return \Illuminate\Support\Collection<int, ProductSalesStatsDTO>
+     */
+    public function getProductSalesStats(VenteStatsFilter $filter): Collection
+    {
+        $query = Vente::query()
+            ->leftJoin('sales_invoices', 'ventes.sales_invoice_id', '=', 'sales_invoices.id')
+            ->select([
+                'ventes.product_id',
+                DB::raw('SUM(ventes.price * ventes.quantity) as total_amount'),
+                DB::raw('SUM(ventes.profit) as total_profit'),
+                DB::raw('SUM(ventes.quantity) as total_quantity'),
+                DB::raw('COUNT(DISTINCT COALESCE(ventes.customer_id, sales_invoices.customer_id)) as distinct_customers_count'),
+            ])
+            ->whereNotNull('ventes.product_id')
+            ->groupBy('ventes.product_id');
+
+        if ($filter->startDate !== null) {
+            $query->whereDate('ventes.created_at', '>=', $filter->startDate);
+        }
+
+        if ($filter->endDate !== null) {
+            $query->whereDate('ventes.created_at', '<=', $filter->endDate);
+        }
+
+        match ($filter->paidStatus) {
+            PaidStatus::PaidOnly => $query->where('ventes.paid', true),
+            PaidStatus::UnpaidOnly => $query->where('ventes.paid', false),
+            PaidStatus::All => null,
+        };
+
+        if ($filter->type !== null) {
+            $query->where('ventes.type', $filter->type);
+        }
+
+        if ($filter->commercialId !== null) {
+            $query->where('sales_invoices.commercial_id', $filter->commercialId);
+        }
+
+        if ($filter->carLoadId !== null) {
+            $query->where('sales_invoices.car_load_id', $filter->carLoadId);
+        }
+
+        if ($filter->customerId !== null) {
+            $query->where('sales_invoices.customer_id', $filter->customerId);
+        }
+
+        if ($filter->customerIds !== null) {
+            $query->whereIn('sales_invoices.customer_id', $filter->customerIds);
+        }
+
+        if ($filter->teamId !== null) {
+            $query->whereIn(
+                'sales_invoices.commercial_id',
+                Commercial::where('team_id', $filter->teamId)->select('id'),
+            );
+        }
+
+        if ($filter->beatId !== null) {
+            $query->whereIn(
+                'sales_invoices.customer_id',
+                BeatStop::where('beat_id', $filter->beatId)->select('customer_id'),
+            );
+        }
+
+        if ($filter->tagIds !== null) {
+            $query->whereIn(
+                'sales_invoices.customer_id',
+                DB::table('customer_tag')->whereIn('tag_id', $filter->tagIds)->select('customer_id'),
+            );
+        }
+
+        $rows = $query->get();
+
+        $productsByIdMap = Product::whereIn('id', $rows->pluck('product_id')->filter()->toArray())
+            ->pluck('name', 'id');
+
+        $grandTotalAmount = (int) $rows->sum('total_amount');
+        $grandTotalProfit = (int) $rows->sum('total_profit');
+
+        return $rows->map(fn ($row) => new ProductSalesStatsDTO(
+            productId: (int) $row->product_id,
+            productName: $productsByIdMap->get($row->product_id) ?? "Produit #{$row->product_id}",
+            totalQuantitySold: (int) $row->total_quantity,
+            distinctCustomersCount: (int) $row->distinct_customers_count,
+            totalAmountSold: (int) $row->total_amount,
+            totalEstimatedProfit: (int) $row->total_profit,
+            salesContributionPercentage: $grandTotalAmount > 0
+                ? round(($row->total_amount / $grandTotalAmount) * 100, 2)
+                : 0.0,
+            profitContributionPercentage: $grandTotalProfit > 0
+                ? round(($row->total_profit / $grandTotalProfit) * 100, 2)
+                : 0.0,
+        ))->sortByDesc(fn (ProductSalesStatsDTO $dto) => $dto->totalAmountSold)->values();
     }
 
     // =========================================================================

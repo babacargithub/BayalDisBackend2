@@ -64,6 +64,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('produits', ProductController::class);
     Route::resource('product-categories', ProductCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('ventes/sales_history', [VenteController::class, 'salesHistory']);
+    Route::get('ventes/product-stats', [VenteController::class, 'productStats'])->name('ventes.product-stats');
     Route::resource('ventes', VenteController::class);
     Route::resource('zones', ZoneController::class);
     Route::get('zones/{zone}/lignes', [ZoneController::class, 'lignes'])->name('zones.lignes');
