@@ -4,6 +4,8 @@ namespace Tests\Feature\SalespersonApi;
 
 use App\Enums\CarLoadStatus;
 use App\Enums\SalesInvoiceStatus;
+use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
@@ -152,6 +154,8 @@ class SalespersonCriticalEndpointsTest extends TestCase
                 'commercial_id' => $this->commercial->id,
             ]);
         }
+
+        $this->ensureOdometerForToday();
     }
 
     // =========================================================================
@@ -173,6 +177,18 @@ class SalespersonCriticalEndpointsTest extends TestCase
         $item->save();
 
         return $item;
+    }
+
+    private function ensureOdometerForToday(): void
+    {
+        $beat = Beat::firstOrCreate(
+            ['commercial_id' => $this->commercial->id, 'name' => '__odometer__'],
+        );
+
+        BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => today()],
+            ['name' => 'Tournée '.today()->toDateString(), 'commercial_id' => $this->commercial->id, 'odometer_start_km' => 10000],
+        );
     }
 
     private function asCommercial(): static

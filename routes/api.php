@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ApiCommissionController;
 use App\Http\Controllers\Api\ApiCustomerController;
 use App\Http\Controllers\Api\ApiOrderController;
 use App\Http\Controllers\Api\ApiSalesInvoiceController;
+use App\Http\Controllers\Api\ApiVehicleController;
 use App\Http\Controllers\Api\ApiVersementController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BeatRoundController as ApiCustomerVisitController;
@@ -25,6 +26,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Get commercials list
     Route::get('/commercials', [ApiSalesInvoiceController::class, 'getCommercials']);
 
+    // Vehicles list for odometer vehicle selection
+    Route::get('/vehicles', [ApiVehicleController::class, 'index']);
+
     // Beats simple list and customer roster for mobile app
     Route::get('/beats', [ApiCustomerVisitController::class, 'listBeatsWithCustomerCount']);
     Route::get('/beats/{beat}/customers', [ApiCustomerVisitController::class, 'listBeatCustomers']);
@@ -35,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'createBeatRound']);
     Route::get('/beats/{beat}/rounds/{date}/customers', [ApiCustomerVisitController::class, 'listBeatRoundCustomers']);
     Route::patch('/beats/{beat}/rounds/{date}/stops/{stop}', [ApiCustomerVisitController::class, 'updateStopStatus']);
+    Route::patch('/beats/{beat}/rounds/{date}/odometer', [ApiCustomerVisitController::class, 'recordOdometer']);
 
     // Salesperson routes
     Route::prefix('salesperson/')->group(function () {

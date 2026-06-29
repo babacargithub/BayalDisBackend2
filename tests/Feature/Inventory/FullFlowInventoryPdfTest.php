@@ -3,6 +3,8 @@
 namespace Tests\Feature\Inventory;
 
 use App\Data\CarLoadInventory\CarLoadInventoryResultItemDTO;
+use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\CarLoad;
 use App\Models\CarLoadInventory;
 use App\Models\Commercial;
@@ -479,6 +481,8 @@ class FullFlowInventoryPdfTest extends TestCase
         // keep dates within car load window (after load_date and before return_date)
         Carbon::setTestNow(Carbon::now()->addDays(30));
         Sanctum::actingAs($this->manager);
+
+        $this->ensureBeatRoundForToday();
         $salesTester = function (TestResponse $resp) {
             if ($resp->status() !== 201 && $resp->status() !== 200) {
                 dump($resp->getContent());
@@ -731,6 +735,26 @@ class FullFlowInventoryPdfTest extends TestCase
         return Carbon::createFromTimestamp($randTs);
     }
 
+    /**
+     * Satisfy the odometer guard on the API invoice endpoint for the current test-now date.
+     * Creates a Beat (idempotent) and a BeatRound for today() if one does not exist yet.
+     */
+    private function ensureBeatRoundForToday(): void
+    {
+        $beat = Beat::firstOrCreate(
+            ['name' => 'Test Beat', 'commercial_id' => $this->commercial->id],
+        );
+
+        BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => today()],
+            [
+                'name' => 'Test Round',
+                'commercial_id' => $this->commercial->id,
+                'odometer_start_km' => 12345,
+            ],
+        );
+    }
+
     private function getManagerCommercial(Team $team): Commercial
     {
         // Find a commercial linked to the team manager (by user_id) and the same team
@@ -801,8 +825,10 @@ class FullFlowInventoryPdfTest extends TestCase
         // Create deterministic sales totals within the car load window
         // First sell 2, then sell 20 more (total 22 as used in previous assertions)
         Carbon::setTestNow(Carbon::parse($carLoad->load_date)->addDays(1));
+        $this->ensureBeatRoundForToday();
         $this->createInvoiceSalesForProductInCarLoad($product, $carLoad, 2);
         Carbon::setTestNow(Carbon::parse($carLoad->load_date)->addDays(2));
+        $this->ensureBeatRoundForToday();
         $this->createInvoiceSalesForProductInCarLoad($product, $carLoad, 20);
         Carbon::setTestNow(null);
 

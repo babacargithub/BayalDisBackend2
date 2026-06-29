@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Data\Vente\ProductSalesStatsDTO;
 use App\Data\Vente\VenteStatsFilter;
 use App\Models\Beat;
 use App\Models\CarLoad;
@@ -10,9 +11,11 @@ use App\Models\Customer;
 use App\Models\Vente;
 use App\Services\DailySalesInvoicesService;
 use App\Services\PaymentService;
+use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -23,6 +26,7 @@ class VenteController extends Controller
     public function __construct(
         private readonly DailySalesInvoicesService $dailySummaryService,
         private readonly PaymentService $paymentService,
+        private readonly SalesInvoiceStatsService $salesInvoiceStatsService,
     ) {}
 
     public function index(Request $request): Response
@@ -132,6 +136,34 @@ class VenteController extends Controller
         } catch (Exception $e) {
             return redirect()->back()->with('error', 'Erreur lors de la suppression de la vente : '.$e->getMessage());
         }
+    }
+
+    public function productStats(Request $request): JsonResponse
+    {
+        $startDate = $request->filled('date_start')
+            ? Carbon::parse($request->date_start)->startOfDay()
+            : today()->startOfDay();
+
+        $endDate = $request->filled('date_end')
+            ? Carbon::parse($request->date_end)->endOfDay()
+            : today()->endOfDay();
+
+        $filter = VenteStatsFilter::regardlessOfPaymentStatus()
+            ->inDateInterval($startDate, $endDate);
+
+        if ($request->filled('commercial_id')) {
+            $filter = $filter->thatAreMadeByCommercial((int) $request->commercial_id);
+        }
+
+        $productStats = $this->salesInvoiceStatsService->getProductSalesStats($filter);
+
+        return response()->json([
+            'stats' => $productStats->map(fn (ProductSalesStatsDTO $dto) => $dto->toArray())->values(),
+            'period' => [
+                'start' => $startDate->toDateString(),
+                'end' => $endDate->toDateString(),
+            ],
+        ]);
     }
 
     public function salesHistory(Request $request)

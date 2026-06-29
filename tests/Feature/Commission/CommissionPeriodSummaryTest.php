@@ -5,6 +5,8 @@ namespace Tests\Feature\Commission;
 use App\Data\Commission\CommissionPeriodSummaryData;
 use App\Enums\CarLoadItemSource;
 use App\Enums\CarLoadStatus;
+use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
@@ -178,8 +180,21 @@ class CommissionPeriodSummaryTest extends TestCase
      *
      * @param  array<array{product_id: int, quantity: int, price: int}>  $items
      */
+    private function ensureOdometerForToday(): void
+    {
+        $beat = Beat::firstOrCreate(
+            ['commercial_id' => $this->commercial->id, 'name' => '__odometer__'],
+        );
+
+        BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => today()],
+            ['name' => 'Tournée '.today()->toDateString(), 'commercial_id' => $this->commercial->id, 'odometer_start_km' => 10000],
+        );
+    }
+
     private function postSale(array $items): void
     {
+        $this->ensureOdometerForToday();
         Sanctum::actingAs($this->user);
 
         $this->postJson('/api/salesperson/sales-invoices', [
@@ -788,6 +803,7 @@ class CommissionPeriodSummaryTest extends TestCase
         $this->createCarLoadWithStock();
 
         Carbon::setTestNow('2026-03-05');
+        $this->ensureOdometerForToday();
 
         Sanctum::actingAs($this->user);
 

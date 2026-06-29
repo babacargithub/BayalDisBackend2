@@ -66,6 +66,11 @@ class Vehicle extends Model
         return $this->hasMany(CarLoad::class);
     }
 
+    public function beatRounds(): HasMany
+    {
+        return $this->hasMany(BeatRound::class);
+    }
+
     public function expenses(): HasMany
     {
         return $this->hasMany(CarLoadExpense::class, 'car_load_id')

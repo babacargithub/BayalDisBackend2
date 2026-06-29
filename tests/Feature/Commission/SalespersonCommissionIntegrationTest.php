@@ -4,6 +4,8 @@ namespace Tests\Feature\Commission;
 
 use App\Enums\CarLoadItemSource;
 use App\Enums\CarLoadStatus;
+use App\Models\Beat;
+use App\Models\BeatRound;
 use App\Models\CarLoad;
 use App\Models\CarLoadItem;
 use App\Models\Commercial;
@@ -182,11 +184,24 @@ class SalespersonCommissionIntegrationTest extends TestCase
      * RecalculateDailyCommissionJob runs synchronously (QUEUE_CONNECTION=sync),
      * so by the time this method returns the DailyCommission record already exists.
      */
+    private function ensureOdometerForToday(): void
+    {
+        $beat = Beat::firstOrCreate(
+            ['commercial_id' => $this->commercial->id, 'name' => '__odometer__'],
+        );
+
+        BeatRound::firstOrCreate(
+            ['beat_id' => $beat->id, 'planned_at' => today()],
+            ['name' => 'Tournée '.today()->toDateString(), 'commercial_id' => $this->commercial->id, 'odometer_start_km' => 10000],
+        );
+    }
+
     private function salespersonMakesSale(
         Product $product,
         int $quantity,
         int $pricePerUnit,
     ): Payment {
+        $this->ensureOdometerForToday();
         Sanctum::actingAs($this->user);
 
         $response = $this->postJson('/api/salesperson/sales-invoices', [
@@ -214,6 +229,7 @@ class SalespersonCommissionIntegrationTest extends TestCase
      */
     private function salespersonMakesMultiProductSale(array $productQuantityPriceTuples): Payment
     {
+        $this->ensureOdometerForToday();
         Sanctum::actingAs($this->user);
 
         $items = array_map(
