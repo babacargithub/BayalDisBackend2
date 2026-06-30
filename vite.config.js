@@ -25,7 +25,9 @@ export default defineConfig({
         },
     },
     build: {
+        reportCompressedSize: false,
         rollupOptions: {
+            maxParallelFileOps: 3,
             output: {
                 manualChunks: {
                     'vendor-vue': ['vue', '@inertiajs/vue3', 'axios'],
