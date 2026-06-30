@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 
 class BeatRound extends Model
 {
@@ -29,6 +30,36 @@ class BeatRound extends Model
             'odometer_end_km' => 'integer',
             'strike_rate' => 'float',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        $invalidateOdometerCache = function (BeatRound $round): void {
+            $date = $round->planned_at->toDateString();
+            Cache::forget(self::odometerBeatIdIndexCacheKey($round->commercial_id, $date));
+            Cache::forget(self::odometerRecordedCacheKey($round->beat_id, $round->commercial_id, $date));
+        };
+
+        static::created($invalidateOdometerCache);
+        static::updated($invalidateOdometerCache);
+        static::deleted($invalidateOdometerCache);
+    }
+
+    /**
+     * Index key: commercial_id + date → beat_id.
+     * Allows the controller to resolve the beat without a DB query on cache hits.
+     */
+    public static function odometerBeatIdIndexCacheKey(int $commercialId, string $date): string
+    {
+        return "beat_round_beat_id_index:{$commercialId}:{$date}";
+    }
+
+    /**
+     * Main odometer flag key: beat_id + commercial_id + date → true.
+     */
+    public static function odometerRecordedCacheKey(int $beatId, int $commercialId, string $date): string
+    {
+        return "beat_round_odometer_recorded:{$beatId}:{$commercialId}:{$date}";
     }
 
     public function beat(): BelongsTo

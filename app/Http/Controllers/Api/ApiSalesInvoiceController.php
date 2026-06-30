@@ -27,6 +27,7 @@ use App\Services\SalesInvoiceStatsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Throwable;
 
@@ -63,6 +64,17 @@ class ApiSalesInvoiceController extends Controller
      */
     private function assertOdometerRecordedForToday(Commercial $commercial): void
     {
+        $todayDateString = today()->toDateString();
+        $beatIdIndexCacheKey = BeatRound::odometerBeatIdIndexCacheKey($commercial->id, $todayDateString);
+
+        $cachedBeatId = Cache::get($beatIdIndexCacheKey);
+        if ($cachedBeatId !== null) {
+            $odometerCacheKey = BeatRound::odometerRecordedCacheKey($cachedBeatId, $commercial->id, $todayDateString);
+            if (Cache::get($odometerCacheKey) === true) {
+                return;
+            }
+        }
+
         $todayRound = BeatRound::where('commercial_id', $commercial->id)
             ->whereDate('planned_at', today())
             ->first();
@@ -78,6 +90,10 @@ class ApiSalesInvoiceController extends Controller
                 'Vous devez enregistrer le kilométrage de départ de votre véhicule avant de faire des ventes.'
             );
         }
+
+        $ttl = today()->endOfDay();
+        Cache::put($beatIdIndexCacheKey, $todayRound->beat_id, $ttl);
+        Cache::put(BeatRound::odometerRecordedCacheKey($todayRound->beat_id, $commercial->id, $todayDateString), true, $ttl);
     }
 
     /**
