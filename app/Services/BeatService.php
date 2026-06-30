@@ -27,8 +27,7 @@ readonly class BeatService
     private const FORECAST_LOOKBACK_DAYS = 15;
 
     public function __construct(
-        private SalesInvoiceStatsService $salesInvoiceStatsService,
-        private PaymentService $paymentService,
+        private SalesInvoiceStatsService $salesInvoiceStatsService
     ) {}
 
     /**
@@ -44,10 +43,17 @@ readonly class BeatService
      *    that date. Rounds are never auto-created here.
      *
      * Only planned stops are transitioned — completed or cancelled stops are untouched.
+     *
+     * Returns the IDs of all target BeatRounds (one per matching beat) for which a round
+     * exists on the sale date's scheduled occurrence. The caller uses these IDs to dispatch
+     * RecalculateBeatRoundStrikeRateJob for each affected round.
+     *
+     * @return int[] BeatRound IDs that correspond to the sale date's round occurrence.
      */
-    public function completeRoundStopForCustomerOnDate(int $customerId, string $date): void
+    public function completeRoundStopForCustomerOnDate(int $customerId, string $date): array
     {
         $saleDate = Carbon::parse($date)->startOfDay();
+        $affectedBeatRoundIds = [];
 
         $beats = Beat::whereHas('templateStops', fn ($q) => $q->where('customer_id', $customerId))->get();
 
@@ -81,7 +87,11 @@ readonly class BeatService
                     'notes' => 'Terminé avec une vente',
                     'resulted_in_sale' => true,
                 ]);
+
+            $affectedBeatRoundIds[] = $targetRound->id;
         }
+
+        return $affectedBeatRoundIds;
     }
 
     /**
@@ -327,6 +337,7 @@ readonly class BeatService
                 'stops as cancelled' => fn ($q) => $q->where('status', BeatStop::STATUS_CANCELLED),
                 'stops as planned' => fn ($q) => $q->where('status', BeatStop::STATUS_PLANNED),
                 'stops as no_sale' => fn ($q) => $q->whereIn('status', BeatStopStatus::noSaleValues()),
+                'stops as with_sale' => fn ($q) => $q->where('resulted_in_sale', true),
             ])
             ->orderByDesc('planned_at')
             ->get()
@@ -343,6 +354,12 @@ readonly class BeatService
                     'cancelled' => (int) $round->cancelled,
                     'no_sale' => (int) $round->no_sale,
                     'planned' => (int) $round->planned,
+                    'with_sale' => (int) $round->with_sale,
+                    'strike_rate' => $round->strike_rate ?? (
+                        (int) $round->total > 0
+                            ? round((int) $round->with_sale / (int) $round->total * 100, 1)
+                            : 0.0
+                    ),
                     'vehicle' => $round->vehicle ? [
                         'id' => $round->vehicle->id,
                         'name' => $round->vehicle->name,
@@ -357,7 +374,50 @@ readonly class BeatService
             ->all();
     }
 
-    public function getRoundCustomers(Beat $beat, string $date): ?array
+    /**
+     * Compute the strike rate for a BeatRound.
+     *
+     * Strike rate = distinct customers who financially engaged on the round's planned_at date
+     *               / total distinct customer IDs in the round's stops × 100.
+     *
+     * A customer is counted when they satisfy at least one of:
+     *  - They have a SalesInvoice created on planned_at (new purchase during the round).
+     *  - They have a Payment recorded on planned_at (settling a due invoice during the visit).
+     *
+     * This is the single source of truth for strike rate computation. Both the
+     * inline detail view (getRoundCustomers) and the async job
+     * (RecalculateBeatRoundStrikeRateJob) delegate to this method.
+     *
+     * Returns 0.0 when the round has no stops.
+     */
+    public function calculateStrikeRateForBeatRound(BeatRound $round): float
+    {
+        $distinctCustomerIdsInRound = BeatStop::where('beat_round_id', $round->id)
+            ->whereNotNull('customer_id')
+            ->distinct()
+            ->pluck('customer_id')
+            ->all();
+
+        $totalDistinctCustomers = count($distinctCustomerIdsInRound);
+
+        if ($totalDistinctCustomers === 0) {
+            return 0.0;
+        }
+
+        $roundDate = Carbon::parse($round->planned_at);
+        $roundCustomersFilter = VenteStatsFilter::regardlessOfPaymentStatus()
+            ->forCustomers($distinctCustomerIdsInRound);
+
+        $engagedCustomersCount = $this->salesInvoiceStatsService->distinctEngagedCustomersCount(
+            $roundDate->copy()->startOfDay(),
+            $roundDate->copy()->endOfDay(),
+            $roundCustomersFilter,
+        );
+
+        return round($engagedCustomersCount / $totalDistinctCustomers * 100, 1);
+    }
+
+    public function getCustomersOfBeatRound(Beat $beat, string $date): ?array
     {
         $parsedDate = Carbon::parse($date)->startOfDay();
         $round = $beat->findRoundForDate($parsedDate);
@@ -387,10 +447,22 @@ readonly class BeatService
         );
 
         $customerIds = $stops->pluck('customer.id')->filter()->all();
+        $roundStartOfDay = Carbon::parse($date)->startOfDay();
+        $roundEndOfDay = Carbon::parse($date)->endOfDay();
+        $roundCustomersFilter = VenteStatsFilter::regardlessOfPaymentStatus()->forCustomers($customerIds);
+
         $totalCollected = empty($customerIds) ? 0 : $this->salesInvoiceStatsService->totalSales(
-            Carbon::parse($date)->startOfDay(),
-            Carbon::parse($date)->endOfDay(),
-            VenteStatsFilter::regardlessOfPaymentStatus()->forCustomers($customerIds),
+            $roundStartOfDay,
+            $roundEndOfDay,
+            $roundCustomersFilter,
+        );
+
+        $strikeRate = $this->calculateStrikeRateForBeatRound($round);
+
+        $buyingCustomersCount = empty($customerIds) ? 0 : $this->salesInvoiceStatsService->distinctEngagedCustomersCount(
+            $roundStartOfDay,
+            $roundEndOfDay,
+            $roundCustomersFilter,
         );
 
         $round->load('vehicle:id,name,plate_number');
@@ -407,6 +479,8 @@ readonly class BeatService
             'total_debt_to_collect' => $totalDebtToCollect,
             'total_collected' => (int) $totalCollected,
             'remaining_to_collect' => $totalDebtToCollect - (int) $totalCollected,
+            'buying_customers_count' => $buyingCustomersCount,
+            'strike_rate' => $strikeRate,
             'vehicle' => $round->vehicle ? [
                 'id' => $round->vehicle->id,
                 'name' => $round->vehicle->name,

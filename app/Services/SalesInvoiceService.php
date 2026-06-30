@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\Payment\BulkCustomerPaymentResultData;
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
+use App\Jobs\RecalculateBeatRoundStrikeRateJob;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -129,10 +130,14 @@ readonly class SalesInvoiceService
             return $salesInvoice;
         });
         if ($salesInvoice instanceof SalesInvoice) {
-            $this->beatService->completeRoundStopForCustomerOnDate(
+            $affectedBeatRoundIds = $this->beatService->completeRoundStopForCustomerOnDate(
                 customerId: $salesInvoice->customer_id,
                 date: $salesInvoice->created_at->toDateString(),
             );
+
+            foreach ($affectedBeatRoundIds as $beatRoundId) {
+                RecalculateBeatRoundStrikeRateJob::dispatch($beatRoundId);
+            }
         }
 
         return $dbTransactionResult;
@@ -259,10 +264,14 @@ readonly class SalesInvoiceService
             // The payment date (today) is used as the anchor, not the invoice date,
             // because deferred collection visits happen on a different day than the sale.
             if ($salesInvoice->customer_id !== null) {
-                $this->beatService->completeRoundStopForCustomerOnDate(
+                $affectedBeatRoundIds = $this->beatService->completeRoundStopForCustomerOnDate(
                     customerId: $salesInvoice->customer_id,
                     date: now()->toDateString(),
                 );
+
+                foreach ($affectedBeatRoundIds as $beatRoundId) {
+                    RecalculateBeatRoundStrikeRateJob::dispatch($beatRoundId);
+                }
             }
         });
     }

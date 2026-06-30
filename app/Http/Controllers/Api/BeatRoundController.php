@@ -253,7 +253,7 @@ class BeatRoundController extends Controller
             return response()->json(['message' => 'Format de date invalide (YYYY-MM-DD requis)'], 422);
         }
 
-        $data = $this->beatService->getRoundCustomers($beat, $date);
+        $data = $this->beatService->getCustomersOfBeatRound($beat, $date);
 
         if ($data === null) {
             return response()->json(['message' => 'Aucune tournée trouvée pour cette date'], 404);

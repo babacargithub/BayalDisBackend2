@@ -18,6 +18,7 @@ class BeatRound extends Model
         'vehicle_id',
         'odometer_start_km',
         'odometer_end_km',
+        'strike_rate',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class BeatRound extends Model
             'planned_at' => 'date',
             'odometer_start_km' => 'integer',
             'odometer_end_km' => 'integer',
+            'strike_rate' => 'float',
         ];
     }
 

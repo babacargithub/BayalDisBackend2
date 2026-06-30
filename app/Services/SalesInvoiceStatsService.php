@@ -14,6 +14,7 @@ use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Depense;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\StockEntry;
@@ -370,11 +371,70 @@ readonly class SalesInvoiceStatsService
     }
 
     /**
+     * Count distinct customers who financially engaged with the business within the date range.
+     *
+     * A customer is counted when they satisfy at least one of:
+     *  - They have a SalesInvoice created on the date (new purchase).
+     *  - They have a Payment recorded on the date (settling an existing/due invoice).
+     *
+     * The two sets are merged and de-duplicated so a customer who both bought and paid
+     * on the same day is still counted once.
+     *
+     * Payment::query() is used for the payments side so the notCancelled global scope
+     * is always applied — cancelled payments are never counted.
+     *
+     * Used by BeatService::calculateStrikeRateForBeatRound() as the numerator for
+     * strike rate computation.
+     */
+    public function distinctEngagedCustomersCount(
+        Carbon $startDate,
+        Carbon $endDate,
+        ?VenteStatsFilter $filter = null,
+    ): int {
+        $invoiceCustomerIds = $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)
+            ->whereNotNull('customer_id')
+            ->distinct()
+            ->pluck('customer_id');
+
+        $paymentCustomerIds = Payment::query()
+            ->whereNotNull('payments.sales_invoice_id')
+            ->where('payments.created_at', '>=', $startDate)
+            ->where('payments.created_at', '<=', $endDate)
+            ->join('sales_invoices', 'payments.sales_invoice_id', '=', 'sales_invoices.id')
+            ->when(
+                $filter?->customerIds !== null,
+                fn ($q) => $q->whereIn('sales_invoices.customer_id', $filter->customerIds),
+            )
+            ->distinct()
+            ->pluck('sales_invoices.customer_id');
+
+        return $invoiceCustomerIds->merge($paymentCustomerIds)->unique()->count();
+    }
+
+    /**
      * Count sales invoices created within the given date range.
      */
     public function salesInvoicesCount(?Carbon $startDate, ?Carbon $endDate, ?VenteStatsFilter $filter = null): int
     {
         return $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)->count();
+    }
+
+    /**
+     * Count distinct customers who have at least one invoice within the given date range.
+     *
+     * Used by BeatService to compute the strike rate numerator: the number of the beat's
+     * customers who actually made a purchase on a given round date.
+     *
+     * Scoping to a specific set of customers is done via VenteStatsFilter::forCustomers().
+     */
+    public function distinctBuyingCustomersCount(
+        ?Carbon $startDate,
+        ?Carbon $endDate,
+        ?VenteStatsFilter $filter = null,
+    ): int {
+        return (int) $this->buildBaseSalesInvoiceQuery($startDate, $endDate, $filter)
+            ->distinct('customer_id')
+            ->count('customer_id');
     }
 
     /**

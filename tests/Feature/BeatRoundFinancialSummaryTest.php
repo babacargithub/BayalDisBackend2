@@ -7,6 +7,7 @@ use App\Models\Beat;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\Product;
 use App\Models\SalesInvoice;
 use App\Models\Team;
@@ -98,7 +99,7 @@ class BeatRoundFinancialSummaryTest extends TestCase
         $this->createSaleOnDate($customerA, price: 2000, quantity: 1, date: Carbon::parse(self::ROUND_DATE)->startOfDay());
         $this->createSaleOnDate($customerB, price: 1500, quantity: 1, date: Carbon::parse(self::ROUND_DATE)->startOfDay());
 
-        $result = $this->beatService->getRoundCustomers($this->beat, self::ROUND_DATE);
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
 
         $this->assertSame(7000, $result['total_debt_to_collect']);
         $this->assertSame(3500, $result['total_collected']);
@@ -114,7 +115,7 @@ class BeatRoundFinancialSummaryTest extends TestCase
         $this->addTemplateStop($customerB);
 
         // No pre-round invoices and no round-date sales
-        $result = $this->beatService->getRoundCustomers($this->beat, self::ROUND_DATE);
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
 
         $this->assertSame(0, $result['total_debt_to_collect']);
         $this->assertSame(0, $result['total_collected']);
@@ -129,7 +130,7 @@ class BeatRoundFinancialSummaryTest extends TestCase
         // Pre-round debt exists but no sales happen on the round date
         $this->createPreRoundInvoice($customer, price: 4000, quantity: 1, alreadyPaid: 0);
 
-        $result = $this->beatService->getRoundCustomers($this->beat, self::ROUND_DATE);
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
 
         $this->assertSame(4000, $result['total_debt_to_collect']);
         $this->assertSame(0, $result['total_collected']);
@@ -147,11 +148,151 @@ class BeatRoundFinancialSummaryTest extends TestCase
         $dayAfterRound = Carbon::parse(self::ROUND_DATE)->addDay()->startOfDay();
         $this->createSaleOnDate($customer, price: 2500, quantity: 1, date: $dayAfterRound);
 
-        $result = $this->beatService->getRoundCustomers($this->beat, self::ROUND_DATE);
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
 
         $this->assertSame(3000, $result['total_debt_to_collect']);
         $this->assertSame(0, $result['total_collected']);
         $this->assertSame(3000, $result['remaining_to_collect']);
+    }
+
+    // =========================================================================
+    // Strike rate tests
+    // =========================================================================
+
+    public function test_strike_rate_is_100_percent_when_all_customers_bought(): void
+    {
+        $customerA = $this->makeCustomer();
+        $customerB = $this->makeCustomer();
+
+        $this->addTemplateStop($customerA);
+        $this->addTemplateStop($customerB);
+
+        $this->createSaleOnDate($customerA, price: 2000, quantity: 1, date: Carbon::parse(self::ROUND_DATE)->startOfDay());
+        $this->createSaleOnDate($customerB, price: 1500, quantity: 1, date: Carbon::parse(self::ROUND_DATE)->startOfDay());
+
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        $this->assertSame(2, $result['buying_customers_count']);
+        $this->assertSame(100.0, $result['strike_rate']);
+    }
+
+    public function test_strike_rate_is_zero_when_no_customers_bought(): void
+    {
+        $customerA = $this->makeCustomer();
+        $customerB = $this->makeCustomer();
+
+        $this->addTemplateStop($customerA);
+        $this->addTemplateStop($customerB);
+
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        $this->assertSame(0, $result['buying_customers_count']);
+        $this->assertSame(0.0, $result['strike_rate']);
+    }
+
+    public function test_strike_rate_reflects_partial_buying_among_stops(): void
+    {
+        $customerA = $this->makeCustomer();
+        $customerB = $this->makeCustomer();
+        $customerC = $this->makeCustomer();
+        $customerD = $this->makeCustomer();
+
+        $this->addTemplateStop($customerA);
+        $this->addTemplateStop($customerB);
+        $this->addTemplateStop($customerC);
+        $this->addTemplateStop($customerD);
+
+        // Only 1 out of 4 customers buys → 25 %
+        $this->createSaleOnDate($customerA, price: 3000, quantity: 1, date: Carbon::parse(self::ROUND_DATE)->startOfDay());
+
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        $this->assertSame(1, $result['buying_customers_count']);
+        $this->assertSame(25.0, $result['strike_rate']);
+    }
+
+    public function test_strike_rate_counts_customer_once_even_with_multiple_invoices_on_round_date(): void
+    {
+        $customer = $this->makeCustomer();
+        $this->addTemplateStop($customer);
+
+        // Two separate invoices on the same day for the same customer
+        $roundDayStart = Carbon::parse(self::ROUND_DATE)->startOfDay();
+        $this->createSaleOnDate($customer, price: 1000, quantity: 1, date: $roundDayStart);
+        $this->createSaleOnDate($customer, price: 500, quantity: 2, date: $roundDayStart);
+
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        // 1 distinct customer, 1 stop → 100 %
+        $this->assertSame(1, $result['buying_customers_count']);
+        $this->assertSame(100.0, $result['strike_rate']);
+    }
+
+    public function test_strike_rate_is_zero_when_round_has_no_stops(): void
+    {
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        $this->assertSame(0, $result['buying_customers_count']);
+        $this->assertSame(0.0, $result['strike_rate']);
+    }
+
+    public function test_strike_rate_counts_customer_who_only_paid_a_due_invoice_without_new_purchase(): void
+    {
+        $customerWithPaymentOnly = $this->makeCustomer();
+        $customerWithNoActivity = $this->makeCustomer();
+
+        $this->addTemplateStop($customerWithPaymentOnly);
+        $this->addTemplateStop($customerWithNoActivity);
+
+        // Customer has a pre-existing unpaid invoice
+        $existingInvoice = $this->createPreRoundInvoice($customerWithPaymentOnly, price: 4000, quantity: 1, alreadyPaid: 0);
+
+        // On the round date the customer pays the old invoice — no new invoice created
+        $this->createPaymentOnDate($existingInvoice, amount: 4000, date: Carbon::parse(self::ROUND_DATE));
+
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        // 1 out of 2 customers engaged → 50 %
+        $this->assertSame(1, $result['buying_customers_count']);
+        $this->assertSame(50.0, $result['strike_rate']);
+    }
+
+    public function test_strike_rate_counts_customer_once_who_both_bought_and_paid_on_round_date(): void
+    {
+        $customer = $this->makeCustomer();
+        $this->addTemplateStop($customer);
+
+        // A pre-existing invoice the customer will pay
+        $oldInvoice = $this->createPreRoundInvoice($customer, price: 2000, quantity: 1, alreadyPaid: 0);
+
+        $roundDay = Carbon::parse(self::ROUND_DATE)->startOfDay();
+
+        // Also makes a new purchase on the round date
+        $this->createSaleOnDate($customer, price: 1000, quantity: 1, date: $roundDay);
+
+        // And pays the old invoice on the same day
+        $this->createPaymentOnDate($oldInvoice, amount: 2000, date: Carbon::parse(self::ROUND_DATE));
+
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        // 1 customer engaged in two ways → still counted once → 100 %
+        $this->assertSame(1, $result['buying_customers_count']);
+        $this->assertSame(100.0, $result['strike_rate']);
+    }
+
+    public function test_sales_on_different_date_do_not_count_toward_strike_rate(): void
+    {
+        $customer = $this->makeCustomer();
+        $this->addTemplateStop($customer);
+
+        // Sale on the day AFTER the round — must not affect strike rate for the round date
+        $dayAfterRound = Carbon::parse(self::ROUND_DATE)->addDay()->startOfDay();
+        $this->createSaleOnDate($customer, price: 2000, quantity: 1, date: $dayAfterRound);
+
+        $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
+
+        $this->assertSame(0, $result['buying_customers_count']);
+        $this->assertSame(0.0, $result['strike_rate']);
     }
 
     // =========================================================================
@@ -236,6 +377,30 @@ class BeatRoundFinancialSummaryTest extends TestCase
         }
 
         return $invoice->fresh();
+    }
+
+    /**
+     * Create a Payment against an existing invoice, backdated to the given date.
+     *
+     * Used to simulate a customer settling a due invoice during a beat round visit,
+     * without creating any new SalesInvoice on that date.
+     */
+    private function createPaymentOnDate(SalesInvoice $invoice, int $amount, Carbon $date): Payment
+    {
+        $dateTimeString = $date->startOfDay()->toDateTimeString();
+
+        $payment = Payment::create([
+            'sales_invoice_id' => $invoice->id,
+            'amount' => $amount,
+            'payment_method' => 'cash',
+            'user_id' => $this->commercial->user_id,
+        ]);
+
+        DB::table('payments')
+            ->where('id', $payment->id)
+            ->update(['created_at' => $dateTimeString, 'updated_at' => $dateTimeString]);
+
+        return $payment->fresh();
     }
 
     /**

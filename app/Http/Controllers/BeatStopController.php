@@ -197,7 +197,7 @@ class BeatStopController extends Controller
 
     public function getRoundDetail(Beat $beat, string $date): JsonResponse
     {
-        $data = $this->beatService->getRoundCustomers($beat, $date);
+        $data = $this->beatService->getCustomersOfBeatRound($beat, $date);
 
         if ($data === null) {
             return response()->json(['message' => 'Aucune tournée trouvée pour cette date'], 404);
@@ -388,9 +388,13 @@ class BeatStopController extends Controller
             ? VenteStatsFilter::regardlessOfPaymentStatus()
             : VenteStatsFilter::regardlessOfPaymentStatus()->forCustomers($customerIds);
 
-        $history = $salesDates->map(function (Carbon $date) use ($salesFilter): array {
+        $totalBeatCustomers = count($customerIds);
+
+        $history = $salesDates->map(function (Carbon $date) use ($salesFilter, $totalBeatCustomers): array {
             $startOfDay = $date->copy()->startOfDay();
             $endOfDay = $date->copy()->endOfDay();
+
+            $buyingCustomersCount = $this->salesInvoiceStatsService->distinctBuyingCustomersCount($startOfDay, $endOfDay, $salesFilter);
 
             return [
                 'date' => $date->toDateString(),
@@ -401,6 +405,11 @@ class BeatStopController extends Controller
                 'invoices_count' => $this->salesInvoiceStatsService->salesInvoicesCount($startOfDay, $endOfDay, $salesFilter),
                 'total_commissions' => $this->salesInvoiceStatsService->totalCommercialCommissions($startOfDay, $endOfDay, $salesFilter),
                 'total_delivery_cost' => $this->salesInvoiceStatsService->totalDeliveryCost($startOfDay, $endOfDay, null, $salesFilter),
+                'buying_customers_count' => $buyingCustomersCount,
+                'strike_rate' => $totalBeatCustomers > 0
+                    ? round($buyingCustomersCount / $totalBeatCustomers * 100, 1)
+                    : 0.0,
+                'total_beat_customers' => $totalBeatCustomers,
             ];
         });
 
