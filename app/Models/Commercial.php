@@ -24,6 +24,7 @@ class Commercial extends Model
         'salary',
         'secret_code',
         'user_id',
+        'team_id'
     ];
 
     protected $hidden = [

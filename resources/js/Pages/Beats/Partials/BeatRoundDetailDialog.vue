@@ -88,6 +88,18 @@
                             </div>
                         </div>
                         <div class="encaissement-chip pa-3 border rounded-lg bg-white d-flex align-center gap-2">
+                            <v-icon icon="mdi-bullseye-arrow" size="20" :color="strikeRateColor" />
+                            <div>
+                                <div class="text-caption text-grey">Taux de réussite</div>
+                                <div class="text-subtitle-2 font-weight-bold" :class="`text-${strikeRateColor}`">
+                                    {{ roundData.strike_rate }}%
+                                    <span class="text-caption font-weight-regular ml-1">
+                                        ({{ roundData.buying_customers_count }}/{{ roundData.total }})
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="encaissement-chip pa-3 border rounded-lg bg-white d-flex align-center gap-2">
                             <v-icon icon="mdi-map-marker-distance" size="20" color="purple-darken-2" />
                             <div>
                                 <div class="text-caption text-grey">Distance parcourue</div>
@@ -250,6 +262,14 @@ const filteredCustomers = computed(() => {
 const completionPercentage = computed(() => {
     if (!roundData.value || roundData.value.total === 0) return 0;
     return Math.round(((roundData.value.completed + (roundData.value.no_sale ?? 0)) / roundData.value.total) * 100);
+});
+
+const strikeRateColor = computed(() => {
+    if (!roundData.value) return 'grey';
+    const rate = roundData.value.strike_rate ?? 0;
+    if (rate >= 75) return 'green-darken-2';
+    if (rate >= 50) return 'orange-darken-2';
+    return 'red-darken-2';
 });
 
 const toggleStatusFilter = (status) => {

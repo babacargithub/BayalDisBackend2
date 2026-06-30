@@ -15,6 +15,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Models\Vehicle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
@@ -170,5 +171,109 @@ class OdometerSalesGuardTest extends TestCase
         $response = $this->postInvoice();
 
         $response->assertJsonPath('error_code', OdometerNotRecordedException::ERROR_CODE);
+    }
+
+    // ─── Cache behaviour ──────────────────────────────────────────────────────
+
+    public function test_odometer_check_result_is_cached_after_first_successful_check(): void
+    {
+        $vehicle = Vehicle::factory()->create();
+
+        BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => today(),
+            'name' => 'Tournée '.today()->toDateString(),
+            'commercial_id' => $this->commercial->id,
+            'vehicle_id' => $vehicle->id,
+            'odometer_start_km' => 12500,
+        ]);
+
+        $indexKey = BeatRound::odometerBeatIdIndexCacheKey($this->commercial->id, today()->toDateString());
+        $odometerKey = BeatRound::odometerRecordedCacheKey($this->beat->id, $this->commercial->id, today()->toDateString());
+
+        $this->assertFalse(Cache::has($indexKey), 'Index cache must be empty before first sale');
+        $this->assertFalse(Cache::has($odometerKey), 'Odometer cache must be empty before first sale');
+
+        $this->postInvoice()->assertCreated();
+
+        $this->assertSame($this->beat->id, Cache::get($indexKey), 'Index cache must store the beat_id after a successful check');
+        $this->assertTrue(Cache::get($odometerKey) === true, 'Odometer cache must be set to true after a successful check');
+    }
+
+    public function test_cached_odometer_check_bypasses_database_query(): void
+    {
+        $indexKey = BeatRound::odometerBeatIdIndexCacheKey($this->commercial->id, today()->toDateString());
+        $odometerKey = BeatRound::odometerRecordedCacheKey($this->beat->id, $this->commercial->id, today()->toDateString());
+
+        Cache::put($indexKey, $this->beat->id, today()->endOfDay());
+        Cache::put($odometerKey, true, today()->endOfDay());
+
+        // No BeatRound exists in the DB, but both cache entries confirm the check already passed
+        $this->postInvoice()->assertCreated();
+    }
+
+    public function test_cache_is_invalidated_when_beat_round_is_created(): void
+    {
+        $indexKey = BeatRound::odometerBeatIdIndexCacheKey($this->commercial->id, today()->toDateString());
+        $odometerKey = BeatRound::odometerRecordedCacheKey($this->beat->id, $this->commercial->id, today()->toDateString());
+
+        Cache::put($indexKey, $this->beat->id, today()->endOfDay());
+        Cache::put($odometerKey, true, today()->endOfDay());
+
+        BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => today(),
+            'name' => 'Nouvelle tournée',
+            'commercial_id' => $this->commercial->id,
+        ]);
+
+        $this->assertFalse(Cache::has($indexKey), 'Index cache must be cleared when a BeatRound is created');
+        $this->assertFalse(Cache::has($odometerKey), 'Odometer cache must be cleared when a BeatRound is created');
+    }
+
+    public function test_cache_is_invalidated_when_beat_round_is_updated(): void
+    {
+        $vehicle = Vehicle::factory()->create();
+
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => today(),
+            'name' => 'Tournée '.today()->toDateString(),
+            'commercial_id' => $this->commercial->id,
+            'vehicle_id' => $vehicle->id,
+            'odometer_start_km' => 12500,
+        ]);
+
+        $indexKey = BeatRound::odometerBeatIdIndexCacheKey($this->commercial->id, today()->toDateString());
+        $odometerKey = BeatRound::odometerRecordedCacheKey($this->beat->id, $this->commercial->id, today()->toDateString());
+
+        Cache::put($indexKey, $this->beat->id, today()->endOfDay());
+        Cache::put($odometerKey, true, today()->endOfDay());
+
+        $round->update(['odometer_start_km' => null]);
+
+        $this->assertFalse(Cache::has($indexKey), 'Index cache must be cleared when a BeatRound is updated');
+        $this->assertFalse(Cache::has($odometerKey), 'Odometer cache must be cleared when a BeatRound is updated');
+    }
+
+    public function test_cache_is_invalidated_when_beat_round_is_deleted(): void
+    {
+        $round = BeatRound::create([
+            'beat_id' => $this->beat->id,
+            'planned_at' => today(),
+            'name' => 'Tournée '.today()->toDateString(),
+            'commercial_id' => $this->commercial->id,
+        ]);
+
+        $indexKey = BeatRound::odometerBeatIdIndexCacheKey($this->commercial->id, today()->toDateString());
+        $odometerKey = BeatRound::odometerRecordedCacheKey($this->beat->id, $this->commercial->id, today()->toDateString());
+
+        Cache::put($indexKey, $this->beat->id, today()->endOfDay());
+        Cache::put($odometerKey, true, today()->endOfDay());
+
+        $round->delete();
+
+        $this->assertFalse(Cache::has($indexKey), 'Index cache must be cleared when a BeatRound is deleted');
+        $this->assertFalse(Cache::has($odometerKey), 'Odometer cache must be cleared when a BeatRound is deleted');
     }
 }

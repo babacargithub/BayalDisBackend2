@@ -110,6 +110,7 @@
                                     <tr>
                                         <th class="text-left" style="min-width:190px">Date</th>
                                         <th class="text-center" style="min-width:80px">Factures</th>
+                                        <th class="text-center" style="min-width:100px">Taux de réussite</th>
                                         <th class="text-right" style="min-width:130px">Ventes</th>
                                         <th class="text-right" style="min-width:130px">Profit estimé</th>
                                         <th class="text-right" style="min-width:130px">Profit réalisé</th>
@@ -142,6 +143,16 @@
                                                 variant="tonal"
                                             >
                                                 {{ row.invoices_count }}
+                                            </v-chip>
+                                        </td>
+                                        <td class="text-center">
+                                            <v-chip
+                                                :color="strikeRateChipColor(row.strike_rate)"
+                                                size="x-small"
+                                                variant="tonal"
+                                            >
+                                                {{ row.strike_rate }}%
+                                                <span class="ml-1 opacity-70">({{ row.buying_customers_count }}/{{ row.total_beat_customers }})</span>
                                             </v-chip>
                                         </td>
                                         <td class="text-right font-weight-bold">
@@ -519,6 +530,15 @@ const summaryCards = computed(() => {
         },
     ];
 });
+
+// ─── Strike rate helper ───────────────────────────────────────────────────────
+
+const strikeRateChipColor = (rate) => {
+    if (rate >= 75) return 'green-darken-2';
+    if (rate >= 50) return 'orange-darken-2';
+    if (rate > 0) return 'red-darken-2';
+    return 'default';
+};
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
