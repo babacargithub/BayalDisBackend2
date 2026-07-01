@@ -9,6 +9,7 @@ use App\Enums\DayOfWeek;
 use App\Models\Beat;
 use App\Models\BeatRound;
 use App\Models\BeatStop;
+use App\Models\Commercial;
 use App\Models\Customer;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -520,6 +521,45 @@ readonly class BeatService
         }
 
         return Carbon::parse($date)->startOfDay()->gt(now()->startOfDay()) ? 'upcoming' : 'in_progress';
+    }
+
+    /**
+     * Return all BeatStops with status "reprogramme" for the given commercial
+     * whose BeatRound was planned within the [from, to] date range.
+     *
+     * Each item in the returned Collection is an array containing customer info,
+     * the originating beat, and the round date — everything the mobile app needs
+     * to display the rescheduled customer list.
+     *
+     * @return Collection<int, array{stop_id: int, notes: string|null, customer: array, original_beat: array, original_round_date: string}>
+     */
+    public function getRescheduledCustomersInDateRange(
+        Commercial $commercial,
+        Carbon $from,
+        Carbon $to,
+    ): Collection {
+        return BeatStop::where('status', BeatStopStatus::Reprogramme->value)
+            ->whereHas('round', function ($query) use ($commercial, $from, $to) {
+                $query->where('commercial_id', $commercial->id)
+                    ->whereBetween('planned_at', [$from->toDateString(), $to->toDateString()]);
+            })
+            ->with(['customer', 'beat', 'round'])
+            ->get()
+            ->map(fn (BeatStop $stop) => [
+                'stop_id' => $stop->id,
+                'notes' => $stop->notes,
+                'customer' => [
+                    'id' => $stop->customer->id,
+                    'name' => $stop->customer->name,
+                    'address' => $stop->customer->address,
+                    'phone_number' => $stop->customer->phone_number,
+                ],
+                'original_beat' => [
+                    'id' => $stop->beat->id,
+                    'name' => $stop->beat->name,
+                ],
+                'original_round_date' => $stop->round->planned_at->toDateString(),
+            ]);
     }
 
     private function castToDateString(mixed $date): string

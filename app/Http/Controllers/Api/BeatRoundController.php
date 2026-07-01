@@ -390,6 +390,28 @@ class BeatRoundController extends Controller
         ];
     }
 
+    public function getRescheduledCustomers(Request $request): JsonResponse
+    {
+        $commercial = $request->user()->commercial;
+
+        $validated = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $from = isset($validated['from'])
+            ? Carbon::parse($validated['from'])->startOfDay()
+            : Carbon::now()->startOfWeek();
+
+        $to = isset($validated['to'])
+            ? Carbon::parse($validated['to'])->endOfDay()
+            : Carbon::now()->endOfWeek();
+
+        $rescheduledStops = $this->beatService->getRescheduledCustomersInDateRange($commercial, $from, $to);
+
+        return response()->json(['data' => $rescheduledStops]);
+    }
+
     public function getBeatDetails(Beat $beat): JsonResponse
     {
         $beat->load(['stops' => function ($query) {

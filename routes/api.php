@@ -91,6 +91,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Beats
         Route::get('beats', [ApiCustomerVisitController::class, 'getBeats']);
         Route::get('beats/today', [ApiCustomerVisitController::class, 'getTodayStops']);
+        Route::get('beats/rescheduled-customers', [ApiCustomerVisitController::class, 'getRescheduledCustomers']);
         Route::get('beats/{beat}/details', [ApiCustomerVisitController::class, 'getBeatDetails']);
         Route::post('beats/{beatStop}/complete', [ApiCustomerVisitController::class, 'completeBeatStop']);
         Route::post('beats/{beatStop}/cancel', [ApiCustomerVisitController::class, 'cancelBeatStop']);
