@@ -17,7 +17,7 @@ class BeatsApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const ENDPOINT = '/api/beats';
+    private const ENDPOINT = '/api/salesperson/beats';
 
     private User $user;
 
@@ -56,7 +56,7 @@ class BeatsApiTest extends TestCase
             ->assertJson(['data' => []]);
     }
 
-    public function test_returns_beats_with_correct_customers_count(): void
+    public function test_returns_beats_with_correct_template_stops_count(): void
     {
         $beatWithThreeCustomers = Beat::create([
             'name' => 'Marché Central',
@@ -110,15 +110,15 @@ class BeatsApiTest extends TestCase
 
         $beatsByName = collect($data)->keyBy('name');
 
-        $this->assertEquals(3, $beatsByName['Marché Central']['customers_count']);
-        $this->assertEquals(1, $beatsByName['Zone Nord']['customers_count']);
-        $this->assertEquals(0, $beatsByName['Zone Vide']['customers_count']);
+        $this->assertEquals(3, $beatsByName['Marché Central']['template_stops_count']);
+        $this->assertEquals(1, $beatsByName['Zone Nord']['template_stops_count']);
+        $this->assertEquals(0, $beatsByName['Zone Vide']['template_stops_count']);
 
-        // Each item must expose id, name, customers_count
+        // Each item must expose id, name, template_stops_count
         foreach ($data as $item) {
             $this->assertArrayHasKey('id', $item);
             $this->assertArrayHasKey('name', $item);
-            $this->assertArrayHasKey('customers_count', $item);
+            $this->assertArrayHasKey('template_stops_count', $item);
         }
     }
 
@@ -167,7 +167,7 @@ class BeatsApiTest extends TestCase
         ]);
         $beat = Beat::create(['name' => 'Their Beat', 'commercial_id' => $otherCommercial->id]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertForbidden();
     }
@@ -176,7 +176,7 @@ class BeatsApiTest extends TestCase
     {
         $beat = Beat::create(['name' => 'Empty Beat', 'commercial_id' => $this->commercial->id]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertOk()->assertJson(['data' => []]);
     }
@@ -188,7 +188,7 @@ class BeatsApiTest extends TestCase
 
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertOk();
         $data = $response->json('data');
@@ -213,7 +213,7 @@ class BeatsApiTest extends TestCase
         // Fully paid invoice: 5 000 total, 5 000 paid → 0 remaining
         $this->makeSalesInvoice($customer, totalAmount: 5000, totalPayments: 5000);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertOk();
         $this->assertEquals(6000, $response->json('data.0.debt'));
@@ -240,7 +240,7 @@ class BeatsApiTest extends TestCase
             'status' => BeatStop::STATUS_PLANNED,
         ]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertOk();
         $ids = collect($response->json('data'))->pluck('id')->all();
@@ -283,7 +283,7 @@ class BeatsApiTest extends TestCase
         $customer = $this->makeCustomer();
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'display_position' => 2]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertOk();
         $this->assertArrayHasKey('display_position', $response->json('data.0'));
@@ -303,7 +303,7 @@ class BeatsApiTest extends TestCase
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerA->id, 'display_position' => 0]);
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'display_position' => 1]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertOk();
         $ids = collect($response->json('data'))->pluck('id')->all();
@@ -320,7 +320,7 @@ class BeatsApiTest extends TestCase
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $unpositioned->id, 'display_position' => null]);
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $positioned->id, 'display_position' => 0]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
 
         $response->assertOk();
         $ids = collect($response->json('data'))->pluck('id')->all();
@@ -340,7 +340,7 @@ class BeatsApiTest extends TestCase
         ]);
         $beat = Beat::create(['name' => 'Their Beat', 'commercial_id' => $otherCommercial->id]);
 
-        $response = $this->actingAs($this->user)->putJson("/api/beats/{$beat->id}/customers/reorder", [
+        $response = $this->actingAs($this->user)->putJson("/api/salesperson/beats/{$beat->id}/customers/reorder", [
             'positions' => [],
         ]);
 
@@ -351,7 +351,7 @@ class BeatsApiTest extends TestCase
     {
         $beat = Beat::create(['name' => 'Zone Validate', 'commercial_id' => $this->commercial->id]);
 
-        $response = $this->actingAs($this->user)->putJson("/api/beats/{$beat->id}/customers/reorder", []);
+        $response = $this->actingAs($this->user)->putJson("/api/salesperson/beats/{$beat->id}/customers/reorder", []);
 
         $response->assertUnprocessable();
     }
@@ -369,7 +369,7 @@ class BeatsApiTest extends TestCase
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerC->id, 'display_position' => 2]);
 
         // Reverse the order
-        $response = $this->actingAs($this->user)->putJson("/api/beats/{$beat->id}/customers/reorder", [
+        $response = $this->actingAs($this->user)->putJson("/api/salesperson/beats/{$beat->id}/customers/reorder", [
             'positions' => [
                 ['customer_id' => $customerA->id, 'display_position' => 2],
                 ['customer_id' => $customerB->id, 'display_position' => 1],
@@ -380,7 +380,7 @@ class BeatsApiTest extends TestCase
         $response->assertOk()->assertJson(['message' => 'Ordre mis à jour']);
 
         // Confirm persisted order by calling the list endpoint
-        $listResponse = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/customers");
+        $listResponse = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/customers");
         $ids = collect($listResponse->json('data'))->pluck('id')->all();
         $this->assertEquals([$customerC->id, $customerB->id, $customerA->id], $ids);
     }
@@ -403,7 +403,7 @@ class BeatsApiTest extends TestCase
             'display_position' => null,
         ]);
 
-        $this->actingAs($this->user)->putJson("/api/beats/{$beat->id}/customers/reorder", [
+        $this->actingAs($this->user)->putJson("/api/salesperson/beats/{$beat->id}/customers/reorder", [
             'positions' => [['customer_id' => $customer->id, 'display_position' => 5]],
         ]);
 
@@ -428,7 +428,7 @@ class BeatsApiTest extends TestCase
         $customer = $this->makeCustomer();
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/beats/{$beat->id}/customers/{$customer->id}");
+            ->deleteJson("/api/salesperson/beats/{$beat->id}/customers/{$customer->id}");
 
         $response->assertForbidden();
     }
@@ -439,7 +439,7 @@ class BeatsApiTest extends TestCase
         $customer = $this->makeCustomer();
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/beats/{$beat->id}/customers/{$customer->id}");
+            ->deleteJson("/api/salesperson/beats/{$beat->id}/customers/{$customer->id}");
 
         $response->assertNotFound();
     }
@@ -461,7 +461,7 @@ class BeatsApiTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/beats/{$beat->id}/customers/{$customer->id}");
+            ->deleteJson("/api/salesperson/beats/{$beat->id}/customers/{$customer->id}");
 
         $response->assertNotFound();
     }
@@ -476,7 +476,7 @@ class BeatsApiTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->deleteJson("/api/beats/{$beat->id}/customers/{$customer->id}");
+            ->deleteJson("/api/salesperson/beats/{$beat->id}/customers/{$customer->id}");
 
         $response->assertOk()->assertJson(['message' => 'Client retiré du beat']);
         $this->assertNull($templateStop->fresh());
@@ -500,7 +500,7 @@ class BeatsApiTest extends TestCase
         ]);
 
         $this->actingAs($this->user)
-            ->deleteJson("/api/beats/{$beat->id}/customers/{$customer->id}");
+            ->deleteJson("/api/salesperson/beats/{$beat->id}/customers/{$customer->id}");
 
         $this->assertNotNull($occurrenceStop->fresh());
     }
@@ -517,7 +517,7 @@ class BeatsApiTest extends TestCase
         ]);
         $beat = Beat::create(['name' => 'Their Beat', 'commercial_id' => $otherCommercial->id]);
 
-        $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds")->assertForbidden();
+        $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/rounds")->assertForbidden();
     }
 
     public function test_list_rounds_returns_empty_when_no_rounds_created(): void
@@ -528,7 +528,7 @@ class BeatsApiTest extends TestCase
             'day_of_week' => 'monday',
         ]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/rounds");
 
         $response->assertOk()->assertJson(['data' => []]);
     }
@@ -553,7 +553,7 @@ class BeatsApiTest extends TestCase
         // A planned stop ensures planned > 0 so deriveRoundStatus returns 'upcoming'.
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $round->id, 'status' => BeatStop::STATUS_PLANNED]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/rounds");
 
         $response->assertOk();
         $data = $response->json('data');
@@ -573,7 +573,7 @@ class BeatsApiTest extends TestCase
     {
         $beat = Beat::create(['name' => 'Beat Sans Jour', 'commercial_id' => $this->commercial->id]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/rounds");
 
         $response->assertOk()->assertJson(['data' => []]);
     }
@@ -602,7 +602,7 @@ class BeatsApiTest extends TestCase
         );
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $inProgressRound->id, 'status' => BeatStop::STATUS_PLANNED]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/rounds");
         $response->assertOk();
 
         $byDate = collect($response->json('data'))->keyBy('date');
@@ -642,7 +642,7 @@ class BeatsApiTest extends TestCase
         ]);
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id, 'beat_round_id' => $pastRound->id, 'status' => BeatStop::STATUS_COMPLETED]);
 
-        $response = $this->actingAs($this->user)->getJson("/api/beats/{$beat->id}/rounds");
+        $response = $this->actingAs($this->user)->getJson("/api/salesperson/beats/{$beat->id}/rounds");
         $response->assertOk();
 
         $data = $response->json('data');
@@ -670,7 +670,7 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Their Beat2', 'commercial_id' => $otherCommercial->id]);
 
         $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/2026-06-09/customers")
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/2026-06-09/customers")
             ->assertForbidden();
     }
 
@@ -679,7 +679,7 @@ class BeatsApiTest extends TestCase
         $beat = Beat::create(['name' => 'Beat Date', 'commercial_id' => $this->commercial->id]);
 
         $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/not-a-date/customers")
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/not-a-date/customers")
             ->assertUnprocessable();
     }
 
@@ -695,18 +695,18 @@ class BeatsApiTest extends TestCase
 
         // Round must be created explicitly before stops can be fetched.
         $this->actingAs($this->user)
-            ->postJson("/api/beats/{$beat->id}/rounds", ['planned_at' => $futureDate])
+            ->postJson("/api/salesperson/beats/{$beat->id}/rounds", ['planned_at' => $futureDate])
             ->assertCreated();
 
         $response = $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/{$futureDate}/customers");
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/{$futureDate}/customers");
 
         $response->assertOk();
         $this->assertCount(2, $response->json('data.customers'));
 
         // Calling again must not duplicate stops.
         $response2 = $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/{$futureDate}/customers");
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/{$futureDate}/customers");
         $this->assertCount(2, $response2->json('data.customers'));
     }
 
@@ -717,7 +717,7 @@ class BeatsApiTest extends TestCase
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
         $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/2030-06-10/customers")
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/2030-06-10/customers")
             ->assertNotFound();
     }
 
@@ -731,11 +731,11 @@ class BeatsApiTest extends TestCase
 
         // Explicitly create the round first.
         $this->actingAs($this->user)
-            ->postJson("/api/beats/{$beat->id}/rounds", ['planned_at' => '2030-06-17'])
+            ->postJson("/api/salesperson/beats/{$beat->id}/rounds", ['planned_at' => '2030-06-17'])
             ->assertCreated();
 
         $response = $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/2030-06-17/customers");
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/2030-06-17/customers");
 
         $response->assertOk();
         $customerIds = collect($response->json('data.customers'))->pluck('customer_id')->all();
@@ -762,7 +762,7 @@ class BeatsApiTest extends TestCase
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customerB->id, 'beat_round_id' => $dateRound->id, 'status' => BeatStop::STATUS_PLANNED]);
 
         $response = $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/{$date}/customers");
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/{$date}/customers");
 
         $response->assertOk();
         $this->assertEquals('in_progress', $response->json('data.status'));
@@ -810,7 +810,7 @@ class BeatsApiTest extends TestCase
         $sameDayInvoice->save();
 
         $response = $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/{$roundDate}/customers");
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/{$roundDate}/customers");
 
         $response->assertOk();
         // Only the 6 000 remaining from the previous invoice should count
@@ -836,7 +836,7 @@ class BeatsApiTest extends TestCase
         $sameDayInvoice->save();
 
         $response = $this->actingAs($this->user)
-            ->getJson("/api/beats/{$beat->id}/rounds/{$roundDate}/customers");
+            ->getJson("/api/salesperson/beats/{$beat->id}/rounds/{$roundDate}/customers");
 
         $response->assertOk();
         $this->assertEquals(0, $response->json('data.customers.0.debt'));

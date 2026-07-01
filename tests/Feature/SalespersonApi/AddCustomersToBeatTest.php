@@ -15,7 +15,7 @@ class AddCustomersToBeatTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const ENDPOINT_PREFIX = '/api/beats';
+    private const ENDPOINT_PREFIX = '/api/salesperson/beats';
 
     private User $user;
 

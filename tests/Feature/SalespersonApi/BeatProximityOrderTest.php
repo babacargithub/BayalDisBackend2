@@ -128,7 +128,7 @@ class BeatProximityOrderTest extends TestCase
 
         // Remove the closest customer via the API endpoint.
         $this->actingAs($this->user)
-            ->deleteJson("/api/beats/{$this->beat->id}/customers/{$closeCustomer->id}")
+            ->deleteJson("/api/salesperson/beats/{$this->beat->id}/customers/{$closeCustomer->id}")
             ->assertOk();
 
         $this->assertDisplayPositions([
@@ -187,7 +187,7 @@ class BeatProximityOrderTest extends TestCase
         }
 
         $response = $this->actingAs($this->user)
-            ->getJson("/api/beats/{$this->beat->id}/customers")
+            ->getJson("/api/salesperson/beats/{$this->beat->id}/customers")
             ->assertOk();
 
         $returnedIds = collect($response->json('data'))->pluck('id')->all();

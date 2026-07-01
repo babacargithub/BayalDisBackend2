@@ -77,7 +77,7 @@ class BeatRoundOdometerTest extends TestCase
 
     private function odometerUrl(string $date = self::ROUND_DATE): string
     {
-        return "/api/beats/{$this->beat->id}/rounds/{$date}/odometer";
+        return "/api/salesperson/beats/{$this->beat->id}/rounds/{$date}/odometer";
     }
 
     // ─── Auth / Authorization ─────────────────────────────────────────────────

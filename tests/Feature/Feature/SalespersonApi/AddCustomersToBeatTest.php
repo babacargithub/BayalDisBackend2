@@ -58,7 +58,7 @@ class AddCustomersToBeatTest extends TestCase
             'commercial_id' => $this->commercial->id,
         ]);
 
-        $response = $this->actingAs($this->user)->postJson("/api/beats/{$beat->id}/customers", [
+        $response = $this->actingAs($this->user)->postJson("/api/salesperson/beats/{$beat->id}/customers", [
             'customer_ids' => [$customerA->id, $customerB->id],
         ]);
 
@@ -90,7 +90,7 @@ class AddCustomersToBeatTest extends TestCase
             'commercial_id' => $otherCommercial->id,
         ]);
 
-        $response = $this->actingAs($this->user)->postJson("/api/beats/{$beat->id}/customers", [
+        $response = $this->actingAs($this->user)->postJson("/api/salesperson/beats/{$beat->id}/customers", [
             'customer_ids' => [$customer->id],
         ]);
 
@@ -112,7 +112,7 @@ class AddCustomersToBeatTest extends TestCase
 
         BeatStop::create(['beat_id' => $beat->id, 'customer_id' => $customer->id]);
 
-        $response = $this->actingAs($this->user)->postJson("/api/beats/{$beat->id}/customers", [
+        $response = $this->actingAs($this->user)->postJson("/api/salesperson/beats/{$beat->id}/customers", [
             'customer_ids' => [$customer->id],
         ]);
 

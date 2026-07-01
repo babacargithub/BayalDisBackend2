@@ -58,7 +58,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $response = $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_COMPLETED],
         );
 
@@ -74,7 +74,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_CANCELLED, 'notes' => 'Client absent'],
         )->assertNoContent();
 
@@ -88,7 +88,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop(BeatStop::STATUS_COMPLETED);
 
         $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_PLANNED],
         )->assertNoContent();
 
@@ -101,7 +101,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $response = $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => 'invalid_status'],
         );
 
@@ -114,7 +114,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $response = $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             [],
         );
 
@@ -132,7 +132,7 @@ class UpdateBeatStopStatusTest extends TestCase
 
         // Request uses $this->beat but stop belongs to $otherBeat
         $response = $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stopOnOtherBeat->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stopOnOtherBeat->id}",
             ['status' => BeatStop::STATUS_COMPLETED],
         );
 
@@ -158,7 +158,7 @@ class UpdateBeatStopStatusTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stopOnDifferentDate->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stopOnDifferentDate->id}",
             ['status' => BeatStop::STATUS_COMPLETED],
         );
 
@@ -186,7 +186,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop(BeatStop::STATUS_PLANNED, $beatOwnedByOther);
 
         $response = $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$beatOwnedByOther->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$beatOwnedByOther->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_COMPLETED],
         );
 
@@ -215,7 +215,7 @@ class UpdateBeatStopStatusTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
         );
 
         $expectedAvailableStatuses = array_map(
@@ -236,7 +236,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_STOCK_RESTANT, 'notes' => 'Client a encore du stock'],
         )->assertNoContent();
 
@@ -250,7 +250,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_RESTAURANT_FERME],
         )->assertNoContent();
 
@@ -263,7 +263,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_PRODUITS_NON_DISPONIBLES],
         )->assertNoContent();
 
@@ -276,7 +276,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_DETTE_NON_ACCEPTEE],
         )->assertNoContent();
 
@@ -302,7 +302,7 @@ class UpdateBeatStopStatusTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
         );
 
         $response->assertOk()
@@ -314,7 +314,7 @@ class UpdateBeatStopStatusTest extends TestCase
         $stop = $this->makeOccurrenceStop();
 
         $this->actingAs($this->user)->patchJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE."/stops/{$stop->id}",
             ['status' => BeatStop::STATUS_REPROGRAMME],
         )->assertNoContent();
 
@@ -360,7 +360,7 @@ class UpdateBeatStopStatusTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)->getJson(
-            "/api/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
+            "/api/salesperson/beats/{$this->beat->id}/rounds/".self::ROUND_DATE.'/customers',
         );
 
         $response->assertOk()

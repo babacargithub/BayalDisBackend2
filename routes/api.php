@@ -29,18 +29,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // Vehicles list for odometer vehicle selection
     Route::get('/vehicles', [ApiVehicleController::class, 'index']);
 
-    // Beats simple list and customer roster for mobile app
-    Route::get('/beats', [ApiCustomerVisitController::class, 'listBeatsWithCustomerCount']);
-    Route::get('/beats/{beat}/customers', [ApiCustomerVisitController::class, 'listBeatCustomers']);
-    Route::post('/beats/{beat}/customers', [ApiCustomerVisitController::class, 'addCustomersToBeat']);
-    Route::put('/beats/{beat}/customers/reorder', [ApiCustomerVisitController::class, 'reorderBeatCustomers']);
-    Route::delete('/beats/{beat}/customers/{customer}', [ApiCustomerVisitController::class, 'removeCustomerFromBeat']);
-    Route::get('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'listBeatRounds']);
-    Route::post('/beats/{beat}/rounds', [ApiCustomerVisitController::class, 'createBeatRound']);
-    Route::get('/beats/{beat}/rounds/{date}/customers', [ApiCustomerVisitController::class, 'listBeatRoundCustomers']);
-    Route::patch('/beats/{beat}/rounds/{date}/stops/{stop}', [ApiCustomerVisitController::class, 'updateStopStatus']);
-    Route::patch('/beats/{beat}/rounds/{date}/odometer', [ApiCustomerVisitController::class, 'recordOdometer']);
-
     // Salesperson routes
     Route::prefix('salesperson/')->group(function () {
         Route::get('commercials', [ApiSalesInvoiceController::class, 'getCommercials']);
@@ -92,6 +80,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('beats', [ApiCustomerVisitController::class, 'getBeats']);
         Route::get('beats/today', [ApiCustomerVisitController::class, 'getTodayStops']);
         Route::get('beats/rescheduled-customers', [ApiCustomerVisitController::class, 'getRescheduledCustomers']);
+        Route::get('beats/{beat}/customers', [ApiCustomerVisitController::class, 'listBeatCustomers']);
+        Route::post('beats/{beat}/customers', [ApiCustomerVisitController::class, 'addCustomersToBeat']);
+        Route::put('beats/{beat}/customers/reorder', [ApiCustomerVisitController::class, 'reorderBeatCustomers']);
+        Route::delete('beats/{beat}/customers/{customer}', [ApiCustomerVisitController::class, 'removeCustomerFromBeat']);
+        Route::get('beats/{beat}/rounds', [ApiCustomerVisitController::class, 'listBeatRounds']);
+        Route::post('beats/{beat}/rounds', [ApiCustomerVisitController::class, 'createBeatRound']);
+        Route::get('beats/{beat}/rounds/{date}/customers', [ApiCustomerVisitController::class, 'listBeatRoundCustomers']);
+        Route::patch('beats/{beat}/rounds/{date}/stops/{stop}', [ApiCustomerVisitController::class, 'updateStopStatus']);
+        Route::patch('beats/{beat}/rounds/{date}/odometer', [ApiCustomerVisitController::class, 'recordOdometer']);
         Route::get('beats/{beat}/details', [ApiCustomerVisitController::class, 'getBeatDetails']);
         Route::post('beats/{beatStop}/complete', [ApiCustomerVisitController::class, 'completeBeatStop']);
         Route::post('beats/{beatStop}/cancel', [ApiCustomerVisitController::class, 'cancelBeatStop']);
