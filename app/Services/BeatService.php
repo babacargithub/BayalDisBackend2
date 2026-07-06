@@ -68,6 +68,7 @@ readonly class BeatService
                 ->each(fn (BeatStop $stop) => $stop->complete([
                     'notes' => 'Terminé avec une vente',
                     'resulted_in_sale' => true,
+                    'gps_coordinates' => (string) $stop->customer->gps_coordinates,
                 ]));
 
             // 2. Complete the planned stop on the beat's next scheduled date — only if a
@@ -118,7 +119,7 @@ readonly class BeatService
 
     /**
      * Haversine distance in km from a fixed point to a customer's GPS position.
-     * Returns PHP_FLOAT_MAX when the customer has no GPS coordinates so they sort last.
+     * Returns PHP_FLOAT_MAX when the customer has no GPS coordinates, so they sort last.
      */
     private function haversineDistanceInKmFromPoint(float $fromLat, float $fromLng, Customer $customer): float
     {

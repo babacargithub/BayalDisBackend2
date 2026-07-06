@@ -17,12 +17,14 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeliveryBatchController;
 use App\Http\Controllers\DepenseController;
 use App\Http\Controllers\GeographicStatsController;
+use App\Http\Controllers\GoalController;
 use App\Http\Controllers\HrController;
 use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\LigneController;
 use App\Http\Controllers\MonthlyFixedCostController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PricingPolicyController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
@@ -314,6 +316,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('teams', TeamController::class);
     Route::post('teams/{team}/add-commercial', [TeamController::class, 'addCommercial'])->name('teams.add-commercial');
     Route::post('teams/{team}/remove-commercial', [TeamController::class, 'removeCommercial'])->name('teams.remove-commercial');
+
+    Route::get('performances', [PerformanceController::class, 'index'])->name('performances.index');
+
+    Route::get('goals', [GoalController::class, 'index'])->name('goals.index');
+    Route::post('goals', [GoalController::class, 'store'])->name('goals.store');
+    Route::get('goals/{goal}', [GoalController::class, 'show'])->name('goals.show');
+    Route::post('goals/{goal}/attach-child', [GoalController::class, 'attachChild'])->name('goals.attach-child');
+    Route::post('goals/{goal}/detach', [GoalController::class, 'detach'])->name('goals.detach');
+    Route::delete('goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
 });
 
 require __DIR__.'/auth.php';

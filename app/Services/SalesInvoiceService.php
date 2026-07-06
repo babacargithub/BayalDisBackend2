@@ -11,6 +11,7 @@ use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
+use App\Services\Commission\CommissionRateResolverService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -29,6 +30,9 @@ readonly class SalesInvoiceService
         private CarLoadService $carLoadService,
         private PricingPolicyService $pricingPolicyService,
         private BeatService $beatService,
+        private CommissionRateResolverService $commissionRateResolverService,
+        private PaymentService $paymentService,
+        private PushScoreCalculatorService $pushScoreCalculatorService,
     ) {}
 
     // =========================================================================
@@ -134,6 +138,7 @@ readonly class SalesInvoiceService
                 customerId: $salesInvoice->customer_id,
                 date: $salesInvoice->created_at->toDateString(),
             );
+
 
             foreach ($affectedBeatRoundIds as $beatRoundId) {
                 RecalculateBeatRoundStrikeRateJob::dispatch($beatRoundId);
