@@ -12,6 +12,10 @@
                     </p>
                 </div>
                 <div class="flex gap-2">
+                    <v-btn color="deep-purple" variant="tonal" @click="openAllDettesDialog">
+                        <v-icon start>mdi-handshake-outline</v-icon>
+                        Dettes Inter-compte
+                    </v-btn>
                     <v-btn color="secondary" variant="tonal" @click="openTransferDialog">
                         <v-icon start>mdi-bank-transfer</v-icon>
                         Transfert entre comptes
@@ -106,10 +110,43 @@
                     <v-data-table
                         :headers="tableHeaders"
                         :items="accounts"
+                        :group-by="[{ key: 'vehicle_id' }]"
+                        v-model:opened="openedVehicleGroups"
                         :sort-by="[{ key: 'balance', order: 'desc' }]"
                         items-per-page="25"
                         class="elevation-0"
                     >
+                        <!-- Vehicle group header (null = no vehicle → render nothing so those rows appear normally) -->
+                        <template #group-header="{ item, columns, toggleGroup, isGroupOpen }">
+                            <tr
+                                v-if="item.value !== null"
+                                class="cursor-pointer select-none"
+                                style="background: linear-gradient(to right, #e8eaf6, #ede7f6);"
+                                @click="toggleGroup(item)"
+                            >
+                                <td :colspan="columns.length" class="pa-0">
+                                    <div class="flex items-center gap-3 px-4 py-3">
+                                        <v-icon
+                                            :icon="isGroupOpen(item) ? 'mdi-chevron-down' : 'mdi-chevron-right'"
+                                            color="deep-purple"
+                                            size="20"
+                                        />
+                                        <v-icon color="deep-purple" size="18">mdi-truck-outline</v-icon>
+                                        <span class="font-semibold text-deep-purple-darken-2 text-sm">
+                                            {{ item.items[0].raw.linked_to }}
+                                        </span>
+                                        <v-chip size="x-small" color="deep-purple" variant="tonal">
+                                            {{ item.items.length }} compte{{ item.items.length > 1 ? 's' : '' }}
+                                        </v-chip>
+                                        <v-spacer />
+                                        <span class="font-bold text-deep-purple-darken-2">
+                                            {{ formatAmount(vehicleGroupTotals[item.value] ?? 0) }}
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+
                         <!-- Account type chip -->
                         <template #item.account_type_label="{ item }">
                             <v-chip
@@ -423,6 +460,20 @@
                     </div>
                 </v-card-title>
 
+                <!-- Totals summary -->
+                <div class="flex gap-4 px-6 pb-4" v-if="!debtDebtsLoading">
+                    <div class="flex-1 rounded-lg bg-orange-50 border border-orange-200 px-4 py-3">
+                        <div class="text-xs text-orange-600 font-semibold uppercase tracking-wide mb-1">Total Dettes</div>
+                        <div class="text-lg font-bold text-orange-700">{{ formatAmount(totalOutstandingOwed) }}</div>
+                        <div class="text-xs text-orange-500 mt-0.5">Ce compte doit rembourser</div>
+                    </div>
+                    <div class="flex-1 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
+                        <div class="text-xs text-blue-600 font-semibold uppercase tracking-wide mb-1">Total Créances</div>
+                        <div class="text-lg font-bold text-blue-700">{{ formatAmount(totalOutstandingCreances) }}</div>
+                        <div class="text-xs text-blue-500 mt-0.5">Ce compte doit recevoir</div>
+                    </div>
+                </div>
+
                 <v-tabs v-model="debtActiveTab" color="warning" class="px-4">
                     <v-tab value="borrow">
                         <v-icon start>mdi-bank-minus</v-icon>
@@ -524,15 +575,22 @@
                                 />
                             </div>
 
-                            <!-- Running total -->
-                            <div
-                                v-if="borrowLinesTotalAmount > 0"
-                                class="flex justify-end items-center gap-2 mb-3 px-1"
-                            >
-                                <span class="text-body-2 text-grey-darken-1">Total emprunté :</span>
-                                <span class="text-body-1 font-semibold text-warning">
-                                    {{ formatAmount(borrowLinesTotalAmount) }}
-                                </span>
+                            <!-- Balance preview summary -->
+                            <div v-if="borrowLinesTotalAmount > 0" class="flex gap-3 mb-4 mt-1">
+                                <div class="flex-1 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-center">
+                                    <div class="text-xs text-blue-500 font-semibold uppercase tracking-wide mb-0.5">Solde actuel</div>
+                                    <div class="text-sm font-bold text-blue-700">{{ formatAmount(debtDialogAccount.balance) }}</div>
+                                </div>
+                                <div class="flex items-center text-grey-darken-1 font-bold text-lg">+</div>
+                                <div class="flex-1 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2 text-center">
+                                    <div class="text-xs text-orange-500 font-semibold uppercase tracking-wide mb-0.5">Total emprunté</div>
+                                    <div class="text-sm font-bold text-orange-700">{{ formatAmount(borrowLinesTotalAmount) }}</div>
+                                </div>
+                                <div class="flex items-center text-grey-darken-1 font-bold text-lg">=</div>
+                                <div class="flex-1 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-center">
+                                    <div class="text-xs text-green-600 font-semibold uppercase tracking-wide mb-0.5">Solde après emprunt</div>
+                                    <div class="text-sm font-bold text-green-700">{{ formatAmount(debtDialogAccount.balance + borrowLinesTotalAmount) }}</div>
+                                </div>
                             </div>
 
                             <v-btn
@@ -741,6 +799,149 @@
             </v-card>
         </v-dialog>
 
+        <!-- ── Global Dettes Inter-compte Dialog ─────────────────────────── -->
+        <v-dialog v-model="allDettesDialog" max-width="860px" scrollable>
+            <v-card>
+                <v-card-title class="pa-6 pb-2 flex items-center gap-2">
+                    <v-icon color="deep-purple">mdi-handshake-outline</v-icon>
+                    <span class="text-h6">Dettes Inter-compte</span>
+                </v-card-title>
+                <v-card-text class="pa-6 pt-2">
+                    <div v-if="allDettesLoading" class="flex justify-center py-10">
+                        <v-progress-circular indeterminate color="deep-purple" />
+                    </div>
+                    <template v-else>
+                        <v-alert
+                            v-if="allDettes.length === 0"
+                            type="success"
+                            variant="tonal"
+                            icon="mdi-check-circle"
+                            class="mb-4"
+                        >
+                            Aucune dette en cours entre les comptes.
+                        </v-alert>
+                        <v-data-table
+                            v-else
+                            :headers="allDettesTableHeaders"
+                            :items="allDettes"
+                            density="compact"
+                            class="rounded-lg border"
+                        >
+                            <template #item.debtor_account_name="{ item }">
+                                <span class="font-medium text-error">{{ item.debtor_account_name }}</span>
+                            </template>
+
+                            <template #item.creditor_account_name="{ item }">
+                                <span class="font-medium text-success">{{ item.creditor_account_name }}</span>
+                            </template>
+
+                            <template #item.original_amount="{ item }">
+                                {{ formatAmount(item.original_amount) }}
+                            </template>
+
+                            <template #item.remaining_amount="{ item }">
+                                <span class="font-semibold text-error">
+                                    {{ formatAmount(item.remaining_amount) }}
+                                </span>
+                            </template>
+
+                            <template #item.status_label="{ item }">
+                                <v-chip
+                                    :color="debtStatusColor(item.status)"
+                                    size="small"
+                                    variant="tonal"
+                                >
+                                    {{ item.status_label }}
+                                </v-chip>
+                            </template>
+
+                            <template #item.actions="{ item }">
+                                <v-btn
+                                    size="small"
+                                    color="deep-purple"
+                                    variant="tonal"
+                                    @click="openGlobalRepayDialog(item)"
+                                >
+                                    <v-icon start size="16">mdi-cash-refund</v-icon>
+                                    Rembourser
+                                </v-btn>
+                            </template>
+
+                            <template #no-data>
+                                Aucune dette trouvée
+                            </template>
+                        </v-data-table>
+                    </template>
+                </v-card-text>
+                <v-card-actions class="pa-6 pt-0">
+                    <v-spacer />
+                    <v-btn color="deep-purple" variant="flat" @click="allDettesDialog = false">Fermer</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- ── Global Repay Debt Dialog ───────────────────────────────────── -->
+        <v-dialog v-model="globalRepayDialog" max-width="460px" persistent>
+            <v-card v-if="globalRepayDebt">
+                <v-card-title class="text-h6 pa-6 pb-2">Remboursement de dette</v-card-title>
+                <v-card-text class="pa-6 pt-2">
+                    <div class="rounded-lg bg-grey-lighten-4 pa-4 mb-4">
+                        <div class="flex justify-between text-body-2 mb-2">
+                            <span class="text-medium-emphasis">Débiteur :</span>
+                            <span class="font-semibold text-error">{{ globalRepayDebt.debtor_account_name }}</span>
+                        </div>
+                        <div class="flex justify-between text-body-2 mb-2">
+                            <span class="text-medium-emphasis">Créditeur :</span>
+                            <span class="font-semibold text-success">{{ globalRepayDebt.creditor_account_name }}</span>
+                        </div>
+                        <div class="flex justify-between text-body-2 mb-2">
+                            <span class="text-medium-emphasis">Motif :</span>
+                            <span class="font-medium">{{ globalRepayDebt.reason }}</span>
+                        </div>
+                        <div class="flex justify-between text-body-2">
+                            <span class="text-medium-emphasis">Restant dû :</span>
+                            <span class="font-bold text-error">{{ formatAmount(globalRepayDebt.remaining_amount) }}</span>
+                        </div>
+                    </div>
+
+                    <v-text-field
+                        v-model.number="globalRepayAmount"
+                        label="Montant à rembourser (F CFA)"
+                        type="number"
+                        :min="1"
+                        :max="globalRepayDebt.remaining_amount"
+                        variant="outlined"
+                        :hint="`Maximum : ${formatAmount(globalRepayDebt.remaining_amount)}`"
+                        persistent-hint
+                        :error-messages="globalRepayAmount > globalRepayDebt.remaining_amount ? ['Dépasse le montant restant'] : []"
+                    />
+
+                    <v-alert
+                        v-if="globalRepayError"
+                        type="error"
+                        variant="tonal"
+                        class="mt-3"
+                        :text="globalRepayError"
+                    />
+                </v-card-text>
+                <v-card-actions class="pa-6 pt-0">
+                    <v-spacer />
+                    <v-btn variant="text" :disabled="globalRepaySubmitting" @click="globalRepayDialog = false">
+                        Annuler
+                    </v-btn>
+                    <v-btn
+                        color="deep-purple"
+                        variant="flat"
+                        :loading="globalRepaySubmitting"
+                        :disabled="!globalRepayAmount || globalRepayAmount <= 0 || globalRepayAmount > globalRepayDebt.remaining_amount"
+                        @click="submitGlobalRepay"
+                    >
+                        Confirmer le remboursement
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
         <!-- ── Transactions Dialog ──────────────────────────────────────── -->
         <v-dialog v-model="transactionsDialog" max-width="900px" scrollable>
             <v-card v-if="selectedAccount">
@@ -759,6 +960,22 @@
                         <v-btn variant="text" icon="mdi-close" @click="transactionsDialog = false" />
                     </div>
                 </v-card-title>
+
+                <!-- Summary totals -->
+                <div class="flex gap-4 px-6 pb-2">
+                    <div class="flex-1 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
+                        <div class="text-xs text-green-600 font-semibold uppercase tracking-wide mb-1">Total Dépôts</div>
+                        <div class="text-lg font-bold text-green-700">{{ formatAmount(txTotalDeposits) }}</div>
+                    </div>
+                    <div class="flex-1 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+                        <div class="text-xs text-red-600 font-semibold uppercase tracking-wide mb-1">Total Retraits</div>
+                        <div class="text-lg font-bold text-red-700">{{ formatAmount(txTotalWithdrawals) }}</div>
+                    </div>
+                    <div class="flex-1 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
+                        <div class="text-xs text-blue-600 font-semibold uppercase tracking-wide mb-1">Solde Actuel</div>
+                        <div class="text-lg font-bold text-blue-700">{{ formatAmount(selectedAccount.balance) }}</div>
+                    </div>
+                </div>
 
                 <!-- Filters -->
                 <v-card-text class="pa-6 pb-0">
@@ -884,6 +1101,7 @@ const props = defineProps({
     vehicles: Array,
     commercials: Array,
     accountTypes: Array,
+    vehicleGroupTotals: Object,
 });
 
 // ── Flash messages ─────────────────────────────────────────────────────────
@@ -935,6 +1153,9 @@ const tableHeaders = [
     { title: 'Mis à jour', key: 'updated_at', sortable: true },
     { title: 'Actions', key: 'actions', sortable: false, align: 'center', minWidth: '160px' },
 ];
+
+// Vehicle groups start collapsed; the null-vehicle group (standalone accounts) is always open.
+const openedVehicleGroups = ref([null]);
 
 const transactionHeaders = [
     { title: 'Date', key: 'created_at', sortable: true },
@@ -1116,6 +1337,8 @@ const transactionsDialog = ref(false);
 const selectedAccount = ref(null);
 const transactions = ref([]);
 const txLoading = ref(false);
+const txTotalDeposits = ref(0);
+const txTotalWithdrawals = ref(0);
 
 const txFilters = ref({
     date_from: '',
@@ -1144,6 +1367,8 @@ const fetchTransactions = async () => {
 
         const response = await axios.get(route('accounts.transactions', selectedAccount.value.id), { params });
         transactions.value = response.data.transactions;
+        txTotalDeposits.value = response.data.total_deposits;
+        txTotalWithdrawals.value = response.data.total_withdrawals;
     } catch {
         errorMessage.value = 'Erreur lors du chargement des transactions.';
         errorSnackbar.value = true;
@@ -1155,6 +1380,8 @@ const fetchTransactions = async () => {
 const openTransactionsDialog = (account) => {
     selectedAccount.value = account;
     transactions.value = [];
+    txTotalDeposits.value = 0;
+    txTotalWithdrawals.value = 0;
     txFilters.value = { date_from: '', date_to: '', type: null };
     transactionsDialog.value = true;
     fetchTransactions();
@@ -1172,6 +1399,7 @@ const debtDebtsLoading = ref(false);
 const debtsAsDebtor = ref([]);
 const debtsAsCreditor = ref([]);
 const totalOutstandingOwed = ref(0);
+const totalOutstandingCreances = ref(0);
 
 // ── Borrow form state ──────────────────────────────────────────────────────
 
@@ -1391,6 +1619,7 @@ const fetchOutstandingDebts = async (account) => {
         debtsAsDebtor.value = response.data.debts_as_debtor;
         debtsAsCreditor.value = response.data.debts_as_creditor;
         totalOutstandingOwed.value = response.data.total_outstanding_owed;
+        totalOutstandingCreances.value = response.data.total_outstanding_creances;
     } catch {
         errorMessage.value = 'Erreur lors du chargement des dettes.';
         errorSnackbar.value = true;
@@ -1405,6 +1634,7 @@ const openDebtDialog = (account) => {
     debtsAsDebtor.value = [];
     debtsAsCreditor.value = [];
     totalOutstandingOwed.value = 0;
+    totalOutstandingCreances.value = 0;
     selectedDebtIds.value = [];
     repayAmounts.value = {};
     resetBorrowForm();
@@ -1419,5 +1649,69 @@ const debtStatusColor = (status) => {
         FULLY_REPAID: 'success',
     };
     return colorMap[status] ?? 'grey';
+};
+
+// ── Global all-debts dialog ────────────────────────────────────────────────
+
+const allDettesDialog = ref(false);
+const allDettesLoading = ref(false);
+const allDettes = ref([]);
+
+const allDettesTableHeaders = [
+    { title: 'Le compte', key: 'debtor_account_name', sortable: true },
+    { title: 'Doit à', key: 'creditor_account_name', sortable: true },
+    { title: 'Montant initial', key: 'original_amount', sortable: true, align: 'end' },
+    { title: 'Restant dû', key: 'remaining_amount', sortable: true, align: 'end' },
+    { title: 'Statut', key: 'status_label', sortable: false },
+    { title: 'Actions', key: 'actions', sortable: false, align: 'center' },
+];
+
+const openAllDettesDialog = async () => {
+    allDettesDialog.value = true;
+    allDettesLoading.value = true;
+    allDettes.value = [];
+    try {
+        const response = await axios.get(route('account-debts.outstanding-all'));
+        allDettes.value = response.data.debts;
+    } catch {
+        errorMessage.value = 'Erreur lors du chargement des dettes.';
+        errorSnackbar.value = true;
+    } finally {
+        allDettesLoading.value = false;
+    }
+};
+
+// ── Global repay dialog ────────────────────────────────────────────────────
+
+const globalRepayDialog = ref(false);
+const globalRepayDebt = ref(null);
+const globalRepayAmount = ref(null);
+const globalRepaySubmitting = ref(false);
+const globalRepayError = ref(null);
+
+const openGlobalRepayDialog = (debt) => {
+    globalRepayDebt.value = debt;
+    globalRepayAmount.value = debt.remaining_amount;
+    globalRepayError.value = null;
+    globalRepayDialog.value = true;
+};
+
+const submitGlobalRepay = async () => {
+    globalRepaySubmitting.value = true;
+    globalRepayError.value = null;
+    try {
+        await axios.post(route('account-debts.repay', globalRepayDebt.value.id), {
+            amount: globalRepayAmount.value,
+        });
+        globalRepayDialog.value = false;
+        successMessage.value = 'Remboursement enregistré avec succès.';
+        successSnackbar.value = true;
+        await openAllDettesDialog();
+        router.reload({ preserveScroll: true });
+    } catch (error) {
+        globalRepayError.value = error.response?.data?.message ?? 'Une erreur inattendue est survenue.';
+    } finally {
+        globalRepaySubmitting.value = false;
+    }
 };
 </script>

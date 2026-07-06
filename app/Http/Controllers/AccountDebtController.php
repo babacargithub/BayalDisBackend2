@@ -16,6 +16,30 @@ class AccountDebtController extends Controller
     public function __construct(private readonly AccountDebtService $accountDebtService) {}
 
     /**
+     * Return all outstanding (non-fully-repaid) inter-account debts across all accounts.
+     * Called via AJAX when the global debt dialog opens.
+     */
+    public function allOutstandingDebts(): JsonResponse
+    {
+        $debts = $this->accountDebtService->getAllOutstandingDebts()
+            ->map(fn (AccountDebt $debt) => [
+                'id' => $debt->id,
+                'debtor_account_id' => $debt->debtor_account_id,
+                'debtor_account_name' => $debt->debtorAccount->name,
+                'creditor_account_id' => $debt->creditor_account_id,
+                'creditor_account_name' => $debt->creditorAccount->name,
+                'original_amount' => $debt->original_amount,
+                'remaining_amount' => $debt->remaining_amount,
+                'status' => $debt->status->value,
+                'status_label' => $debt->status->label(),
+                'reason' => $debt->reason,
+                'created_at' => $debt->created_at->toDateTimeString(),
+            ]);
+
+        return response()->json(['debts' => $debts]);
+    }
+
+    /**
      * Return all outstanding (non-fully-repaid) debts for a given account, both as debtor and creditor.
      * Called via AJAX when the debt dialog opens.
      */
@@ -51,6 +75,7 @@ class AccountDebtController extends Controller
             'debts_as_debtor' => $debtsAsDebtor,
             'debts_as_creditor' => $debtsAsCreditor,
             'total_outstanding_owed' => $this->accountDebtService->getTotalOutstandingDebtAmountForDebtorAccount($account),
+            'total_outstanding_creances' => $this->accountDebtService->getTotalOutstandingCreanceAmountForCreditorAccount($account),
         ]);
     }
 
@@ -82,10 +107,11 @@ class AccountDebtController extends Controller
 
     /**
      * Repay part or all of an existing account debt.
+     * Returns JSON for AJAX requests, redirect for regular form posts.
      *
      * @throws \Throwable
      */
-    public function repay(RepayAccountDebtRequest $request, AccountDebt $accountDebt): RedirectResponse
+    public function repay(RepayAccountDebtRequest $request, AccountDebt $accountDebt): JsonResponse|RedirectResponse
     {
         $validated = $request->validated();
 
@@ -95,7 +121,15 @@ class AccountDebtController extends Controller
                 amountToRepay: $validated['amount'],
             );
         } catch (InsufficientAccountBalanceException|\InvalidArgumentException $exception) {
+            if ($request->wantsJson()) {
+                return response()->json(['message' => $exception->getMessage()], 422);
+            }
+
             return back()->with('flash', ['error' => $exception->getMessage()]);
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['message' => 'Remboursement enregistré avec succès.']);
         }
 
         return back()->with('flash', ['success' => 'Remboursement enregistré avec succès.']);

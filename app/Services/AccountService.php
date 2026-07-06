@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Data\Account\AccountTransactionsResultDTO;
 use App\Enums\AccountTransactionType;
 use App\Enums\AccountType;
 use App\Exceptions\InsufficientAccountBalanceException;
@@ -33,27 +34,57 @@ class AccountService
     }
 
     /**
+     * Compute the total balance for each vehicle that has accounts.
+     * Returns a map of vehicle_id => total_balance.
+     *
+     * @param  Collection<int, Account>  $accounts
+     * @return array<int, int>
+     */
+    public function computeVehicleGroupTotals(Collection $accounts): array
+    {
+        return $accounts
+            ->filter(fn (Account $account) => $account->vehicle_id !== null)
+            ->groupBy('vehicle_id')
+            ->map(fn (Collection $vehicleAccounts) => (int) $vehicleAccounts->sum('balance'))
+            ->all();
+    }
+
+    /**
      * Return transactions for an account, ordered newest-first.
      * Optionally filter by date range (date_from / date_to) and transaction type (CREDIT / DEBIT).
      * Transactions are NOT loaded on the index page — they are fetched lazily when the dialog opens.
      */
-    public function getAccountTransactions(Account $account, array $filters = []): Collection
+    public function getAccountTransactions(Account $account, array $filters = []): AccountTransactionsResultDTO
     {
-        $query = $account->transactions()->orderByDesc('created_at');
+        $baseQuery = $account->transactions();
 
         if (! empty($filters['date_from'])) {
-            $query->whereDate('created_at', '>=', $filters['date_from']);
+            $baseQuery->whereDate('created_at', '>=', $filters['date_from']);
         }
 
         if (! empty($filters['date_to'])) {
-            $query->whereDate('created_at', '<=', $filters['date_to']);
+            $baseQuery->whereDate('created_at', '<=', $filters['date_to']);
         }
 
         if (! empty($filters['type']) && in_array($filters['type'], ['CREDIT', 'DEBIT'], strict: true)) {
-            $query->where('transaction_type', $filters['type']);
+            $baseQuery->where('transaction_type', $filters['type']);
         }
 
-        return $query->get();
+        $transactions = (clone $baseQuery)->orderByDesc('created_at')->get();
+
+        $totalDeposits = (int) (clone $baseQuery)
+            ->where('transaction_type', AccountTransactionType::Credit->value)
+            ->sum('amount');
+
+        $totalWithdrawals = (int) (clone $baseQuery)
+            ->where('transaction_type', AccountTransactionType::Debit->value)
+            ->sum('amount');
+
+        return new AccountTransactionsResultDTO(
+            transactions: $transactions,
+            totalDeposits: $totalDeposits,
+            totalWithdrawals: $totalWithdrawals,
+        );
     }
 
     /**

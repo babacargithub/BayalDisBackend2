@@ -2,7 +2,8 @@
 
 ## Project Overview
 
-**Bayal** is a financial-grade sales distribution management system for a field sales operation (West African market, currency: XOF). Salespersons travel in teams with vehicles loaded with products, sell to customers on routes, and settle accounts at the end of each car load cycle.
+**Bayal Services** is a financial-grade sales distribution management system for a field sales operation (West African 
+market, currency: XOF). Salespersons travel in teams with vehicles loaded with products, sell to customers on routes, and settle accounts at the end of each car load cycle.
 
 **This is a financial application. Errors in calculations directly translate to real money losses.**
 
@@ -131,11 +132,14 @@ tests/
 ## Code Conventions
 
 ### Backend
+- Use `snake_case` for all database and model column names.
+- Business logic is in services, thin controllers !
 - Use descriptive variable and function names, even if longer.
 - All multi-step writes wrapped in `DB::transaction()`.
 - Throw domain-specific exceptions with French error messages (user-facing) and English ones (developer-facing) where applicable.
 - Use DTOs for complex computed results — never return raw associative arrays from services.
 - Controllers are thin: validate input, call service, return Inertia/JSON response.
+
 
 ### Frontend
 - Vue 3 Composition API.
@@ -143,6 +147,9 @@ tests/
 - Currency formatted as XOF with no decimals.
 - Dates formatted as `fr-FR`.
 - Descriptive variable and function names.
+- Views must not contain calculation logic, only data presentation. The calculation logic should be in the backend
+    by the controller and the service
+
 
 ### Financial Precision
 - Prices and amounts are integers (XOF has no sub-unit in practice) unless explicitly required otherwise.
@@ -229,6 +236,7 @@ This project has domain-specific skills available. You MUST activate the relevan
 - You must follow all existing code conventions used in this application. When creating or editing a file, check sibling files for the correct structure, approach, and naming.
 - Use descriptive names for variables and methods. For example, `isRegisteredForDiscounts`, not `discount()`.
 - Check for existing components to reuse before writing a new one.
+- DRY principle should be followed when writing code.
 
 ## Verification Scripts
 
@@ -290,6 +298,7 @@ This project has domain-specific skills available. You MUST activate the relevan
 3. Quoted Phrases (Exact Position) - query="infinite scroll" - words must be adjacent and in that order.
 4. Mixed Queries - query=middleware "rate limit" - "middleware" AND exact phrase "rate limit".
 5. Multiple Queries - queries=["authentication", "middleware"] - ANY of these terms.
+  
 
 === php rules ===
 
@@ -471,4 +480,5 @@ Vue components must have a single root element.
 - Always use existing Tailwind conventions; check project patterns before adding new ones.
 - IMPORTANT: Always use `search-docs` tool for version-specific Tailwind CSS documentation and updated code examples. Never rely on training data.
 - IMPORTANT: Activate `tailwindcss-development` every time you're working with a Tailwind CSS or styling-related task.
+
 </laravel-boost-guidelines>

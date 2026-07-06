@@ -1,7 +1,9 @@
 # Bayal - Application de Gestion des Ventes
 
 ## Vue d'ensemble
-Bayal est une application de gestion des ventes qui permet de gérer les commerciaux, les clients, les produits et les ventes. L'application est construite avec Laravel (backend) et Vue.js avec Inertia.js (frontend), utilisant Vuetify pour l'interface utilisateur.
+Bayal Services Backend est une application de gestion des ventes qui permet de gérer les commerciaux, les clients, les 
+produits et 
+les ventes. L'application est construite avec Laravel (backend) et Vue.js avec Inertia.js (frontend), utilisant Vuetify pour l'interface utilisateur.
 
 ## Structure Technique
 
@@ -137,12 +139,18 @@ Route::middleware('auth')->group(function () {
 - Utilisation de Vuetify pour l'UI
 - Format monétaire: XOF sans décimales
 - Format de date: fr-FR
+- Views must not contain calculation logic, only data presentation. The calculation logic should be in the backend 
+  by the controller and the service
 
 ### Backend
 - Controllers RESTful
 - Validation des requêtes
 - Logging des opérations importantes
 - Relations Eloquent
+- Bussiness Logic in Services
+- Thin Controllers
+- Data Classes and DTOs for data transfer
+- 
 
 ## Installation et Configuration
 

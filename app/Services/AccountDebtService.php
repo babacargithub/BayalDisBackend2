@@ -209,12 +209,37 @@ readonly class AccountDebtService
     }
 
     /**
+     * Return all outstanding (non-fully-repaid) debts across all accounts, ordered oldest first.
+     *
+     * @return Collection<int, AccountDebt>
+     */
+    public function getAllOutstandingDebts(): Collection
+    {
+        return AccountDebt::query()
+            ->whereIn('status', [AccountDebtStatus::Pending->value, AccountDebtStatus::PartiallyRepaid->value])
+            ->with(['debtorAccount', 'creditorAccount'])
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    /**
      * Return the total outstanding amount owed by a debtor account across all its pending debts.
      */
     public function getTotalOutstandingDebtAmountForDebtorAccount(Account $debtorAccount): int
     {
         return (int) AccountDebt::query()
             ->where('debtor_account_id', $debtorAccount->id)
+            ->whereIn('status', [AccountDebtStatus::Pending->value, AccountDebtStatus::PartiallyRepaid->value])
+            ->sum('remaining_amount');
+    }
+
+    /**
+     * Return the total outstanding amount owed back to a creditor account across all its pending debts.
+     */
+    public function getTotalOutstandingCreanceAmountForCreditorAccount(Account $creditorAccount): int
+    {
+        return (int) AccountDebt::query()
+            ->where('creditor_account_id', $creditorAccount->id)
             ->whereIn('status', [AccountDebtStatus::Pending->value, AccountDebtStatus::PartiallyRepaid->value])
             ->sum('remaining_amount');
     }

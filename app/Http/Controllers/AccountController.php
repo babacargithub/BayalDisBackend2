@@ -51,6 +51,7 @@ class AccountController extends Controller
                 'requires_vehicle' => $type->requiresVehicle(),
                 'requires_commercial' => $type->requiresCommercial(),
             ]),
+            'vehicleGroupTotals' => $this->accountService->computeVehicleGroupTotals($accounts),
         ]);
     }
 
@@ -126,11 +127,15 @@ class AccountController extends Controller
      */
     public function transactions(Request $request, Account $account): JsonResponse
     {
-        $transactions = $this->accountService->getAccountTransactions(
+        $result = $this->accountService->getAccountTransactions(
             $account,
             $request->only(['date_from', 'date_to', 'type'])
         );
 
-        return response()->json(['transactions' => $transactions]);
+        return response()->json([
+            'transactions' => $result->transactions,
+            'total_deposits' => $result->totalDeposits,
+            'total_withdrawals' => $result->totalWithdrawals,
+        ]);
     }
 }

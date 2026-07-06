@@ -235,6 +235,7 @@ Route::middleware('auth')->group(function () {
     Route::get('accounts/{account}/transactions', [AccountController::class, 'transactions'])->name('accounts.transactions');
     Route::resource('accounts', AccountController::class)->only(['index', 'store', 'update', 'destroy']);
 
+    Route::get('account-debts/outstanding-all', [AccountDebtController::class, 'allOutstandingDebts'])->name('account-debts.outstanding-all');
     Route::get('account-debts/{account}/outstanding', [AccountDebtController::class, 'outstandingDebtsForAccount'])->name('account-debts.outstanding');
     Route::post('account-debts/borrow', [AccountDebtController::class, 'borrow'])->name('account-debts.borrow');
     Route::post('account-debts/{accountDebt}/repay', [AccountDebtController::class, 'repay'])->name('account-debts.repay');
