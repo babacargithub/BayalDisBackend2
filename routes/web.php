@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AccountDebtController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\BeatController;
+use App\Http\Controllers\BeatRoundPerformanceController;
 use App\Http\Controllers\BeatStopController;
 use App\Http\Controllers\CaisseController;
 use App\Http\Controllers\CarLoadController;
@@ -35,6 +36,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\VenteController;
+use App\Http\Controllers\WeeklyRoundsController;
 use App\Http\Controllers\ZoneController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -65,6 +67,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('product-categories', ProductCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('ventes/sales_history', [VenteController::class, 'salesHistory']);
     Route::get('ventes/product-stats', [VenteController::class, 'productStats'])->name('ventes.product-stats');
+    Route::get('ventes/tournees-semaine', [WeeklyRoundsController::class, 'index'])->name('ventes.weekly-rounds');
     Route::resource('ventes', VenteController::class);
     Route::resource('zones', ZoneController::class);
     Route::get('zones/{zone}/lignes', [ZoneController::class, 'lignes'])->name('zones.lignes');
@@ -122,6 +125,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/{beat}/left-out-customers', [BeatStopController::class, 'getLeftOutCustomersForDate'])->name('left-out-customers');
         Route::get('/{beat}/left-out-customers/pdf', [BeatStopController::class, 'exportLeftOutCustomersPdf'])->name('left-out-customers.pdf');
         Route::get('/{beat}/rounds/{date}', [BeatStopController::class, 'getRoundDetail'])->name('rounds.detail');
+        Route::get('/{beat}/rounds/{beatRound}/performance', [BeatRoundPerformanceController::class, 'show'])->name('rounds.performance');
         Route::post('/{beat}/rounds', [BeatStopController::class, 'storeRound'])->name('rounds.store');
         Route::delete('/{beat}/rounds/{beatRound}', [BeatStopController::class, 'destroyRound'])->name('rounds.destroy');
 

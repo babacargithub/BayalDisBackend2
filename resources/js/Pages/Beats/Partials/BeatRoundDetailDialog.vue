@@ -100,6 +100,15 @@
                             </div>
                         </div>
                         <div class="encaissement-chip pa-3 border rounded-lg bg-white d-flex align-center gap-2">
+                            <v-icon icon="mdi-percent-outline" size="20" :color="ceiRateColor" />
+                            <div>
+                                <div class="text-caption text-grey">Taux d'encaissement (CEI)</div>
+                                <div class="text-subtitle-2 font-weight-bold" :class="`text-${ceiRateColor}`">
+                                    {{ roundData.cei_rate }}%
+                                </div>
+                            </div>
+                        </div>
+                        <div class="encaissement-chip pa-3 border rounded-lg bg-white d-flex align-center gap-2">
                             <v-icon icon="mdi-map-marker-distance" size="20" color="purple-darken-2" />
                             <div>
                                 <div class="text-caption text-grey">Distance parcourue</div>
@@ -267,6 +276,14 @@ const completionPercentage = computed(() => {
 const strikeRateColor = computed(() => {
     if (!roundData.value) return 'grey';
     const rate = roundData.value.strike_rate ?? 0;
+    if (rate >= 75) return 'green-darken-2';
+    if (rate >= 50) return 'orange-darken-2';
+    return 'red-darken-2';
+});
+
+const ceiRateColor = computed(() => {
+    if (!roundData.value) return 'grey';
+    const rate = roundData.value.cei_rate ?? 0;
     if (rate >= 75) return 'green-darken-2';
     if (rate >= 50) return 'orange-darken-2';
     return 'red-darken-2';

@@ -41,6 +41,7 @@ const menuItems = [
         isDropdown: true,
         items: [
             { name: 'Factures du jour', route: 'ventes.index', icon: 'mdi-cash-register' },
+            { name: 'Tournées de la semaine', route: 'ventes.weekly-rounds', icon: 'mdi-map-marker-path' },
             { name: 'Dettes clients', route: 'sales-invoices.index', icon: 'mdi-file-document-outline' },
             { name: 'Commandes', route: 'orders.index', icon: 'mdi-package' },
           {  name: 'Lots de livraison', route: 'delivery-batches.index', icon: 'mdi-truck-delivery' },

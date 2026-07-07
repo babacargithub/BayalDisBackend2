@@ -2,15 +2,20 @@
 
 namespace App\Services;
 
+use App\Data\Beat\ArBucket;
 use App\Data\Beat\BeatForecastDTO;
+use App\Data\Beat\BeatRoundPerformanceDTO;
 use App\Data\Vente\VenteStatsFilter;
 use App\Enums\BeatStopStatus;
 use App\Enums\DayOfWeek;
+use App\Http\Controllers\AdminController;
 use App\Models\Beat;
 use App\Models\BeatRound;
 use App\Models\BeatStop;
 use App\Models\Commercial;
 use App\Models\Customer;
+use App\Models\Payment;
+use App\Models\SalesInvoice;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
@@ -443,9 +448,7 @@ readonly class BeatService
         $planned = $stops->where('status', BeatStop::STATUS_PLANNED)->count();
         $noSale = $stops->whereIn('status', BeatStopStatus::noSaleValues())->count();
 
-        $totalDebtToCollect = (int) $stops->sum(
-            fn (BeatStop $stop) => $stop->customer->salesInvoices->sum('total_remaining')
-        );
+        $totalDebtToCollect = $this->totalDebtToCollectForBeatRound($round);
 
         $customerIds = $stops->pluck('customer.id')->filter()->all();
         $roundStartOfDay = Carbon::parse($date)->startOfDay();
@@ -457,9 +460,12 @@ readonly class BeatService
             $roundEndOfDay,
             $roundCustomersFilter,
         );
+        $totalCollected = $this->totalDebtCollectedForBeatRound($round);
 
         $strikeRate = $this->calculateStrikeRateForBeatRound($round);
-
+        $ceiRate = $totalDebtToCollect > 0
+            ? round($totalCollected / $totalDebtToCollect * 100, 1)
+            : 0.0;
         $buyingCustomersCount = empty($customerIds) ? 0 : $this->salesInvoiceStatsService->distinctEngagedCustomersCount(
             $roundStartOfDay,
             $roundEndOfDay,
@@ -482,6 +488,7 @@ readonly class BeatService
             'remaining_to_collect' => $totalDebtToCollect - (int) $totalCollected,
             'buying_customers_count' => $buyingCustomersCount,
             'strike_rate' => $strikeRate,
+            'cei_rate' => $ceiRate,
             'vehicle' => $round->vehicle ? [
                 'id' => $round->vehicle->id,
                 'name' => $round->vehicle->name,
@@ -509,6 +516,214 @@ readonly class BeatService
         ];
     }
 
+    /**
+     * Sum the outstanding balance of all invoices that existed BEFORE the round date
+     * for every customer assigned to the round.
+     *
+     * Only invoices created strictly before the round's planned_at date are included —
+     * any invoice created on or after the round date is a new sale made during (or after)
+     * the visit and must not be counted as a pre-existing debt to collect.
+     *
+     * Returns 0 when the round has no customer stops.
+     */
+    public function totalDebtToCollectForBeatRound(BeatRound $beatRound): int
+    {
+        $customerIds = BeatStop::where('beat_round_id', $beatRound->id)
+            ->whereNotNull('customer_id')
+            ->distinct()
+            ->pluck('customer_id')
+            ->all();
+
+        if (empty($customerIds)) {
+            return 0;
+        }
+
+        $roundDate = Carbon::parse($beatRound->planned_at)->toDateString();
+
+        return (int) SalesInvoice::whereIn('customer_id', $customerIds)
+            // TODO mark invoices as WRITTEN-OFF
+            ->whereDate('created_at', '>', AdminController::UNPAID_INVOICES_START_DATE)
+            ->whereDate('created_at', '<', $roundDate)
+            ->whereRaw(' total_payments < total_amount ')
+            ->sum(DB::raw('total_amount - total_payments'));
+    }
+
+    /**
+     * Sum payments collected ON the round date that settle pre-existing debts.
+     *
+     * A payment counts as "debt collected" only when its parent invoice was created
+     * strictly before the round date. Payments for same-day invoices (instant sales
+     * created during the visit) are excluded because those invoices were never debts
+     * — they are new purchases settled immediately.
+     *
+     * The Payment global scope already excludes cancelled payments automatically.
+     *
+     * Returns 0 when the round has no customer stops.
+     */
+    public function totalDebtCollectedForBeatRound(BeatRound $beatRound): int
+    {
+        $customerIds = BeatStop::where('beat_round_id', $beatRound->id)
+            ->whereNotNull('customer_id')
+            ->distinct()
+            ->pluck('customer_id')
+            ->all();
+
+        if (empty($customerIds)) {
+            return 0;
+        }
+
+        $roundDate = Carbon::parse($beatRound->planned_at)->toDateString();
+
+        return (int) Payment::whereHas('salesInvoice', function ($query) use ($customerIds, $roundDate): void {
+            $query->whereIn('customer_id', $customerIds)
+                ->whereDate('created_at', '<', $roundDate);
+        })
+            ->whereDate('created_at', $roundDate)
+            ->sum('amount');
+    }
+
+    /**
+     * Compute the full performance snapshot for a beat round.
+     *
+     * Delegates to the two dedicated debt/collection methods for correctness,
+     * then computes totalNewInvoices, totalPayments, ceiRate, and the five
+     * AR aging buckets in a single pass over the round's customer invoices.
+     *
+     * The customerIds query is intentionally run once here and passed down to
+     * buildArBuckets, while the dedicated debt methods run their own query so
+     * they remain independently testable.
+     */
+    public function calculateRoundPerformance(BeatRound $beatRound): BeatRoundPerformanceDTO
+    {
+        $roundDate = Carbon::parse($beatRound->planned_at)->toDateString();
+
+        $customerIds = BeatStop::where('beat_round_id', $beatRound->id)
+            ->whereNotNull('customer_id')
+            ->distinct()
+            ->pluck('customer_id')
+            ->all();
+
+        $totalDebtToCollect = $this->totalDebtToCollectForBeatRound($beatRound);
+        $totalDebtCollected = $this->totalDebtCollectedForBeatRound($beatRound);
+
+        $totalNewInvoices = empty($customerIds) ? 0 : (int) SalesInvoice::whereIn('customer_id', $customerIds)
+            ->whereDate('created_at', $roundDate)
+            ->sum('total_amount');
+
+        $totalPayments = empty($customerIds) ? 0 : (int) Payment::whereHas(
+            'salesInvoice',
+            fn ($q) => $q->whereIn('customer_id', $customerIds),
+        )
+            ->whereDate('created_at', $roundDate)
+            ->sum('amount');
+
+        $strikeRate = $this->calculateStrikeRateForBeatRound($beatRound);
+
+        $ceiRate = $totalDebtToCollect > 0
+            ? round($totalDebtCollected / $totalDebtToCollect * 100, 1)
+            : 0.0;
+
+        $arBuckets = $this->buildArBuckets($customerIds, $roundDate);
+
+        return new BeatRoundPerformanceDTO(
+            totalDebtToCollect: $totalDebtToCollect,
+            totalDebtCollected: $totalDebtCollected,
+            totalNewInvoices: $totalNewInvoices,
+            totalPayments: $totalPayments,
+            strikeRate: $strikeRate,
+            ceiRate: $ceiRate,
+            arBuckets: $arBuckets,
+        );
+    }
+
+    /**
+     * Returns summary metrics for every BeatRound planned during the current
+     * ISO week (Monday → Sunday).  AR buckets are excluded — this method is
+     * designed for list pages where showing per-round invoice breakdowns would
+     * be unnecessarily heavy.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getWeeklyRoundsSummary(): array
+    {
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY)->toDateString();
+        $weekEnd = Carbon::now()->endOfWeek(Carbon::SUNDAY)->toDateString();
+
+        $rounds = BeatRound::with(['beat:id,name', 'commercial:id,name', 'vehicle:id,name,plate_number'])
+            ->whereBetween('planned_at', [$weekStart, $weekEnd])
+            ->orderBy('planned_at')
+            ->get();
+
+        return $rounds->map(fn (BeatRound $round) => $this->buildRoundSummaryData($round))->all();
+    }
+
+    /**
+     * Computes all display-level metrics for a single BeatRound without
+     * building AR aging buckets.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildRoundSummaryData(BeatRound $round): array
+    {
+        $roundDate = Carbon::parse($round->planned_at)->toDateString();
+
+        $stops = BeatStop::where('beat_round_id', $round->id)
+            ->get(['id', 'status', 'customer_id']);
+
+        $completedCount = $stops->where('status', BeatStop::STATUS_COMPLETED)->count();
+        $cancelledCount = $stops->where('status', BeatStop::STATUS_CANCELLED)->count();
+        $plannedCount = $stops->where('status', BeatStop::STATUS_PLANNED)->count();
+        $noSaleCount = $stops->whereIn('status', BeatStopStatus::noSaleValues())->count();
+
+        $customerIds = $stops->pluck('customer_id')->filter()->unique()->values()->all();
+
+        $totalDebtToCollect = $this->totalDebtToCollectForBeatRound($round);
+        $totalDebtCollected = $this->totalDebtCollectedForBeatRound($round);
+
+        $totalNewInvoices = empty($customerIds) ? 0 : (int) SalesInvoice::whereIn('customer_id', $customerIds)
+            ->whereDate('created_at', $roundDate)
+            ->sum('total_amount');
+
+        $totalPayments = empty($customerIds) ? 0 : (int) Payment::whereHas(
+            'salesInvoice',
+            fn ($q) => $q->whereIn('customer_id', $customerIds),
+        )
+            ->whereDate('created_at', $roundDate)
+            ->sum('amount');
+
+        $strikeRate = $this->calculateStrikeRateForBeatRound($round);
+
+        $ceiRate = $totalDebtToCollect > 0
+            ? round($totalDebtCollected / $totalDebtToCollect * 100, 1)
+            : 0.0;
+
+        return [
+            'id' => $round->id,
+            'beat_id' => $round->beat_id,
+            'beat_name' => $round->beat?->name,
+            'planned_at' => $roundDate,
+            'label' => $this->formatRoundLabel($roundDate),
+            'commercial' => $round->commercial
+                ? ['id' => $round->commercial->id, 'name' => $round->commercial->name]
+                : null,
+            'vehicle' => $round->vehicle
+                ? ['id' => $round->vehicle->id, 'name' => $round->vehicle->name, 'plate_number' => $round->vehicle->plate_number]
+                : null,
+            'total_customers' => count($customerIds),
+            'completed' => $completedCount,
+            'cancelled' => $cancelledCount,
+            'no_sale' => $noSaleCount,
+            'planned' => $plannedCount,
+            'status' => $this->deriveRoundStatus($roundDate, $plannedCount),
+            'strike_rate' => $strikeRate,
+            'total_debt_to_collect' => $totalDebtToCollect,
+            'total_debt_collected' => $totalDebtCollected,
+            'total_new_invoices' => $totalNewInvoices,
+            'total_payments' => $totalPayments,
+            'cei_rate' => $ceiRate,
+        ];
+    }
+
     private function formatRoundLabel(string $date): string
     {
         return ucfirst(Carbon::parse($date)->locale('fr')->isoFormat('dddd D MMMM YYYY'));
@@ -521,6 +736,84 @@ readonly class BeatService
         }
 
         return Carbon::parse($date)->startOfDay()->gt(now()->startOfDay()) ? 'upcoming' : 'in_progress';
+    }
+
+    /**
+     * Slot all outstanding pre-existing invoices for the given customers into
+     * five non-overlapping AR aging buckets based on how many days old they are
+     * relative to the round date.
+     *
+     * "Days overdue" = round date − invoice created_at (calendar days).
+     * Invoices are pre-filtered to only those created before the round date
+     * with a positive outstanding balance, so the minimum age is always 1 day.
+     *
+     * Buckets: 1–7 d | 8–14 d | 15–21 d | 22–30 d | 31+ d
+     *
+     * @param  int[]  $customerIds
+     * @return ArBucket[]
+     */
+    private function buildArBuckets(array $customerIds, string $roundDate): array
+    {
+        $bucketDefinitions = [
+            ['labelFr' => '1 à 7 jours',      'labelEn' => '1 to 7 days',   'from' => 1,  'to' => 7],
+            ['labelFr' => '8 à 14 jours',      'labelEn' => '8 to 14 days',  'from' => 8,  'to' => 14],
+            ['labelFr' => '15 à 21 jours',     'labelEn' => '15 to 21 days', 'from' => 15, 'to' => 21],
+            ['labelFr' => '22 à 30 jours',     'labelEn' => '22 to 30 days', 'from' => 22, 'to' => 30],
+            ['labelFr' => 'Plus de 30 jours',  'labelEn' => 'Over 30 days',  'from' => 31, 'to' => null],
+        ];
+
+        if (empty($customerIds)) {
+            return array_map(
+                fn ($def) => new ArBucket(
+                    labelFr: $def['labelFr'],
+                    labelEn: $def['labelEn'],
+                    fromDays: $def['from'],
+                    toDays: $def['to'],
+                    invoiceCount: 0,
+                    totalAmount: 0,
+                    invoices: [],
+                ),
+                $bucketDefinitions,
+            );
+        }
+
+        $roundCarbonDate = Carbon::parse($roundDate);
+
+        $invoices = SalesInvoice::whereIn('customer_id', $customerIds)
+            // TODO exclude WRITTEN-OFF invoices
+            ->whereDate('created_at', '>', AdminController::UNPAID_INVOICES_START_DATE)
+            ->whereDate('created_at', '<', $roundDate)
+            ->whereColumn('total_amount', '>', 'total_payments')
+            ->with('customer:id,name')
+            ->get(['id', 'customer_id', 'total_amount', 'total_payments', 'created_at'])
+            ->map(fn (SalesInvoice $invoice) => [
+                'id' => $invoice->id,
+                'customer_id' => $invoice->customer_id,
+                'customer_name' => $invoice->customer->name ?? '',
+                'total_amount' => $invoice->total_amount,
+                'total_payments' => $invoice->total_payments,
+                'remaining' => $invoice->total_amount - $invoice->total_payments,
+                'days_overdue' => (int) Carbon::parse($invoice->created_at)->diffInDays($roundCarbonDate),
+                'created_at' => Carbon::parse($invoice->created_at)->toDateString(),
+            ]);
+
+        return array_map(function (array $def) use ($invoices): ArBucket {
+            $bucketInvoices = $invoices
+                ->filter(fn (array $inv) => $inv['days_overdue'] >= $def['from']
+                    && ($def['to'] === null || $inv['days_overdue'] <= $def['to']))
+                ->values()
+                ->all();
+
+            return new ArBucket(
+                labelFr: $def['labelFr'],
+                labelEn: $def['labelEn'],
+                fromDays: $def['from'],
+                toDays: $def['to'],
+                invoiceCount: count($bucketInvoices),
+                totalAmount: (int) array_sum(array_column($bucketInvoices, 'remaining')),
+                invoices: $bucketInvoices,
+            );
+        }, $bucketDefinitions);
     }
 
     /**

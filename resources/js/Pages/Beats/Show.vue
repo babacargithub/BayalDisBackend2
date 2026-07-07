@@ -274,6 +274,16 @@
                                         </div>
                                         <v-btn
                                             v-if="round.id"
+                                            icon="mdi-chart-bar"
+                                            variant="text"
+                                            color="primary"
+                                            size="small"
+                                            tag="a"
+                                            :href="route('beats.rounds.performance', [batch.id, round.id])"
+                                            @click.stop
+                                        />
+                                        <v-btn
+                                            v-if="round.id"
                                             icon="mdi-delete-outline"
                                             variant="text"
                                             color="error"
