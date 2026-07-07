@@ -35,6 +35,20 @@
         /* Smooth chevron rotation */
         .nav-chevron { transition: transform 200ms ease; }
         .nav-chevron.open { transform: rotate(180deg); }
+
+        /* Vuetify-nav-list parity: subtle overlay tints instead of solid blocks */
+        .nav-row {
+            min-height: 40px;
+            margin-bottom: 4px;
+            border-radius: 0;
+        }
+        .nav-row:hover        { background-color: rgba(255, 255, 255, 0.04); }
+        .nav-row.is-active    { background-color: #d32f2f; color: #ffffff; }
+        .nav-row.is-active:hover { background-color: #c62828; }
+
+        /* Icons are dimmed (medium emphasis) unless their row is active */
+        .nav-row .nav-icon { opacity: 0.6; }
+        .nav-row.is-active .nav-icon { opacity: 1; }
     </style>
 </head>
 <body class="bg-gray-100 font-sans antialiased">
@@ -155,20 +169,20 @@
         </div>
 
         {{-- Divider --}}
-        <div class="border-t border-blue-800"></div>
+        <div class="border-t border-white/10 mb-2"></div>
 
         {{-- Rail toggle --}}
-        <div class="flex items-center justify-end px-2 py-1">
+        <div class="px-2">
             <button
                 id="rail-toggle"
-                class="p-1.5 rounded text-white hover:bg-blue-800 transition-colors"
+                class="p-1.5 rounded-full text-white hover:bg-white/10 transition-colors"
             >
                 <i id="rail-icon" class="mdi mdi-chevron-left text-xl"></i>
             </button>
         </div>
 
         {{-- Navigation --}}
-        <nav class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-1 space-y-0.5 scrollbar-thin">
+        <nav class="flex-1 overflow-y-auto overflow-x-hidden p-2 scrollbar-thin">
             @foreach($menuGroups as $group)
             @php
                 $isActiveGroup = $activeGroupName === $group['name'];
@@ -178,30 +192,27 @@
 
                 {{-- Group header --}}
                 <button
-                    class="nav-group-toggle w-full flex items-center gap-3 px-3 py-2 rounded text-sm text-white
-                           hover:bg-blue-800 transition-colors {{ $isActiveGroup ? 'bg-blue-800' : '' }}"
+                    class="nav-row nav-group-toggle w-full flex items-center gap-3 px-2 text-sm font-medium text-white transition-colors"
                     data-group-name="{{ $group['name'] }}"
                     data-open="{{ $isActiveGroup ? 'true' : 'false' }}"
                 >
-                    <i class="mdi {{ $group['icon'] }} text-lg w-5 flex-shrink-0 text-center"></i>
+                    <i class="mdi {{ $group['icon'] }} nav-icon text-lg w-5 flex-shrink-0 text-center"></i>
                     <span class="nav-label flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">{{ $group['name'] }}</span>
                     <i class="mdi mdi-chevron-down nav-chevron text-base {{ $isActiveGroup ? 'open' : '' }}"></i>
                 </button>
 
                 {{-- Group items --}}
-                <div class="nav-group-items {{ $isActiveGroup ? '' : 'hidden' }} pl-1 mt-0.5 space-y-0.5">
+                <div class="nav-group-items {{ $isActiveGroup ? '' : 'hidden' }} space-y-1 mt-1">
                     @foreach($group['items'] as $item)
                     @php
                         $isActive = $currentRoute === $item['route'];
                     @endphp
                     <a
                         href="{{ route($item['route']) }}"
-                        class="nav-item flex items-center gap-3 px-3 py-1.5 rounded text-sm transition-colors
-                               {{ $isActive
-                                   ? 'bg-white text-blue-900 font-semibold'
-                                   : 'text-blue-100 hover:bg-blue-800 hover:text-white' }}"
+                        class="nav-row nav-item flex items-center gap-3 pl-7 pr-2 text-sm font-medium text-white transition-colors
+                               {{ $isActive ? 'is-active' : '' }}"
                     >
-                        <i class="mdi {{ $item['icon'] }} text-base w-5 flex-shrink-0 text-center"></i>
+                        <i class="mdi {{ $item['icon'] }} nav-icon text-base w-5 flex-shrink-0 text-center"></i>
                         <span class="nav-label whitespace-nowrap overflow-hidden text-ellipsis">{{ $item['name'] }}</span>
                     </a>
                     @endforeach
