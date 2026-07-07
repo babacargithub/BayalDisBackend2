@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $total_realized_profit Stored: sum of profit on payments (proportional earned profit).
  * @property int $estimated_commercial_commission Stored: estimated commission owed to the commercial (rate × subtotal per item).
  * @property int $credit_price_difference Stored: sum of (credit_price − normal_price) × quantity for all items when credit pricing was applied. Zero otherwise.
+ * @property float $push_score Stored: weighted product diversity score (0–100). 0 means no items. Recomputed by recalculateStoredTotals().
  * @property SalesInvoiceStatus $status Stored: DRAFT | ISSUED | PARTIALLY_PAID | FULLY_PAID.
  *
  * Backward-compat aliases (delegate to stored columns — no DB query):
@@ -57,6 +58,7 @@ class SalesInvoice extends Model
             'estimated_commercial_commission' => 'integer',
             'credit_price_difference' => 'integer',
             'delivery_cost' => 'integer',
+            'push_score' => 'decimal:2',
             'status' => SalesInvoiceStatus::class,
         ];
     }
@@ -203,6 +205,7 @@ class SalesInvoice extends Model
         // bayal:calculate-commissions), skip this step and leave estimated_commercial_commission
         // unchanged so the scheduled command remains the single source of truth.
         $freshEstimatedCommission = $salesInvoiceStatsService->calculateEstimatedCommissionForInvoice($this);
+        $freshPushScore = $salesInvoiceStatsService->calculatePushScoreForInvoice($this);
 
         // FULLY_PAID is never set automatically — only markAsFullyPaid() may do that.
         // However, if the invoice is already FULLY_PAID and payments still cover the
@@ -225,6 +228,7 @@ class SalesInvoice extends Model
         $this->total_payments = $freshTotalPayments;
         $this->total_realized_profit = $freshTotalRealizedProfit;
         $this->estimated_commercial_commission = $freshEstimatedCommission;
+        $this->push_score = $freshPushScore;
         $this->status = $newStatus;
         $this->paid = $newStatus === SalesInvoiceStatus::FullyPaid;
         $this->save();

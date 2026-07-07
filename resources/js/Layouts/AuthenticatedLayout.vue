@@ -70,6 +70,8 @@ const menuItems = [
         isDropdown: true,
         items: [
             { name: 'Commerciaux', route: 'commerciaux.index', icon: 'mdi-account-tie' },
+            { name: 'Performances', route: 'performances.index', icon: 'mdi-chart-line' },
+            { name: 'Objectifs', route: 'goals.index', icon: 'mdi-target' },
             { name: 'Commissions', route: 'commissions.index', icon: 'mdi-cash-check' },
             { name: 'Équipes', route: 'teams.index', icon: 'mdi-account-group' },
         ]

@@ -39,6 +39,7 @@ readonly class SalesInvoiceStatsService
     public function __construct(
         private CommissionRateResolverService $commissionRateResolverService,
         private PaymentService $paymentService,
+        private PushScoreCalculatorService $pushScoreCalculatorService = new PushScoreCalculatorService(),
     ) {}
 
     // =========================================================================
@@ -135,6 +136,17 @@ readonly class SalesInvoiceStatsService
         }
 
         return $totalCommission;
+    }
+
+    /**
+     * Compute the weighted product diversity score (push score) for the given invoice.
+     *
+     * Delegates to PushScoreCalculatorService — see that class for the full formula.
+     * Returns 0.0 for invoices with no items.
+     */
+    public function calculatePushScoreForInvoice(SalesInvoice $invoice): float
+    {
+        return $this->pushScoreCalculatorService->computeForInvoice($invoice);
     }
 
     // =========================================================================
