@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\Payment\BulkCustomerPaymentResultData;
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
+use App\Exceptions\InvoiceWriteOffException;
 use App\Jobs\RecalculateBeatRoundStrikeRateJob;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -13,6 +14,7 @@ use App\Models\SalesInvoice;
 use App\Models\Vente;
 use App\Services\Commission\CommissionRateResolverService;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 use Throwable;
@@ -138,7 +140,6 @@ readonly class SalesInvoiceService
                 customerId: $salesInvoice->customer_id,
                 date: $salesInvoice->created_at->toDateString(),
             );
-
 
             foreach ($affectedBeatRoundIds as $beatRoundId) {
                 RecalculateBeatRoundStrikeRateJob::dispatch($beatRoundId);
@@ -419,5 +420,54 @@ readonly class SalesInvoiceService
                 $salesInvoice->markAsFullyPaid();
             }
         });
+    }
+
+    // =========================================================================
+    // Write-off (definitively lost debt)
+    // =========================================================================
+
+    /**
+     * Mark an invoice as definitively lost (uncollectible). Written-off invoices
+     * are excluded from every debt/AR aggregation via the SalesInvoice global
+     * scope, but remain in the database for audit purposes.
+     *
+     * Only invoices that never received any payment may be written off — an
+     * invoice with payments represents partially recovered debt and must be
+     * resolved through a different path.
+     *
+     * @throws InvoiceWriteOffException when already written off or payments exist
+     */
+    public function writeOffInvoice(SalesInvoice $salesInvoice): void
+    {
+        if ($salesInvoice->isWrittenOff()) {
+            throw new InvoiceWriteOffException('Cette facture a déjà été marquée comme perdue.');
+        }
+
+        if ($salesInvoice->total_payments > 0) {
+            throw new InvoiceWriteOffException(
+                'Impossible de marquer cette facture comme perdue : des paiements y sont déjà associés.'
+            );
+        }
+
+        DB::transaction(function () use ($salesInvoice): void {
+            $salesInvoice->written_off_at = now();
+            $salesInvoice->save();
+        });
+    }
+
+    /**
+     * Paginated audit listing of every written-off (definitively lost) invoice,
+     * bypassing the SCOPE_NOT_WRITTEN_OFF global scope.
+     */
+    public function getWrittenOffInvoices(int $perPage = 25): LengthAwarePaginator
+    {
+        return SalesInvoice::query()
+            ->onlyWrittenOff()
+            ->with([
+                'customer:id,name,phone_number,address',
+                'commercial:id,name',
+            ])
+            ->orderByDesc('written_off_at')
+            ->paginate($perPage);
     }
 }

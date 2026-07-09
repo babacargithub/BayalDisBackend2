@@ -47,6 +47,15 @@ class SalesInvoiceController extends Controller
         ]);
     }
 
+    public function writtenOff()
+    {
+        $writtenOffInvoices = $this->salesInvoiceService->getWrittenOffInvoices();
+
+        return Inertia::render('SalesInvoices/WrittenOff', [
+            'invoices' => SalesInvoiceResource::collection($writtenOffInvoices),
+        ]);
+    }
+
     public function store(StoreSalesInvoiceRequest $request)
     {
         try {

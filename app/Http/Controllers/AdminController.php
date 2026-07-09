@@ -14,8 +14,6 @@ class AdminController extends Controller
 {
     private const FOND_DE_ROULEMENT = 1_944_000;
 
-    public const UNPAID_INVOICES_START_DATE = '2026-03-29';
-
     public function __construct(private readonly CarLoadService $carLoadService) {}
 
     public function rapport(): Response
@@ -32,9 +30,10 @@ class AdminController extends Controller
             SalesInvoiceStatus::PartiallyPaid->value,
         ];
 
+        // Written-off invoices (definitively lost debt) are excluded automatically
+        // by the SalesInvoice global scope.
         $unpaidInvoices = SalesInvoice::query()
             ->whereIn('status', $unpaidInvoiceStatuses)
-            ->where('created_at', '>=', self::UNPAID_INVOICES_START_DATE)
             ->get();
 
         $totalUnpaidInvoicesAmount = $unpaidInvoices->sum('total_remaining');
@@ -51,7 +50,6 @@ class AdminController extends Controller
                 'total_caisses_balance' => $totalCaissesBalance,
                 'total_unpaid_invoices_amount' => $totalUnpaidInvoicesAmount,
                 'total_unpaid_invoices_count' => $totalUnpaidInvoicesCount,
-                'unpaid_invoices_start_date' => self::UNPAID_INVOICES_START_DATE,
                 'business_value' => $businessValue,
                 'fond_de_roulement' => self::FOND_DE_ROULEMENT,
                 'net_plus_value' => $netPlusValue,

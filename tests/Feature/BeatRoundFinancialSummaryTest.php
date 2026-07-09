@@ -22,14 +22,17 @@ use Tests\TestCase;
 /**
  * Tests for the financial summary fields in BeatService::getRoundCustomers():
  *   - total_debt_to_collect: sum of pre-round outstanding invoice balances
- *   - total_collected: sum of sales (price × quantity) recorded on the round date
+ *   - total_collected: sum of payments made ON the round date against invoices
+ *     created BEFORE the round date (pre-existing debt actually recovered during
+ *     the visit)
  *   - remaining_to_collect: total_debt_to_collect − total_collected
  *
  * "Pre-round" means invoices created BEFORE the round date. Invoices created ON the
- * round date are excluded from debt (they belong to the current trip's sales).
+ * round date are excluded from debt (they belong to the current trip's sales) and
+ * their payments never count toward total_collected either — a same-day sale settled
+ * on the spot is a new purchase, not a debt collection.
  *
- * total_collected is computed via SalesInvoiceStatsService::totalSales(), which sums
- * ventes.price * quantity for ventes created on the round date for the round's customers.
+ * total_collected is computed via BeatService::totalDebtCollectedForBeatRound().
  *
  * ROUND_DATE (2025-01-15) is a Wednesday, matching DayOfWeek::Wednesday on the test beat.
  */
@@ -81,7 +84,7 @@ class BeatRoundFinancialSummaryTest extends TestCase
     // Tests
     // =========================================================================
 
-    public function test_financial_summary_with_mixed_debts_and_sales_on_round_date(): void
+    public function test_financial_summary_with_mixed_debt_collection_and_new_sale_on_round_date(): void
     {
         $customerA = $this->makeCustomer();
         $customerB = $this->makeCustomer();
@@ -90,20 +93,25 @@ class BeatRoundFinancialSummaryTest extends TestCase
         $this->addTemplateStop($customerB);
 
         // Customer A: full unpaid invoice → owes 5 000
-        $this->createPreRoundInvoice($customerA, price: 5000, quantity: 1, alreadyPaid: 0);
+        $oldInvoiceA = $this->createPreRoundInvoice($customerA, price: 5000, quantity: 1, alreadyPaid: 0);
 
         // Customer B: invoice for 3 000 with 1 000 already paid → owes 2 000
         $this->createPreRoundInvoice($customerB, price: 3000, quantity: 1, alreadyPaid: 1000);
 
-        // Round-date sales: Customer A buys 2 000, Customer B buys 1 500
-        $this->createSaleOnDate($customerA, price: 2000, quantity: 1, date: Carbon::parse(self::ROUND_DATE)->startOfDay());
+        // On the round date, Customer A pays down 2 000 of their old debt...
+        $this->createPaymentOnDate($oldInvoiceA, amount: 2000, date: Carbon::parse(self::ROUND_DATE));
+
+        // ...while Customer B makes a brand-new purchase instead — this must NOT
+        // count as debt collected, since it settles no pre-existing invoice.
         $this->createSaleOnDate($customerB, price: 1500, quantity: 1, date: Carbon::parse(self::ROUND_DATE)->startOfDay());
 
         $result = $this->beatService->getCustomersOfBeatRound($this->beat, self::ROUND_DATE);
 
-        $this->assertSame(7000, $result['total_debt_to_collect']);
-        $this->assertSame(3500, $result['total_collected']);
-        $this->assertSame(3500, $result['remaining_to_collect']);
+        // Remaining pre-round debt: A now owes 3 000 (5 000 − 2 000), B still owes 2 000.
+        $this->assertSame(5000, $result['total_debt_to_collect']);
+        // Only Customer A's payment toward their old invoice counts as collected.
+        $this->assertSame(2000, $result['total_collected']);
+        $this->assertSame(3000, $result['remaining_to_collect']);
     }
 
     public function test_financial_summary_is_zero_when_customers_have_no_pre_round_debt(): void

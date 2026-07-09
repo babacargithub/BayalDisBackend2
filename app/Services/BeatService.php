@@ -8,7 +8,6 @@ use App\Data\Beat\BeatRoundPerformanceDTO;
 use App\Data\Vente\VenteStatsFilter;
 use App\Enums\BeatStopStatus;
 use App\Enums\DayOfWeek;
-use App\Http\Controllers\AdminController;
 use App\Models\Beat;
 use App\Models\BeatRound;
 use App\Models\BeatStop;
@@ -456,11 +455,6 @@ readonly class BeatService
         $roundEndOfDay = Carbon::parse($date)->endOfDay();
         $roundCustomersFilter = VenteStatsFilter::regardlessOfPaymentStatus()->forCustomers($customerIds);
 
-        $totalCollected = empty($customerIds) ? 0 : $this->salesInvoiceStatsService->totalSales(
-            $roundStartOfDay,
-            $roundEndOfDay,
-            $roundCustomersFilter,
-        );
         $totalCollected = $this->totalDebtCollectedForBeatRound($round);
 
         $strikeRate = $this->calculateStrikeRateForBeatRound($round);
@@ -542,8 +536,7 @@ readonly class BeatService
         $roundDate = Carbon::parse($beatRound->planned_at)->toDateString();
 
         return (int) SalesInvoice::whereIn('customer_id', $customerIds)
-            // TODO mark invoices as WRITTEN-OFF
-            ->whereDate('created_at', '>', AdminController::UNPAID_INVOICES_START_DATE)
+            // Written-off invoices are excluded automatically by the SalesInvoice global scope.
             ->whereDate('created_at', '<', $roundDate)
             ->whereRaw(' total_payments < total_amount ')
             ->sum(DB::raw('total_amount - total_payments'));
@@ -781,8 +774,7 @@ readonly class BeatService
         $roundCarbonDate = Carbon::parse($roundDate);
 
         $invoices = SalesInvoice::whereIn('customer_id', $customerIds)
-            // TODO exclude WRITTEN-OFF invoices
-            ->whereDate('created_at', '>', AdminController::UNPAID_INVOICES_START_DATE)
+            // Written-off invoices are excluded automatically by the SalesInvoice global scope.
             ->whereDate('created_at', '<', $roundDate)
             ->whereColumn('total_amount', '>', 'total_payments')
             ->with('customer:id,name')

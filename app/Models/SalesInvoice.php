@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $credit_price_difference Stored: sum of (credit_price − normal_price) × quantity for all items when credit pricing was applied. Zero otherwise.
  * @property float $push_score Stored: weighted product diversity score (0–100). 0 means no items. Recomputed by recalculateStoredTotals().
  * @property SalesInvoiceStatus $status Stored: DRAFT | ISSUED | PARTIALLY_PAID | FULLY_PAID.
+ * @property \Carbon\Carbon|null $written_off_at When the invoice was written off as definitively lost (null = active).
  *
  * Backward-compat aliases (delegate to stored columns — no DB query):
  * @property int $total Alias for total_amount.
@@ -31,6 +32,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class SalesInvoice extends Model
 {
+    /**
+     * Global scope name excluding written-off (definitively lost) invoices from every query.
+     * Written-off invoices must never count in any debt/AR aggregation —
+     * use scopeOnlyWrittenOff()/scopeWithWrittenOff() only for display/audit.
+     */
+    public const SCOPE_NOT_WRITTEN_OFF = 'notWrittenOff';
+
     protected $fillable = [
         'customer_id',
         'paid',
@@ -60,6 +68,7 @@ class SalesInvoice extends Model
             'delivery_cost' => 'integer',
             'push_score' => 'decimal:2',
             'status' => SalesInvoiceStatus::class,
+            'written_off_at' => 'datetime',
         ];
     }
 
@@ -101,6 +110,14 @@ class SalesInvoice extends Model
     protected static function boot(): void
     {
         parent::boot();
+
+        /**
+         * Written-off invoices are excluded from every query (sums, relations, stats).
+         * They remain in the database for audit purposes only.
+         */
+        static::addGlobalScope(self::SCOPE_NOT_WRITTEN_OFF, function (Builder $query): void {
+            $query->whereNull('sales_invoices.written_off_at');
+        });
 
         // Propagate paid/paid_at/should_be_paid_at changes down to vente items.
         static::updated(function (SalesInvoice $invoice): void {
@@ -281,6 +298,33 @@ class SalesInvoice extends Model
         $query->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
             ->whereNotNull('should_be_paid_at')
             ->whereDate('should_be_paid_at', '<', today()->toDateString());
+    }
+
+    /**
+     * Bypass the SCOPE_NOT_WRITTEN_OFF global scope to include written-off invoices
+     * alongside active ones. Intended for audit views only.
+     *
+     * Usage: SalesInvoice::query()->withWrittenOff()->get()
+     */
+    public function scopeWithWrittenOff(Builder $query): Builder
+    {
+        return $query->withoutGlobalScope(self::SCOPE_NOT_WRITTEN_OFF);
+    }
+
+    /**
+     * Bypass the SCOPE_NOT_WRITTEN_OFF global scope and return ONLY written-off invoices.
+     * Intended for audit views only (e.g. reviewing definitively lost debt).
+     *
+     * Usage: SalesInvoice::query()->onlyWrittenOff()->get()
+     */
+    public function scopeOnlyWrittenOff(Builder $query): Builder
+    {
+        return $query->withoutGlobalScope(self::SCOPE_NOT_WRITTEN_OFF)->whereNotNull('written_off_at');
+    }
+
+    public function isWrittenOff(): bool
+    {
+        return $this->written_off_at !== null;
     }
 
     // =========================================================================

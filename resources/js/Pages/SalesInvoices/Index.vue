@@ -25,6 +25,15 @@
             <v-icon>mdi-file-pdf-box</v-icon>
             Factures impayées
           </v-btn>
+          <Link
+            :href="route('sales-invoices.written-off')"
+            class="inline-flex items-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-800 transition"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75 14.25 14.25M14.25 9.75 9.75 14.25M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            Factures radiées
+          </Link>
         </div>
       </div>
     </template>
@@ -329,7 +338,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { router } from '@inertiajs/vue3'
+import { router, Link } from '@inertiajs/vue3'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import CreateInvoiceDialog from './Partials/CreateInvoiceDialog.vue'
 import ItemsDialog from './Partials/ItemsDialog.vue'

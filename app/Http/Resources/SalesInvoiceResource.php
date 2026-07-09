@@ -40,6 +40,7 @@ class SalesInvoiceResource extends JsonResource
             'comment' => $this->comment,
             'should_be_paid_at' => $this->should_be_paid_at,
             'created_at' => $this->created_at,
+            'written_off_at' => $this->written_off_at,
             'payments' => [],
             'items' => [],
         ];

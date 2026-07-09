@@ -100,6 +100,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/orders/{order}/payments', [PaymentController::class, 'index'])->name('orders.payments.index');
 
     Route::resource('sales-invoices', SalesInvoiceController::class);
+    Route::get('/sales-invoices-written-off', [SalesInvoiceController::class, 'writtenOff'])->name('sales-invoices.written-off');
     Route::get('/sales-invoices/{salesInvoice}/pdf', [SalesInvoiceController::class, 'exportPdf'])->name('sales-invoices.pdf');
     Route::get('/sales-invoices-unpaid/pdf', [SalesInvoiceController::class, 'exportUnpaidPdf'])->name('sales-invoices.unpaid-pdf');
     Route::get('/sales-invoices-filtered/export-pdf', [SalesInvoiceController::class, 'exportFilteredPdf'])->name('sales-invoices.export-pdf');

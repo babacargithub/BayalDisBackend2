@@ -16,14 +16,6 @@ const netPlusValueIsPositive = computed(() => props.statistics.net_plus_value >=
 const netPlusValueColor = computed(() => netPlusValueIsPositive.value ? 'success' : 'error');
 
 const netPlusValueIcon = computed(() => netPlusValueIsPositive.value ? 'mdi-trending-up' : 'mdi-trending-down');
-
-const unpaidInvoicesStartDateFormatted = computed(() =>
-    new Date(props.statistics.unpaid_invoices_start_date).toLocaleDateString('fr-FR', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-    })
-);
 </script>
 
 <template>
@@ -150,7 +142,6 @@ const unpaidInvoicesStartDateFormatted = computed(() =>
                             </v-avatar>
                             <div>
                                 <div class="text-subtitle-1 font-weight-medium">Factures impayées</div>
-                                <div class="text-caption text-grey">Depuis le {{ unpaidInvoicesStartDateFormatted }}</div>
                             </div>
                             <v-spacer />
                             <v-chip color="red" variant="tonal" size="small">
