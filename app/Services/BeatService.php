@@ -512,12 +512,20 @@ readonly class BeatService
     }
 
     /**
-     * Sum the outstanding balance of all invoices that existed BEFORE the round date
-     * for every customer assigned to the round.
+     * Sum the outstanding balance, AS OF THE ROUND DATE, of all invoices that
+     * existed BEFORE the round date for every customer assigned to the round.
      *
      * Only invoices created strictly before the round's planned_at date are included —
      * any invoice created on or after the round date is a new sale made during (or after)
      * the visit and must not be counted as a pre-existing debt to collect.
+     *
+     * Deliberately computed from the invoice total and payments made strictly
+     * before the round date — NOT from the invoice's current (live) total_payments
+     * column — so that invoices later paid off (on the round date or afterwards)
+     * still contribute their full pre-existing debt here. Using the live column
+     * would make this figure drift downward as more payments come in, and would
+     * silently exclude invoices fully settled the same day, which is what let
+     * total_debt_collected exceed total_debt_to_collect (CEI > 100%).
      *
      * Returns 0 when the round has no customer stops.
      */
@@ -535,11 +543,19 @@ readonly class BeatService
 
         $roundDate = Carbon::parse($beatRound->planned_at)->toDateString();
 
-        return (int) SalesInvoice::whereIn('customer_id', $customerIds)
-            // Written-off invoices are excluded automatically by the SalesInvoice global scope.
+        // Written-off invoices are excluded automatically by the SalesInvoice global scope.
+        $totalInvoicedBeforeRoundDate = (int) SalesInvoice::whereIn('customer_id', $customerIds)
             ->whereDate('created_at', '<', $roundDate)
-            ->whereRaw(' total_payments < total_amount ')
-            ->sum(DB::raw('total_amount - total_payments'));
+            ->sum('total_amount');
+
+        $totalPaidBeforeRoundDate = (int) Payment::whereHas('salesInvoice', function ($query) use ($customerIds, $roundDate): void {
+            $query->whereIn('customer_id', $customerIds)
+                ->whereDate('created_at', '<', $roundDate);
+        })
+            ->whereDate('created_at', '<', $roundDate)
+            ->sum('amount');
+
+        return $totalInvoicedBeforeRoundDate - $totalPaidBeforeRoundDate;
     }
 
     /**

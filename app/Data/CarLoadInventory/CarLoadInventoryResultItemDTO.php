@@ -24,4 +24,30 @@ class CarLoadInventoryResultItemDTO
 
     }
 
+    /**
+     * Tells if the inventory counting of items is OK ! This means the items counted physically matches the expected
+     * @return bool
+     */
+    public function isCountingOK(): bool
+    {
+        return $this->resultConverted->parentQuantity == 0 && $this->resultConverted->childQuantity == 0;
+
+    }
+    /**
+     * Tells if the inventory counting of items is higher than expected ! This means the items counted physically
+     * are higher than normal
+     * expected
+     * @return bool
+     */
+    public function isSurplus(): bool
+    {
+        return $this->resultOfComputation > 0;
+
+    }
+    public function  isDeficit(): bool
+    {
+        return $this->resultOfComputation < 0;
+
+    }
+
 }

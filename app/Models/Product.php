@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Services\ProductService;
 use Exception;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,7 @@ class Product extends Model
 
     protected $fillable = [
         'name',
+        'public_display_name',
         'product_category_id',
         'description',
         'price',
@@ -66,7 +68,7 @@ class Product extends Model
         return $this->belongsTo(Product::class, 'parent_id');
     }
 
-    public function variants(): \Illuminate\Database\Eloquent\Builder|HasMany|Product
+    public function variants(): Builder|HasMany|Product
     {
         return $this->hasMany(Product::class, 'parent_id');
     }

@@ -42,6 +42,9 @@
         .negative {
             color: red;
         }
+        .success {
+            color: #00c853;
+        }
 
         .footer {
             margin-top: 30px;
@@ -64,6 +67,9 @@
 
         .small {
             font-size: 0.85em;
+        }
+        .text-blue {
+            color: #083eec;
         }
     </style>
 </head>
@@ -135,21 +141,27 @@
                     </span>
                 @endif
             </td>
-            <td class="text-right result {{ $item->resultOfComputation < 0 ? 'negative' : 'success' }}">
+            <td class="text-right result {{ $item->isDeficit()  ? 'negative' : 'success' }}">
                 @php($absResult = abs($item->resultOfComputation ))
                 @php($resultDisplay = $item->resultConverted)
-                @if($resultDisplay->parentQuantity == 0 && $resultDisplay->childQuantity == 0)
-                    <span class="success" style="color: #00c853">Décompte OK</span>
+                @if($item->isCountingOK())
+                    <span class="success" >Décompte OK</span>
                 @else
-                    {{ $item->resultSign < 0 ? 'Manque ' : 'Surplus de ' }}
+                    <span class="{{ $item->isDeficit()  ? 'negative' : 'text-blue' }}">{{ $item->isDeficit() ? 'Manque
+                    ' : 'Surplus de ' }}</span>
                         @if($resultDisplay->parentQuantity != 0) {{ $resultDisplay->parentQuantity }} cartons @endif
-                        <span class="small">{{ $resultDisplay->childQuantity }} paquets @if(!empty($resultDisplay->childName))
+                    @if($resultDisplay->childQuantity > 0)
+                        <span class="small {{ $item->isDeficit()  ? 'negative' : 'text-blue' }}">{{ $resultDisplay->childQuantity }} paquets
+                            @if(!empty($resultDisplay->childName))
                                 de {{  $resultDisplay->childName }}
-                            @endif</span>
+                            @endif
+                        </span>
+                    @endif
+
 
                 @endif
             </td>
-            <td class="text-right price {{ $item->priceOfResultComputation < 0 ? 'negative' : 'success' }}">
+            <td class="text-right price {{ $item->isDeficit() ? 'negative' : 'success' }}">
                 {{ number_format($item->priceOfResultComputation, 0, ',', ' ') }} F
             </td>
         </tr>
