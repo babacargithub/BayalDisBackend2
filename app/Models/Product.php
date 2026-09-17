@@ -80,6 +80,12 @@ class Product extends Model
     }
 
     /** @noinspection PhpUnused */
+    public function getCustomerFacingNameAttribute(): string
+    {
+        return $this->public_display_name ?: $this->name;
+    }
+
+    /** @noinspection PhpUnused */
     public function getStockAvailableAttribute(): int
     {
         return app(ProductService::class)->getProductAvailableStockInWarehouse($this);

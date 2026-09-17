@@ -16,6 +16,7 @@ const props = defineProps({
 
 const form = useForm({
     name: '',
+    public_display_name: '',
     price: '',
     credit_price: null,
     cost_price: '',
@@ -118,6 +119,7 @@ const openDialog = (item = null) => {
     editedItem.value = item;
     if (item) {
         form.name = item.name;
+        form.public_display_name = item.public_display_name ?? '';
         form.price = item.price;
         form.credit_price = item.credit_price ?? null;
         form.cost_price = item.cost_price;
@@ -389,6 +391,13 @@ const calculateMargin = (price, costPrice) => {
                             v-model="form.name"
                             label="Nom"
                             :error-messages="form.errors.name"
+                        />
+                        <v-text-field
+                            v-model="form.public_display_name"
+                            label="Appelation pour les clients"
+                            hint="Nom affiché sur les factures et le site web (laisser vide pour utiliser le nom ci-dessus)"
+                            persistent-hint
+                            :error-messages="form.errors.public_display_name"
                         />
                         <v-select
                             v-model="form.product_category_id"

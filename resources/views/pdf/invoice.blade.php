@@ -96,7 +96,7 @@
             <tbody>
                 @foreach($invoice->items as $item)
                 <tr>
-                    <td>{{ $item->product->name }}</td>
+                    <td>{{ $item->product->customer_facing_name }}</td>
                     <td>{{ $item->quantity }}</td>
                     <td>{{ number_format($item->price, 0, ',', ' ') }} FCFA</td>
                     <td>{{ number_format($item->subtotal, 0, ',', ' ') }} FCFA</td>
@@ -104,12 +104,12 @@
                 @endforeach
                 <!--  if invoice has been partially paid -->
                  <tr class="total-row">
-                    <td colspan="3" style="text-align: right">Total:</td>
+                    <td colspan="3" style="text-align: right">Total Facture:</td>
                     <td>{{ number_format($invoice->total, 0, ',', ' ') }} FCFA</td>
                 </tr>
                 @if($invoice->total_paid < $invoice->total)
                 <tr class="total-row">
-                    <td colspan="3" style="text-align: right">Avance:</td>
+                    <td colspan="3" style="text-align: right">Avance(s):</td>
                     <td>{{ number_format($invoice->total_paid, 0, ',', ' ') }} FCFA</td>
 
                 <tr class="total-row" >
@@ -130,7 +130,7 @@
                 <div style="color: red;">
                     À PAYER
                     @if($invoice->should_be_paid_at)
-                        Echéance le {{ \Carbon\Carbon::parse($invoice->should_be_paid_at)->format('d/m/Y') }}
+                        avant le {{ \Carbon\Carbon::parse($invoice->should_be_paid_at)->format('d/m/Y') }}
                     @endif
                 </div>
             @endif

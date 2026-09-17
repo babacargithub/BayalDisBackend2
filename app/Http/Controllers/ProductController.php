@@ -29,6 +29,7 @@ class ProductController extends Controller
                     return [
                         'id' => $product->id,
                         'name' => $product->name,
+                        'public_display_name' => $product->public_display_name,
                         'description' => $product->description,
                         'cost_price' => $product->cost_price,
                         'packaging_cost' => $product->packaging_cost,
@@ -69,6 +70,7 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'public_display_name' => 'nullable|string|max:255',
             'price' => 'required|numeric|min:0',
             'credit_price' => 'nullable|integer|min:0',
             'cost_price' => 'required|numeric|min:0',
@@ -89,6 +91,7 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'public_display_name' => 'nullable|string|max:255',
             'price' => 'required|numeric|min:0',
             'credit_price' => 'nullable|integer|min:0',
             'cost_price' => 'required|numeric|min:0',
