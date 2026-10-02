@@ -50,6 +50,7 @@ class ProductController extends Controller
                                 'quantity' => $entry->quantity,
                                 'quantity_left' => $entry->quantity_left,
                                 'unit_price' => $entry->unit_price,
+                                'transportation_cost' => $entry->transportation_cost,
                                 'packaging_cost' => $entry->packaging_cost,
                                 'created_at' => $entry->created_at,
                             ];
