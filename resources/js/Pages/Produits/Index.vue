@@ -30,12 +30,26 @@ const form = useForm({
 
 const showParentProductsOnly = ref(false);
 const showOutOfStockProductsOnly = ref(false);
+const productSearchQuery = ref('');
+
+const normalizeTextForSearch = (text) => {
+    return String(text ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+};
 const selectedCategoryIdFilter = ref(null);
 
 const filteredProducts = computed(() => {
     return props.products.filter(product => {
         if (showParentProductsOnly.value && product.parent_id) return false;
         if (showOutOfStockProductsOnly.value && Number(product.stock_available) > 0) return false;
+        const normalizedSearchQuery = normalizeTextForSearch(productSearchQuery.value);
+        if (normalizedSearchQuery) {
+            const searchableProductText = normalizeTextForSearch(`${product.name} ${product.public_display_name ?? ''}`);
+            if (!searchableProductText.includes(normalizedSearchQuery)) return false;
+        }
         return !(selectedCategoryIdFilter.value && product.product_category_id !== selectedCategoryIdFilter.value);
 
     });
@@ -287,6 +301,15 @@ const calculateMargin = (price, costPrice) => {
 
               <!-- Filters + action -->
               <div class="flex flex-wrap items-center gap-2">
+                <v-text-field
+                    v-model="productSearchQuery"
+                    label="Rechercher un produit"
+                    prepend-inner-icon="mdi-magnify"
+                    clearable
+                    hide-details
+                    density="compact"
+                    style="min-width: 220px"
+                />
                 <v-select
                     v-model="selectedCategoryIdFilter"
                     :items="product_categories"
