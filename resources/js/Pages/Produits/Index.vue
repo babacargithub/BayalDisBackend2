@@ -131,23 +131,34 @@ const creditPriceIncreasePercent = computed(() => {
     return ((creditPrice - price) / price * 100).toFixed(2);
 });
 
+const fillFormFromProduct = (product) => {
+    form.name = product.name;
+    form.public_display_name = product.public_display_name ?? '';
+    form.price = product.price;
+    form.credit_price = product.credit_price ?? null;
+    form.cost_price = product.cost_price;
+    form.packaging_cost = product.packaging_cost ?? 0;
+    form.weight_kg = product.weight_kg ?? null;
+    form.volume_m3 = product.volume_m3 ?? null;
+    form.product_category_id = product.product_category_id ?? null;
+    form.parent_id = product.parent_id;
+    form.base_quantity = product.base_quantity;
+};
+
 const openDialog = (item = null) => {
     editedItem.value = item;
     if (item) {
-        form.name = item.name;
-        form.public_display_name = item.public_display_name ?? '';
-        form.price = item.price;
-        form.credit_price = item.credit_price ?? null;
-        form.cost_price = item.cost_price;
-        form.packaging_cost = item.packaging_cost ?? 0;
-        form.weight_kg = item.weight_kg ?? null;
-        form.volume_m3 = item.volume_m3 ?? null;
-        form.product_category_id = item.product_category_id ?? null;
-        form.parent_id = item.parent_id;
-        form.base_quantity = item.base_quantity;
+        fillFormFromProduct(item);
     } else {
         form.reset();
     }
+    dialog.value = true;
+};
+
+const openDuplicateDialog = (productToDuplicate) => {
+    editedItem.value = null;
+    form.clearErrors();
+    fillFormFromProduct(productToDuplicate);
     dialog.value = true;
 };
 
@@ -392,6 +403,13 @@ const calculateMargin = (price, costPrice) => {
                                         variant="text" 
                                         color="primary"
                                         @click="openDialog(product)"
+                                    />
+                                    <v-btn
+                                        icon="mdi-content-copy"
+                                        variant="text"
+                                        color="primary"
+                                        @click="openDuplicateDialog(product)"
+                                        :title="'Dupliquer'"
                                     />
                                     <v-btn
                                         v-if="!product.parent_id"
