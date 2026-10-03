@@ -29,11 +29,13 @@ const form = useForm({
 });
 
 const showParentProductsOnly = ref(false);
+const showOutOfStockProductsOnly = ref(false);
 const selectedCategoryIdFilter = ref(null);
 
 const filteredProducts = computed(() => {
     return props.products.filter(product => {
         if (showParentProductsOnly.value && product.parent_id) return false;
+        if (showOutOfStockProductsOnly.value && Number(product.stock_available) > 0) return false;
         return !(selectedCategoryIdFilter.value && product.product_category_id !== selectedCategoryIdFilter.value);
 
     });
@@ -304,6 +306,15 @@ const calculateMargin = (price, costPrice) => {
                     size="small"
                 >
                   Parents seulement
+                </v-btn>
+                <v-btn
+                    :color="showOutOfStockProductsOnly ? 'error' : 'default'"
+                    :variant="showOutOfStockProductsOnly ? 'flat' : 'outlined'"
+                    @click="showOutOfStockProductsOnly = !showOutOfStockProductsOnly"
+                    prepend-icon="mdi-package-variant-remove"
+                    size="small"
+                >
+                  Stocks épuisés
                 </v-btn>
                 <v-btn color="primary" prepend-icon="mdi-plus" @click="openDialog()">
                   Ajouter un produit
