@@ -19,6 +19,7 @@ class Product extends Model
         'name',
         'public_display_name',
         'product_category_id',
+        'product_family_id',
         'description',
         'price',
         'credit_price',
@@ -39,6 +40,7 @@ class Product extends Model
         'volume_m3' => 'decimal:3',
         'base_quantity' => 'integer',
         'product_category_id' => 'integer',
+        'product_family_id' => 'integer',
     ];
 
     protected $appends = ['is_base_product'];
@@ -46,6 +48,11 @@ class Product extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'product_category_id');
+    }
+
+    public function family(): BelongsTo
+    {
+        return $this->belongsTo(ProductFamily::class, 'product_family_id');
     }
 
     public function productCommissionRates(): HasMany

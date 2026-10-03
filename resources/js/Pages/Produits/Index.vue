@@ -4,6 +4,7 @@ import { Head } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
+import ProductFamiliesManager from '@/Pages/Produits/Partials/ProductFamiliesManager.vue';
 
 const props = defineProps({
     products: Array,
@@ -12,6 +13,7 @@ const props = defineProps({
     total_stock: { type: Number, default: 0 },
     base_products: Array,
     product_categories: Array,
+    product_families: { type: Array, default: () => [] },
 });
 
 const form = useForm({
@@ -40,6 +42,7 @@ const normalizeTextForSearch = (text) => {
         .trim();
 };
 const selectedCategoryIdFilter = ref(null);
+const groupProductsByFamily = ref(false);
 
 const filteredProducts = computed(() => {
     return props.products.filter(product => {
@@ -53,6 +56,24 @@ const filteredProducts = computed(() => {
         return !(selectedCategoryIdFilter.value && product.product_category_id !== selectedCategoryIdFilter.value);
 
     });
+});
+
+const productGroups = computed(() => {
+    if (!groupProductsByFamily.value) {
+        return [{ key: 'all', label: null, products: filteredProducts.value }];
+    }
+
+    const groupsOfFamilies = props.product_families.map(family => ({
+        key: `family-${family.id}`,
+        label: family.name,
+        products: filteredProducts.value.filter(product => product.product_family_id === family.id),
+    }));
+    const productsWithoutFamily = filteredProducts.value.filter(product => !product.product_family_id);
+
+    return [
+        ...groupsOfFamilies,
+        { key: 'no-family', label: 'Sans famille', products: productsWithoutFamily },
+    ].filter(group => group.products.length > 0);
 });
 
 const dialog = ref(false);
@@ -350,6 +371,20 @@ const calculateMargin = (price, costPrice) => {
                 >
                   Stocks épuisés
                 </v-btn>
+                <v-btn
+                    :color="groupProductsByFamily ? 'primary' : 'default'"
+                    :variant="groupProductsByFamily ? 'flat' : 'outlined'"
+                    @click="groupProductsByFamily = !groupProductsByFamily"
+                    prepend-icon="mdi-format-list-group"
+                    size="small"
+                >
+                  Grouper par famille
+                </v-btn>
+                <ProductFamiliesManager
+                    :families="product_families"
+                    :products="products"
+                    :product-categories="product_categories"
+                />
                 <v-btn color="primary" prepend-icon="mdi-plus" @click="openDialog()">
                   Ajouter un produit
                 </v-btn>
@@ -373,7 +408,14 @@ const calculateMargin = (price, costPrice) => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="product in filteredProducts" :key="product.id">
+                            <template v-for="group in productGroups" :key="group.key">
+                            <tr v-if="group.label">
+                                <td colspan="10" class="bg-grey-lighten-4 font-weight-bold">
+                                    {{ group.label }}
+                                    <span class="text-medium-emphasis font-weight-regular">({{ group.products.length }})</span>
+                                </td>
+                            </tr>
+                            <tr v-for="product in group.products" :key="product.id">
                                 <td>{{ product.name }}</td>
                                 <td>
                                     <v-icon
@@ -428,6 +470,7 @@ const calculateMargin = (price, costPrice) => {
                                    
                                 </td>
                             </tr>
+                            </template>
                         </tbody>
                     </v-table>
                 </v-card>

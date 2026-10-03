@@ -31,6 +31,11 @@ class ProductCategory extends Model
         return $this->hasMany(Product::class);
     }
 
+    public function families(): HasMany
+    {
+        return $this->hasMany(ProductFamily::class);
+    }
+
     public function categoryCommissionRates(): HasMany
     {
         return $this->hasMany(CommercialCategoryCommissionRate::class);

@@ -29,6 +29,7 @@ use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PricingPolicyController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductFamilyController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\SalesInvoiceController;
@@ -66,6 +67,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/commercials', [CommercialController::class, 'getCommercials'])->name('commercials.list');
     Route::resource('customers', CustomerController::class);
     Route::resource('produits', ProductController::class);
+    Route::resource('product-families', ProductFamilyController::class)->only(['store', 'update', 'destroy']);
+    Route::post('product-families/{product_family}/products', [ProductFamilyController::class, 'addProducts'])->name('product-families.add-products');
+    Route::delete('product-families/{product_family}/products/{product}', [ProductFamilyController::class, 'removeProduct'])->name('product-families.remove-product');
     Route::resource('product-categories', ProductCategoryController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('ventes/sales_history', [VenteController::class, 'salesHistory']);
     Route::get('ventes/product-stats', [VenteController::class, 'productStats'])->name('ventes.product-stats');

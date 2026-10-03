@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductFamily;
 use App\Models\StockEntry;
 use App\Services\CarLoadService;
 use Illuminate\Http\JsonResponse;
@@ -36,6 +37,7 @@ class ProductController extends Controller
                         'weight_kg' => $product->weight_kg,
                         'volume_m3' => $product->volume_m3,
                         'product_category_id' => $product->product_category_id,
+                        'product_family_id' => $product->product_family_id,
                         'price' => $product->price,
                         'credit_price' => $product->credit_price,
                         'stock_available' => $product->stock_available,
@@ -64,6 +66,18 @@ class ProductController extends Controller
                 ->select('id', 'name')
                 ->get(),
             'product_categories' => ProductCategory::select('id', 'name')->orderBy('name')->get(),
+            'product_families' => ProductFamily::query()
+                ->with('category:id,name')
+                ->withCount('products')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (ProductFamily $productFamily): array => [
+                    'id' => $productFamily->id,
+                    'name' => $productFamily->name,
+                    'product_category_id' => $productFamily->product_category_id,
+                    'category_name' => $productFamily->category?->name,
+                    'products_count' => $productFamily->products_count,
+                ]),
         ]);
     }
 
