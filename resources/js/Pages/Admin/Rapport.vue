@@ -133,27 +133,67 @@ const netPlusValueIcon = computed(() => netPlusValueIsPositive.value ? 'mdi-tren
                         <div class="text-caption text-grey mt-1">Montant plus value réel</div>
                     </v-card-text>
                 </v-card>
-  <!-- Unpaid Invoices -->
-                <v-card class="rounded-xl" elevation="2">
-                    <v-card-text class="pa-5">
-                        <div class="d-flex align-center gap-3 mb-4">
-                            <v-avatar color="red-lighten-4" size="44">
-                                <v-icon color="red-darken-2">mdi-file-clock-outline</v-icon>
-                            </v-avatar>
-                            <div>
-                                <div class="text-subtitle-1 font-weight-medium">Factures impayées</div>
-                            </div>
-                            <v-spacer />
-                            <v-chip color="red" variant="tonal" size="small">
-                                {{ statistics.total_unpaid_invoices_count }} facture{{ statistics.total_unpaid_invoices_count > 1 ? 's' : '' }}
-                            </v-chip>
-                        </div>
-                        <div class="text-h5 font-weight-bold text-red-darken-2">
-                            {{ formatAmount(statistics.total_unpaid_invoices_amount) }}
-                        </div>
-                        <div class="text-caption text-grey mt-1">Montant restant à encaisser</div>
-                    </v-card-text>
-                </v-card>
+                <!-- Receivables & Liabilities -->
+                <v-row>
+                    <v-col cols="12" md="4">
+                        <v-card class="rounded-xl h-100" elevation="2">
+                            <v-card-text class="pa-5">
+                                <div class="d-flex align-center gap-3 mb-4">
+                                    <v-avatar color="red-lighten-4" size="44">
+                                        <v-icon color="red-darken-2">mdi-file-clock-outline</v-icon>
+                                    </v-avatar>
+                                    <div class="text-subtitle-1 font-weight-medium">Dettes clients</div>
+                                    <v-spacer />
+                                    <v-chip color="red" variant="tonal" size="small">
+                                        {{ statistics.total_unpaid_invoices_count }} facture{{ statistics.total_unpaid_invoices_count > 1 ? 's' : '' }}
+                                    </v-chip>
+                                </div>
+                                <div class="text-h5 font-weight-bold text-red-darken-2">
+                                    {{ formatAmount(statistics.total_unpaid_invoices_amount) }}
+                                </div>
+                                <div class="text-caption text-grey mt-1">Montant restant à encaisser</div>
+                            </v-card-text>
+                        </v-card>
+                    </v-col>
+
+                    <v-col cols="12" md="4">
+                        <v-card class="rounded-xl h-100" elevation="2">
+                            <v-card-text class="pa-5">
+                                <div class="d-flex align-center gap-3 mb-4">
+                                    <v-avatar color="deep-orange-lighten-4" size="44">
+                                        <v-icon color="deep-orange-darken-2">mdi-truck-delivery-outline</v-icon>
+                                    </v-avatar>
+                                    <div class="text-subtitle-1 font-weight-medium">Dettes fournisseurs</div>
+                                    <v-spacer />
+                                    <v-chip color="deep-orange" variant="tonal" size="small">
+                                        {{ statistics.total_unpaid_purchase_invoices_count }} facture{{ statistics.total_unpaid_purchase_invoices_count > 1 ? 's' : '' }}
+                                    </v-chip>
+                                </div>
+                                <div class="text-h5 font-weight-bold text-deep-orange-darken-2">
+                                    {{ formatAmount(statistics.total_supplier_debts_amount) }}
+                                </div>
+                                <div class="text-caption text-grey mt-1">Factures d'achat non payées</div>
+                            </v-card-text>
+                        </v-card>
+                    </v-col>
+
+                    <v-col cols="12" md="4">
+                        <v-card class="rounded-xl h-100" elevation="2">
+                            <v-card-text class="pa-5">
+                                <div class="d-flex align-center gap-3 mb-4">
+                                    <v-avatar color="purple-lighten-4" size="44">
+                                        <v-icon color="purple-darken-2">mdi-bank-transfer-out</v-icon>
+                                    </v-avatar>
+                                    <div class="text-subtitle-1 font-weight-medium">Emprunts</div>
+                                </div>
+                                <div class="text-h5 font-weight-bold text-purple-darken-2">
+                                    {{ formatAmount(statistics.total_borrowings_amount) }}
+                                </div>
+                                <div class="text-caption text-grey mt-1">Montant restant à rembourser</div>
+                            </v-card-text>
+                        </v-card>
+                    </v-col>
+                </v-row>
 
                 <!-- Net Plus Value vs Fond de Roulement -->
                 <v-card :color="netPlusValueColor" variant="tonal" class="rounded-xl" elevation="2">
@@ -165,7 +205,7 @@ const netPlusValueIcon = computed(() => netPlusValueIsPositive.value ? 'mdi-tren
                                     {{ netPlusValueIsPositive ? '+' : '' }}{{ formatAmount(statistics.net_plus_value) }}
                                 </div>
                                 <div class="text-caption text-grey mt-1">
-                                    Valeur business ({{ formatAmount(statistics.business_value) }}) − Fond de roulement ({{ formatAmount(statistics.fond_de_roulement) }})
+                                    Valeur business ({{ formatAmount(statistics.business_value) }}) − Fond de roulement ({{ formatAmount(statistics.fond_de_roulement) }}) − Dettes fournisseurs ({{ formatAmount(statistics.total_supplier_debts_amount) }}) − Emprunts ({{ formatAmount(statistics.total_borrowings_amount) }})
                                 </div>
                             </div>
                             <v-icon size="56" :color="netPlusValueIsPositive ? 'success' : 'error'" class="opacity-40">

@@ -2,11 +2,18 @@
 
 namespace Tests\Feature\SalesInvoice;
 
+use App\Enums\AccountDebtStatus;
+use App\Enums\AccountType;
+use App\Models\Account;
+use App\Models\AccountDebt;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\PurchaseInvoice;
+use App\Models\PurchaseInvoiceItem;
 use App\Models\SalesInvoice;
+use App\Models\Supplier;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
@@ -205,5 +212,148 @@ class AdminRapportDebtsTest extends TestCase
         $this->assertSame(11000, $rapportStatistics['total_unpaid_invoices_amount']);
         $this->assertSame($rapportStatistics['total_unpaid_invoices_amount'], $indexTotalRemaining);
         $this->assertCount($rapportStatistics['total_unpaid_invoices_count'], $indexInvoices);
+    }
+
+    private function makePurchaseInvoice(array $itemLines, bool $isPaid, int $transportationCost = 0): PurchaseInvoice
+    {
+        $supplier = Supplier::firstOrCreate(['name' => 'Supplier test']);
+
+        $purchaseInvoice = PurchaseInvoice::create([
+            'supplier_id' => $supplier->id,
+            'invoice_number' => 'PI-'.uniqid(),
+            'invoice_date' => '2026-10-01',
+            'is_paid' => $isPaid,
+            'transportation_cost' => $transportationCost,
+        ]);
+
+        foreach ($itemLines as [$quantity, $unitPrice]) {
+            PurchaseInvoiceItem::create([
+                'purchase_invoice_id' => $purchaseInvoice->id,
+                'product_id' => $this->product->id,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'transportation_cost' => 0,
+            ]);
+        }
+
+        return $purchaseInvoice;
+    }
+
+    private function makeBorrowingsAccount(int $balance = 0): Account
+    {
+        return Account::create([
+            'name' => 'Emprunts',
+            'account_type' => AccountType::Management->value,
+            'balance' => $balance,
+            'is_active' => true,
+        ]);
+    }
+
+    private function makeDebt(Account $debtorAccount, Account $creditorAccount, int $originalAmount, int $remainingAmount): AccountDebt
+    {
+        return AccountDebt::create([
+            'debtor_account_id' => $debtorAccount->id,
+            'creditor_account_id' => $creditorAccount->id,
+            'original_amount' => $originalAmount,
+            'remaining_amount' => $remainingAmount,
+            'status' => match (true) {
+                $remainingAmount === 0 => AccountDebtStatus::FullyRepaid,
+                $remainingAmount < $originalAmount => AccountDebtStatus::PartiallyRepaid,
+                default => AccountDebtStatus::Pending,
+            },
+            'reason' => 'Test',
+        ]);
+    }
+
+    private function makeSalesAccount(): Account
+    {
+        return Account::create([
+            'name' => 'Vente marchandises',
+            'account_type' => AccountType::MerchandiseSales->value,
+            'balance' => 0,
+            'is_active' => true,
+        ]);
+    }
+
+    public function test_rapport_supplier_debts_and_borrowings_are_zero_without_data(): void
+    {
+        $statistics = $this->rapportStatistics();
+
+        $this->assertSame(0, $statistics['total_supplier_debts_amount']);
+        $this->assertSame(0, $statistics['total_unpaid_purchase_invoices_count']);
+        $this->assertSame(0, $statistics['total_borrowings_amount']);
+    }
+
+    public function test_rapport_supplier_debts_sum_unpaid_purchase_invoice_lines_and_ignore_paid_ones(): void
+    {
+        $this->makePurchaseInvoice([[10, 1500], [3, 2000]], isPaid: false);
+        $this->makePurchaseInvoice([[1, 7000]], isPaid: false, transportationCost: 900);
+        $this->makePurchaseInvoice([[100, 5000]], isPaid: true);
+
+        $statistics = $this->rapportStatistics();
+
+        $this->assertSame(15000 + 6000 + 7000, $statistics['total_supplier_debts_amount']);
+        $this->assertSame(2, $statistics['total_unpaid_purchase_invoices_count']);
+    }
+
+    public function test_rapport_supplier_debt_is_zero_when_all_purchase_invoices_are_paid(): void
+    {
+        $this->makePurchaseInvoice([[4, 2500]], isPaid: true);
+
+        $statistics = $this->rapportStatistics();
+
+        $this->assertSame(0, $statistics['total_supplier_debts_amount']);
+        $this->assertSame(0, $statistics['total_unpaid_purchase_invoices_count']);
+    }
+
+    public function test_rapport_borrowings_sum_outstanding_debts_owed_to_emprunts_account(): void
+    {
+        $borrowingsAccount = $this->makeBorrowingsAccount();
+        $salesAccount = $this->makeSalesAccount();
+        $otherCreditorAccount = Account::create([
+            'name' => 'Autre', 'account_type' => AccountType::Management->value, 'balance' => 0, 'is_active' => true,
+        ]);
+
+        $this->makeDebt($salesAccount, $borrowingsAccount, 950000, 950000);
+        $this->makeDebt($salesAccount, $borrowingsAccount, 500000, 300000);
+        $this->makeDebt($salesAccount, $borrowingsAccount, 157000, 0);
+        $this->makeDebt($salesAccount, $otherCreditorAccount, 80000, 80000);
+
+        $statistics = $this->rapportStatistics();
+
+        $this->assertSame(950000 + 300000, $statistics['total_borrowings_amount']);
+    }
+
+    public function test_rapport_borrowings_include_current_emprunts_account_balance(): void
+    {
+        $borrowingsAccount = $this->makeBorrowingsAccount(balance: 25000);
+        $this->makeDebt($this->makeSalesAccount(), $borrowingsAccount, 100000, 100000);
+
+        $statistics = $this->rapportStatistics();
+
+        $this->assertSame(125000, $statistics['total_borrowings_amount']);
+    }
+
+    public function test_rapport_borrowings_are_zero_when_emprunts_account_does_not_exist(): void
+    {
+        $statistics = $this->rapportStatistics();
+
+        $this->assertSame(0, $statistics['total_borrowings_amount']);
+    }
+
+    public function test_rapport_net_plus_value_deducts_supplier_debts_and_borrowings(): void
+    {
+        $this->makeInvoice(5000);
+        $this->makePurchaseInvoice([[2, 10000]], isPaid: false);
+        $this->makeDebt($this->makeSalesAccount(), $this->makeBorrowingsAccount(), 40000, 40000);
+
+        $statistics = $this->rapportStatistics();
+
+        $this->assertSame(20000, $statistics['total_supplier_debts_amount']);
+        $this->assertSame(40000, $statistics['total_borrowings_amount']);
+        $this->assertEquals(
+            $statistics['business_value'] - $statistics['fond_de_roulement'] - 20000 - 40000,
+            $statistics['net_plus_value']
+        );
     }
 }

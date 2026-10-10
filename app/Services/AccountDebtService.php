@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccountDebtStatus;
+use App\Enums\AccountType;
 use App\Exceptions\InsufficientAccountBalanceException;
 use App\Models\Account;
 use App\Models\AccountDebt;
@@ -13,6 +14,8 @@ use Throwable;
 
 readonly class AccountDebtService
 {
+    public const BORROWINGS_ACCOUNT_NAME = 'Emprunts';
+
     public function __construct(
         private AccountService $accountService,
     ) {}
@@ -242,5 +245,28 @@ readonly class AccountDebtService
             ->where('creditor_account_id', $creditorAccount->id)
             ->whereIn('status', [AccountDebtStatus::Pending->value, AccountDebtStatus::PartiallyRepaid->value])
             ->sum('remaining_amount');
+    }
+
+    /**
+     * Total borrowed money still to be paid back to external lenders.
+     *
+     * Borrowed funds are received on the "Emprunts" account and immediately lent
+     * to the sales account, so the obligation lives in the outstanding AccountDebt
+     * rows where "Emprunts" is the creditor. Any balance still sitting on the
+     * "Emprunts" account is borrowed money too and is added on top.
+     */
+    public function getTotalBorrowedAmountOwedToLenders(): int
+    {
+        $borrowingsAccount = Account::query()
+            ->where('account_type', AccountType::Management->value)
+            ->where('name', self::BORROWINGS_ACCOUNT_NAME)
+            ->first();
+
+        if ($borrowingsAccount === null) {
+            return 0;
+        }
+
+        return $this->getTotalOutstandingCreanceAmountForCreditorAccount($borrowingsAccount)
+            + max(0, $borrowingsAccount->balance);
     }
 }

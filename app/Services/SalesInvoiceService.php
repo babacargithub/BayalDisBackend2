@@ -313,6 +313,33 @@ readonly class SalesInvoiceService
     // =========================================================================
 
     /**
+     * Invoices still awaiting payment. Written-off invoices are excluded
+     * automatically by the SalesInvoice global scope.
+     *
+     * @return Collection<int, SalesInvoice>
+     */
+    private function getUnpaidInvoices(): Collection
+    {
+        return SalesInvoice::query()
+            ->whereIn('status', [
+                SalesInvoiceStatus::Draft->value,
+                SalesInvoiceStatus::Issued->value,
+                SalesInvoiceStatus::PartiallyPaid->value,
+            ])
+            ->get();
+    }
+
+    public function getTotalUnpaidInvoicesAmount(): int
+    {
+        return (int) $this->getUnpaidInvoices()->sum('total_remaining');
+    }
+
+    public function getUnpaidInvoicesCount(): int
+    {
+        return $this->getUnpaidInvoices()->count();
+    }
+
+    /**
      * Pay multiple unpaid invoices for a single customer with one payment operation.
      *
      * The given amount is distributed from the oldest unpaid invoice to the newest,

@@ -24,6 +24,11 @@ readonly class ProductService
         return $product->stockEntries()->sum('quantity_left');
     }
 
+    public function getTotalWarehouseStockValue(): int
+    {
+        return (int) Product::all()->sum('stock_value');
+    }
+
     public function getProductWarehouseStockValue(Product $product): int
     {
         return $product->stockEntries()
@@ -45,25 +50,26 @@ readonly class ProductService
     {
         if ($variantProduct->is_base_product) {
             return [
-                'parent_quantity'            => 0,
+                'parent_quantity' => 0,
                 'remaining_variant_quantity' => 0,
-                'decimal_parent_quantity'    => 0.0,
+                'decimal_parent_quantity' => 0.0,
             ];
         }
 
-        $parentProduct   = $variantProduct->parent;
+        $parentProduct = $variantProduct->parent;
         $conversionRatio = $parentProduct->base_quantity / $variantProduct->base_quantity;
 
-        $decimalParentQuantity    = $quantity / $conversionRatio;                          // example 4.475
-        $parentQuantity           = floor($decimalParentQuantity);                         // 4
+        $decimalParentQuantity = $quantity / $conversionRatio;                          // example 4.475
+        $parentQuantity = floor($decimalParentQuantity);                         // 4
         $remainingVariantQuantity = $quantity - ($parentQuantity * $conversionRatio);      // 19
 
         return [
-            'parent_quantity'            => intval($parentQuantity),
+            'parent_quantity' => intval($parentQuantity),
             'remaining_variant_quantity' => intval($remainingVariantQuantity),
-            'decimal_parent_quantity'    => floatval($decimalParentQuantity),
+            'decimal_parent_quantity' => floatval($decimalParentQuantity),
         ];
     }
+
     /**
      * @throws Exception
      */

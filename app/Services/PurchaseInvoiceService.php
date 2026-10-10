@@ -3,9 +3,30 @@
 namespace App\Services;
 
 use App\Models\PurchaseInvoice;
+use App\Models\PurchaseInvoiceItem;
+use Illuminate\Support\Facades\DB;
 
 class PurchaseInvoiceService
 {
+    /**
+     * Total owed to suppliers: the value (quantity × unit_price) of every line
+     * of every purchase invoice not yet flagged as paid.
+     *
+     * Transportation cost is excluded: it is allocated on top of the supplier price
+     * and is not part of the amount owed to the supplier.
+     */
+    public function getTotalUnpaidSupplierDebtAmount(): int
+    {
+        return (int) PurchaseInvoiceItem::query()
+            ->whereIn('purchase_invoice_id', PurchaseInvoice::query()->where('is_paid', false)->select('id'))
+            ->sum(DB::raw('quantity * unit_price'));
+    }
+
+    public function getUnpaidPurchaseInvoicesCount(): int
+    {
+        return PurchaseInvoice::query()->where('is_paid', false)->count();
+    }
+
     /**
      * Distribute the invoice's total transportation cost across its item lines
      * proportionally to each line's value (quantity × unit_price).
