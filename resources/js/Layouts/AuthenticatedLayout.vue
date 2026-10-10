@@ -55,7 +55,7 @@ const menuItems = [
             { name: 'Clients', route: 'clients.index', icon: 'mdi-account-group' },
             { name: 'Beats', route: 'beats.index', icon: 'mdi-map-marker-check' },
             { name: 'Activités', route: 'clients.activity-map', icon: 'mdi-map-marker-star' },
-            { name: '/Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
+            { name: 'Top Clients', route: 'clients.top-customers', icon: 'mdi-trophy' },
             { name: 'Analyse de zones', route: 'clients.area-analysis', icon: 'mdi-map-search' },
             { name: 'Secteurs', route: 'sectors.index', icon: 'mdi-map-marker-multiple' },
 

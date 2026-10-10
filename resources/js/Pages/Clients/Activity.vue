@@ -111,6 +111,16 @@
                                 <v-icon start>mdi-magnify</v-icon>
                                 Rechercher
                             </v-btn>
+                            <v-btn
+                                class="ml-2"
+                                variant="outlined"
+                                color="primary"
+                                :disabled="customers.length === 0"
+                                @click="exportCustomersToPdf"
+                            >
+                                <v-icon start>mdi-file-pdf-box</v-icon>
+                                Exporter PDF
+                            </v-btn>
                         </v-col>
                     </v-row>
 
@@ -337,6 +347,23 @@ function applyFilters() {
             filterLoading.value = false;
         },
     });
+}
+
+function exportCustomersToPdf() {
+    const appliedFilters = props.filters;
+    const exportParameters = {
+        start_date: appliedFilters.start_date,
+        end_date: appliedFilters.end_date,
+        filter_type: appliedFilters.filter_type,
+    };
+
+    ['sector_id', 'minimum_amount', 'minimum_average_amount', 'inactive_days'].forEach(parameterName => {
+        if (appliedFilters[parameterName]) {
+            exportParameters[parameterName] = appliedFilters[parameterName];
+        }
+    });
+
+    window.open(route('clients.activity-map.export-pdf', exportParameters));
 }
 
 function clearSelection() {

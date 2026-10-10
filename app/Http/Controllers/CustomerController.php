@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ProspectionStatus;
+use App\Http\Requests\CustomerActivityFilterRequest;
 use App\Models\Beat;
 use App\Models\BeatStop;
 use App\Models\Commercial;
@@ -315,31 +316,10 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function customerActivity(Request $request): \Inertia\Response
+    public function customerActivity(CustomerActivityFilterRequest $request): \Inertia\Response
     {
-        $startDate = $request->get('start_date', now()->startOfMonth()->toDateString());
-        $endDate = $request->get('end_date', now()->toDateString());
-        $filterType = $request->get('filter_type', 'with_invoice');
-        $sectorId = $request->get('sector_id');
-        $minimumAmount = $request->get('minimum_amount');
-        $minimumAverageAmount = $request->get('minimum_average_amount');
-        $inactiveDays = $request->get('inactive_days');
-
-        $customers = match ($filterType) {
-            'by_sector' => $sectorId
-                ? $this->customerService->getCustomersInSectorWithInvoicesInDateRange((int) $sectorId, $startDate, $endDate)
-                : collect(),
-            'above_amount' => $minimumAmount
-                ? $this->customerService->getCustomersWithInvoicesAboveAmountInDateRange((int) $minimumAmount, $startDate, $endDate)
-                : collect(),
-            'above_average_amount' => $minimumAverageAmount
-                ? $this->customerService->getCustomersWithAverageInvoiceAboveAmountInDateRange((int) $minimumAverageAmount, $startDate, $endDate)
-                : collect(),
-            'churning' => $inactiveDays
-                ? $this->customerService->getChurningCustomersInDateRange((int) $inactiveDays, $startDate, $endDate)
-                : collect(),
-            default => $this->customerService->getCustomersWithInvoicesInDateRange($startDate, $endDate),
-        };
+        $activityFilter = $request->toActivityFilter();
+        $customers = $this->customerService->getCustomersMatchingActivityFilter($activityFilter);
 
         $beats = Beat::with('commercial:id,name')
             ->latest()
@@ -374,15 +354,28 @@ class CustomerController extends Controller
             'sectors' => Sector::query()->select('id', 'name')->orderBy('name')->get(),
             'beats' => $beats,
             'filters' => [
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-                'filter_type' => $filterType,
-                'sector_id' => $sectorId ? (int) $sectorId : null,
-                'minimum_amount' => $minimumAmount ? (int) $minimumAmount : null,
-                'minimum_average_amount' => $minimumAverageAmount ? (int) $minimumAverageAmount : null,
-                'inactive_days' => $inactiveDays ? (int) $inactiveDays : null,
+                'start_date' => $activityFilter->startDate,
+                'end_date' => $activityFilter->endDate,
+                'filter_type' => $activityFilter->filterType,
+                'sector_id' => $activityFilter->sectorId,
+                'minimum_amount' => $activityFilter->minimumAmount,
+                'minimum_average_amount' => $activityFilter->minimumAverageAmount,
+                'inactive_days' => $activityFilter->inactiveDays,
             ],
         ]);
+    }
+
+    public function exportCustomerActivityPdf(CustomerActivityFilterRequest $request): Response
+    {
+        $activityFilter = $request->toActivityFilter();
+        $export = $this->customerService->buildCustomerActivityExport($activityFilter);
+
+        $pdf = Pdf::loadView('pdf.customer-activity-list', [
+            'export' => $export,
+            'date' => now()->format('d/m/Y à H:i'),
+        ]);
+
+        return $pdf->download('liste-clients-'.$activityFilter->filterType.'-'.now()->format('Y-m-d').'.pdf');
     }
 
     public function storeProspectionEvent(Request $request, Customer $client): RedirectResponse

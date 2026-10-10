@@ -209,6 +209,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/top-customers', [CustomerController::class, 'topCustomers'])->name('top-customers');
         Route::get('/top-customers/export-pdf', [CustomerController::class, 'exportTopCustomersPdf'])->name('top-customers.export-pdf');
         Route::get('/activity-map', [CustomerController::class, 'customerActivity'])->name('activity-map');
+        Route::get('/activity-map/export-pdf', [CustomerController::class, 'exportCustomerActivityPdf'])->name('activity-map.export-pdf');
         Route::get('/area-analysis', [CustomerController::class, 'areaAnalysis'])->name('area-analysis');
         Route::post('/', [CustomerController::class, 'store'])->name('store');
         Route::get('/{client}', [CustomerController::class, 'show'])->name('show');

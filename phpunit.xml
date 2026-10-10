@@ -50,6 +50,7 @@
             <file>tests/Feature/BeatRoundStrikeRateJobTest.php</file>
             <file>tests/Feature/CustomerCacheTest.php</file>
             <directory>tests/Feature/Feature</directory>
+            <directory>tests/Feature/Customer</directory>
         </testsuite>
         <testsuite name="Caisse">
             <directory>tests/Feature/Caisse</directory>
