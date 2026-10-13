@@ -7,6 +7,7 @@ use App\Models\ProductCategory;
 use App\Models\ProductFamily;
 use App\Models\StockEntry;
 use App\Services\CarLoadService;
+use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -102,7 +103,7 @@ class ProductController extends Controller
         return redirect()->back()->with('success', 'Produit ajouté avec succès');
     }
 
-    public function update(Request $request, Product $produit)
+    public function update(Request $request, Product $produit, ProductService $productService)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -118,7 +119,13 @@ class ProductController extends Controller
             'base_quantity' => 'required|integer|min:0',
         ]);
 
-        $produit->update($validated);
+        DB::transaction(function () use ($produit, $validated, $productService): void {
+            $produit->update($validated);
+
+            if ($produit->wasChanged('cost_price')) {
+                $productService->updateVariantsCostPriceFromParent($produit);
+            }
+        });
 
         return redirect()->back()->with('success', 'Produit mis à jour avec succès');
     }

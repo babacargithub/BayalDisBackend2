@@ -407,7 +407,8 @@ class ProductServiceTest extends TestCase
         $this->assertSame(2, $result['parent_quantity'], 'floar(30/12) = 3 cartons needed');
         $this->assertSame(6, $result['remaining_variant_quantity'], '(3 × 12) − 30 = 6 packs returned');
     }
-// TODO change tests to apply floar instead of ceiling
+
+    // TODO change tests to apply floar instead of ceiling
     public function test_convert_variant_quantity_to_parent_quantity_applies_ceiling_for_a_single_partial_unit(): void
     {
         // 1 pack out of 12 → needs 1 full carton; remaining = 11 packs
@@ -646,5 +647,132 @@ class ProductServiceTest extends TestCase
             'price' => $product->price,
             'type' => Vente::TYPE_INVOICE,
         ]);
+    }
+
+    // =========================================================================
+    // SECTION 12 — updateVariantsCostPriceFromParent
+    // =========================================================================
+
+    private function createParentWithVariant(int $parentCostPrice, int $parentBaseQuantity, int $variantBaseQuantity, int $variantCostPrice = 0): array
+    {
+        $parentProduct = Product::create([
+            'name' => 'Carton',
+            'price' => 52000,
+            'cost_price' => $parentCostPrice,
+            'base_quantity' => $parentBaseQuantity,
+        ]);
+        $variantProduct = Product::create([
+            'name' => 'Paquet',
+            'price' => 1000,
+            'cost_price' => $variantCostPrice,
+            'base_quantity' => $variantBaseQuantity,
+            'parent_id' => $parentProduct->id,
+        ]);
+
+        return [$parentProduct, $variantProduct];
+    }
+
+    public function test_variant_cost_price_is_parent_cost_price_divided_by_variants_per_parent(): void
+    {
+        [$parentProduct, $variantProduct] = $this->createParentWithVariant(45000, 1000, 20, 720);
+
+        $this->productService->updateVariantsCostPriceFromParent($parentProduct);
+
+        $this->assertSame(900, $variantProduct->fresh()->cost_price);
+    }
+
+    public function test_every_variant_of_the_parent_gets_its_own_cost_price(): void
+    {
+        [$parentProduct, $paquetOfTwenty] = $this->createParentWithVariant(45000, 1000, 20);
+        $paquetOfTen = Product::create([
+            'name' => 'Paquet 10',
+            'price' => 600,
+            'cost_price' => 0,
+            'base_quantity' => 10,
+            'parent_id' => $parentProduct->id,
+        ]);
+
+        $this->productService->updateVariantsCostPriceFromParent($parentProduct);
+
+        $this->assertSame(900, $paquetOfTwenty->fresh()->cost_price);
+        $this->assertSame(450, $paquetOfTen->fresh()->cost_price);
+    }
+
+    public function test_variant_cost_price_is_rounded_to_whole_xof(): void
+    {
+        [$parentProduct, $variantProduct] = $this->createParentWithVariant(44566, 500, 10);
+
+        $this->productService->updateVariantsCostPriceFromParent($parentProduct);
+
+        $this->assertSame(891, $variantProduct->fresh()->cost_price);
+    }
+
+    public function test_variant_cost_price_becomes_zero_when_parent_cost_price_is_zero(): void
+    {
+        [$parentProduct, $variantProduct] = $this->createParentWithVariant(0, 1000, 20, 720);
+
+        $this->productService->updateVariantsCostPriceFromParent($parentProduct);
+
+        $this->assertSame(0, $variantProduct->fresh()->cost_price);
+    }
+
+    public function test_variant_cost_price_is_left_alone_when_parent_base_quantity_is_zero(): void
+    {
+        [$parentProduct, $variantProduct] = $this->createParentWithVariant(45000, 0, 20, 720);
+
+        $this->productService->updateVariantsCostPriceFromParent($parentProduct);
+
+        $this->assertSame(720, $variantProduct->fresh()->cost_price);
+    }
+
+    public function test_variants_of_other_parents_are_not_touched(): void
+    {
+        [$parentProduct] = $this->createParentWithVariant(45000, 1000, 20);
+        [, $otherVariantProduct] = $this->createParentWithVariant(29000, 400, 10, 708);
+
+        $this->productService->updateVariantsCostPriceFromParent($parentProduct);
+
+        $this->assertSame(708, $otherVariantProduct->fresh()->cost_price);
+    }
+
+    private function submitProductUpdate(Product $product, array $changes): void
+    {
+        $this->actingAs(User::factory()->create());
+
+        $this->put(route('produits.update', $product), array_merge([
+            'name' => $product->name,
+            'price' => $product->price,
+            'cost_price' => $product->cost_price,
+            'base_quantity' => $product->base_quantity,
+        ], $changes));
+    }
+
+    public function test_editing_the_parent_cost_price_updates_its_variants(): void
+    {
+        [$parentProduct, $variantProduct] = $this->createParentWithVariant(36000, 1000, 20, 720);
+
+        $this->submitProductUpdate($parentProduct, ['cost_price' => 45000]);
+
+        $this->assertSame(45000, $parentProduct->fresh()->cost_price);
+        $this->assertSame(900, $variantProduct->fresh()->cost_price);
+    }
+
+    public function test_editing_the_parent_without_changing_cost_price_leaves_variants_alone(): void
+    {
+        [$parentProduct, $variantProduct] = $this->createParentWithVariant(45000, 1000, 20, 850);
+
+        $this->submitProductUpdate($parentProduct, ['price' => 53000]);
+
+        $this->assertSame(850, $variantProduct->fresh()->cost_price);
+    }
+
+    public function test_editing_a_variant_cost_price_does_not_change_the_parent(): void
+    {
+        [$parentProduct, $variantProduct] = $this->createParentWithVariant(45000, 1000, 20, 900);
+
+        $this->submitProductUpdate($variantProduct, ['cost_price' => 950]);
+
+        $this->assertSame(950, $variantProduct->fresh()->cost_price);
+        $this->assertSame(45000, $parentProduct->fresh()->cost_price);
     }
 }

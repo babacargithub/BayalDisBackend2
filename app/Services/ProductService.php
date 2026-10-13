@@ -240,6 +240,25 @@ readonly class ProductService
         return $result;
     }
 
+    /**
+     * Set each variant's cost_price from its parent's: parent cost × variant base_quantity ÷ parent base_quantity.
+     * Example: carton (1000 pcs) at 45 000 → paquet of 20 pcs at 900.
+     */
+    public function updateVariantsCostPriceFromParent(Product $parentProduct): void
+    {
+        if ($parentProduct->base_quantity <= 0) {
+            return;
+        }
+
+        foreach ($parentProduct->variants()->get() as $variantProduct) {
+            $variantProduct->update([
+                'cost_price' => (int) round(
+                    $parentProduct->cost_price * $variantProduct->base_quantity / $parentProduct->base_quantity
+                ),
+            ]);
+        }
+    }
+
     public function clearFirstVariantCache(Product $product): void
     {
         Cache::forget("product.{$product->id}.first_variant");
