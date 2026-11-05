@@ -42,6 +42,7 @@
             <file>tests/Feature/PurchaseInvoicePutInStockTest.php</file>
             <file>tests/Feature/PurchaseInvoiceTransportationCostDistributionTest.php</file>
             <file>tests/Feature/CarLoadStockValueTest.php</file>
+            <file>tests/Feature/BackfillBeatStopsForInvoicesCommandTest.php</file>
             <file>tests/Feature/CarLoadTransformToVariantsTest.php</file>
             <file>tests/Feature/ProfileTest.php</file>
             <file>tests/Feature/BeatServiceForecastTest.php</file>

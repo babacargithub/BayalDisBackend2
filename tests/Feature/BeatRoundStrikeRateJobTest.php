@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Enums\CarLoadItemSource;
+use App\Enums\CarLoadStatus;
 use App\Enums\DayOfWeek;
 use App\Jobs\RecalculateBeatRoundStrikeRateJob;
 use App\Models\Beat;
 use App\Models\BeatRound;
 use App\Models\BeatStop;
+use App\Models\CarLoad;
+use App\Models\CarLoadItem;
 use App\Models\Commercial;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -19,6 +23,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -32,6 +37,8 @@ use Tests\TestCase;
  *  - Sales on a different date do not count
  *  - Graceful no-op when the round no longer exists
  *  - Job is dispatched when a SalesInvoice is created for a customer in a beat round
+ *  - A sale through the salesperson endpoint counts in the strike rate even when
+ *    the invoice is entirely unpaid (no payment at all), and completes the stop with a sale
  */
 class BeatRoundStrikeRateJobTest extends TestCase
 {
@@ -46,6 +53,12 @@ class BeatRoundStrikeRateJobTest extends TestCase
     private Commercial $commercial;
 
     private Product $product;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     protected function setUp(): void
     {
@@ -236,8 +249,103 @@ class BeatRoundStrikeRateJobTest extends TestCase
     }
 
     // =========================================================================
+    // Sale through the salesperson endpoint (paid and fully unpaid)
+    // =========================================================================
+
+    public function test_fully_unpaid_invoice_counts_customer_in_round_strike_rate(): void
+    {
+        $buyingCustomer = $this->addRoundStopWithTemplateStop($this->makeCustomer());
+        $this->addRoundStopWithTemplateStop($this->makeCustomer());
+
+        $this->postSaleThroughSalespersonEndpoint($buyingCustomer, isPaid: false);
+
+        $this->assertSame(50.0, $this->round->fresh()->strike_rate);
+    }
+
+    public function test_fully_unpaid_invoice_marks_the_planned_stop_as_completed_with_sale(): void
+    {
+        $buyingCustomer = $this->addRoundStopWithTemplateStop($this->makeCustomer());
+
+        $this->postSaleThroughSalespersonEndpoint($buyingCustomer, isPaid: false);
+
+        $stop = BeatStop::where('beat_round_id', $this->round->id)
+            ->where('customer_id', $buyingCustomer->id)
+            ->firstOrFail();
+
+        $this->assertSame(BeatStop::STATUS_COMPLETED, $stop->status);
+        $this->assertTrue($stop->resulted_in_sale);
+    }
+
+    public function test_fully_paid_invoice_counts_customer_in_round_strike_rate(): void
+    {
+        $buyingCustomer = $this->addRoundStopWithTemplateStop($this->makeCustomer());
+        $this->addRoundStopWithTemplateStop($this->makeCustomer());
+
+        $this->postSaleThroughSalespersonEndpoint($buyingCustomer, isPaid: true);
+
+        $this->assertSame(50.0, $this->round->fresh()->strike_rate);
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
+
+    private function addRoundStopWithTemplateStop(Customer $customer): Customer
+    {
+        $this->addRoundStop($customer);
+
+        $this->beat->templateStops()->create([
+            'customer_id' => $customer->id,
+            'status' => BeatStop::STATUS_PLANNED,
+        ]);
+
+        return $customer;
+    }
+
+    private function postSaleThroughSalespersonEndpoint(Customer $customer, bool $isPaid): void
+    {
+        Carbon::setTestNow(Carbon::parse(self::ROUND_DATE.' 10:00:00'));
+
+        $salespersonUser = $this->commercial->user;
+        $team = Team::firstOrFail();
+        $this->commercial->team_id = $team->id;
+        $this->commercial->save();
+
+        $carLoad = CarLoad::create([
+            'name' => 'Chargement Strike',
+            'load_date' => now(),
+            'return_date' => Carbon::parse('2026-12-31'),
+            'team_id' => $team->id,
+            'status' => CarLoadStatus::Selling,
+        ]);
+
+        CarLoadItem::create([
+            'car_load_id' => $carLoad->id,
+            'product_id' => $this->product->id,
+            'quantity_loaded' => 100,
+            'quantity_left' => 100,
+            'cost_price_per_unit' => 400,
+            'loaded_at' => now(),
+            'source' => CarLoadItemSource::Warehouse,
+        ]);
+
+        $this->round->update(['odometer_start_km' => 10000]);
+
+        $payload = [
+            'customer_id' => $customer->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 2, 'price' => 1000]],
+            'paid' => $isPaid,
+        ];
+
+        if ($isPaid) {
+            $payload['payment_method'] = 'CASH';
+        } else {
+            $payload['should_be_paid_at'] = now()->addDays(7)->toDateString();
+        }
+
+        Sanctum::actingAs($salespersonUser);
+        $this->postJson('/api/salesperson/sales-invoices', $payload)->assertStatus(201);
+    }
 
     private function createPaymentOnDate(SalesInvoice $invoice, int $amount, Carbon $date): Payment
     {

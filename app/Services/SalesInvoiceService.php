@@ -44,7 +44,6 @@ readonly class SalesInvoiceService
     /** @throws InsufficientStockException|Throwable */
     public function createSalesInvoice(array $data): SalesInvoice
     {
-        $salesInvoice = null;
         $dbTransactionResult = DB::transaction(function () use ($data) {
             $user = auth()->user();
             $user->load('commercial');
@@ -135,10 +134,10 @@ readonly class SalesInvoiceService
 
             return $salesInvoice;
         });
-        if ($salesInvoice instanceof SalesInvoice) {
+        if ($dbTransactionResult instanceof SalesInvoice) {
             $affectedBeatRoundIds = $this->beatService->completeRoundStopForCustomerOnDate(
-                customerId: $salesInvoice->customer_id,
-                date: $salesInvoice->created_at->toDateString(),
+                customerId: $dbTransactionResult->customer_id,
+                date: $dbTransactionResult->created_at->toDateString(),
             );
 
             foreach ($affectedBeatRoundIds as $beatRoundId) {
