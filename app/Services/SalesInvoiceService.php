@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Data\Payment\BulkCustomerPaymentResultData;
+use App\Data\SalesInvoice\BulkInvoiceActionPreviewDTO;
 use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientStockException;
 use App\Exceptions\InvoiceWriteOffException;
+use App\Exceptions\SalesInvoiceOperationException;
 use App\Jobs\RecalculateBeatRoundStrikeRateJob;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -13,6 +15,7 @@ use App\Models\Payment;
 use App\Models\SalesInvoice;
 use App\Models\Vente;
 use App\Services\Commission\CommissionRateResolverService;
+use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -176,6 +179,66 @@ readonly class SalesInvoiceService
             $salesInvoice->items()->delete();
             $salesInvoice->delete();
         });
+    }
+
+    // =========================================================================
+    // Guards shared by the web controller and the back-office screens
+    // =========================================================================
+
+    /** @throws SalesInvoiceOperationException */
+    public function assertInvoiceCanBeDeleted(SalesInvoice $salesInvoice): void
+    {
+        if ($salesInvoice->payments()->exists()) {
+            throw new SalesInvoiceOperationException('Impossible de supprimer une facture avec des paiements.');
+        }
+    }
+
+    /** @throws SalesInvoiceOperationException */
+    public function assertItemsCanBeModified(SalesInvoice $salesInvoice): void
+    {
+        if ($salesInvoice->paid) {
+            throw new SalesInvoiceOperationException('Impossible de modifier une facture déjà payée.');
+        }
+    }
+
+    /** @throws SalesInvoiceOperationException */
+    public function assertItemBelongsToInvoice(SalesInvoice $salesInvoice, Vente $item): void
+    {
+        if ($item->sales_invoice_id !== $salesInvoice->id || $item->type !== 'INVOICE_ITEM') {
+            throw new SalesInvoiceOperationException('Cet article n\'appartient pas à cette facture.');
+        }
+    }
+
+    /** @throws SalesInvoiceOperationException */
+    public function assertPaymentBelongsToInvoice(SalesInvoice $salesInvoice, Payment $payment): void
+    {
+        if ($payment->sales_invoice_id !== $salesInvoice->id) {
+            throw new SalesInvoiceOperationException('Ce paiement n\'appartient pas à cette facture.');
+        }
+    }
+
+    /** @throws SalesInvoiceOperationException */
+    public function assertNewPaymentIsAllowed(SalesInvoice $salesInvoice, int $amount): void
+    {
+        if ($salesInvoice->paid) {
+            throw new SalesInvoiceOperationException('La facture est déjà payée.');
+        }
+
+        if ($amount > $salesInvoice->total_amount - $salesInvoice->total_payments) {
+            throw new SalesInvoiceOperationException('Le montant du paiement dépasse le solde restant.', 'amount');
+        }
+    }
+
+    /** @throws SalesInvoiceOperationException */
+    public function assertPaymentAmountCanBeChanged(SalesInvoice $salesInvoice, Payment $payment, int $newAmount): void
+    {
+        $totalPaidExcludingCurrentPayment = (int) $salesInvoice->payments()
+            ->where('id', '!=', $payment->id)
+            ->sum('amount');
+
+        if ($newAmount + $totalPaidExcludingCurrentPayment > $salesInvoice->total_amount) {
+            throw new SalesInvoiceOperationException('Le nouveau montant dépasserait le total de la facture.', 'amount');
+        }
     }
 
     // =========================================================================
@@ -449,6 +512,95 @@ readonly class SalesInvoiceService
     }
 
     // =========================================================================
+    // Bulk actions
+    // =========================================================================
+
+    /** @param  int[]  $salesInvoiceIds */
+    public function previewBulkDeletion(array $salesInvoiceIds): BulkInvoiceActionPreviewDTO
+    {
+        return $this->previewBulkAction($salesInvoiceIds, $this->assertInvoiceCanBeDeleted(...));
+    }
+
+    /** @param  int[]  $salesInvoiceIds */
+    public function previewBulkWriteOff(array $salesInvoiceIds): BulkInvoiceActionPreviewDTO
+    {
+        return $this->previewBulkAction($salesInvoiceIds, $this->assertInvoiceCanBeWrittenOff(...));
+    }
+
+    /**
+     * Delete several invoices, all or none.
+     *
+     * @param  int[]  $salesInvoiceIds
+     *
+     * @throws SalesInvoiceOperationException|Throwable
+     */
+    public function deleteSalesInvoices(array $salesInvoiceIds): void
+    {
+        DB::transaction(function () use ($salesInvoiceIds): void {
+            foreach ($this->findAllInvoicesForUpdate($salesInvoiceIds) as $salesInvoice) {
+                $this->assertInvoiceCanBeDeleted($salesInvoice);
+                $this->deleteSalesInvoice($salesInvoice);
+            }
+        });
+    }
+
+    /**
+     * Write off several invoices, all or none.
+     *
+     * @param  int[]  $salesInvoiceIds
+     *
+     * @throws InvoiceWriteOffException|SalesInvoiceOperationException|Throwable
+     */
+    public function writeOffInvoices(array $salesInvoiceIds): void
+    {
+        DB::transaction(function () use ($salesInvoiceIds): void {
+            foreach ($this->findAllInvoicesForUpdate($salesInvoiceIds) as $salesInvoice) {
+                $this->writeOffInvoice($salesInvoice);
+            }
+        });
+    }
+
+    /**
+     * @param  int[]  $salesInvoiceIds
+     * @param  Closure(SalesInvoice): void  $assertEligible
+     */
+    private function previewBulkAction(array $salesInvoiceIds, Closure $assertEligible): BulkInvoiceActionPreviewDTO
+    {
+        $eligibleInvoices = SalesInvoice::query()->findMany($salesInvoiceIds)
+            ->filter(function (SalesInvoice $salesInvoice) use ($assertEligible): bool {
+                try {
+                    $assertEligible($salesInvoice);
+
+                    return true;
+                } catch (InvoiceWriteOffException|SalesInvoiceOperationException) {
+                    return false;
+                }
+            });
+
+        return new BulkInvoiceActionPreviewDTO(
+            eligibleInvoiceIds: $eligibleInvoices->modelKeys(),
+            ineligibleInvoiceCount: count($salesInvoiceIds) - $eligibleInvoices->count(),
+            totalCollected: (int) $eligibleInvoices->sum('total_payments'),
+            totalRemaining: (int) $eligibleInvoices->sum('total_remaining'),
+        );
+    }
+
+    /**
+     * @param  int[]  $salesInvoiceIds
+     * @return Collection<int, SalesInvoice>
+     */
+    private function findAllInvoicesForUpdate(array $salesInvoiceIds): Collection
+    {
+        $salesInvoices = SalesInvoice::query()->lockForUpdate()->findMany($salesInvoiceIds);
+
+        if ($salesInvoices->count() !== count(array_unique($salesInvoiceIds))) {
+            throw new SalesInvoiceOperationException("Une des factures n'est plus disponible. Aucune facture n'a été modifiée.");
+        }
+
+        return $salesInvoices;
+    }
+
+    // =========================================================================
     // Write-off (definitively lost debt)
     // =========================================================================
 
@@ -457,28 +609,33 @@ readonly class SalesInvoiceService
      * are excluded from every debt/AR aggregation via the SalesInvoice global
      * scope, but remain in the database for audit purposes.
      *
-     * Only invoices that never received any payment may be written off — an
-     * invoice with payments represents partially recovered debt and must be
-     * resolved through a different path.
+     * A partially paid invoice can be written off: only its unpaid balance is lost.
+     * Payments already received stay collected (see Payment::salesInvoice()).
      *
-     * @throws InvoiceWriteOffException when already written off or payments exist
+     * @throws InvoiceWriteOffException when already written off or fully paid
      */
     public function writeOffInvoice(SalesInvoice $salesInvoice): void
     {
-        if ($salesInvoice->isWrittenOff()) {
-            throw new InvoiceWriteOffException('Cette facture a déjà été marquée comme perdue.');
-        }
-
-        if ($salesInvoice->total_payments > 0) {
-            throw new InvoiceWriteOffException(
-                'Impossible de marquer cette facture comme perdue : des paiements y sont déjà associés.'
-            );
-        }
+        $this->assertInvoiceCanBeWrittenOff($salesInvoice);
 
         DB::transaction(function () use ($salesInvoice): void {
             $salesInvoice->written_off_at = now();
             $salesInvoice->save();
         });
+    }
+
+    /** @throws InvoiceWriteOffException */
+    public function assertInvoiceCanBeWrittenOff(SalesInvoice $salesInvoice): void
+    {
+        if ($salesInvoice->isWrittenOff()) {
+            throw new InvoiceWriteOffException('Cette facture a déjà été marquée comme perdue.');
+        }
+
+        if ($salesInvoice->total_amount > 0 && $salesInvoice->total_payments >= $salesInvoice->total_amount) {
+            throw new InvoiceWriteOffException(
+                'Impossible de marquer cette facture comme perdue : elle est entièrement payée.'
+            );
+        }
     }
 
     /**

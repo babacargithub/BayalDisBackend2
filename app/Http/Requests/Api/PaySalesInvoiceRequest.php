@@ -36,8 +36,16 @@ class PaySalesInvoiceRequest extends FormRequest
 
     public function rules(): array
     {
-        $salesInvoiceId = $this->resolveSalesInvoiceId();
+        return self::rulesForInvoice($this->resolveSalesInvoiceId());
+    }
 
+    /**
+     * Payment rules for a given invoice, reusable outside an HTTP request.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function rulesForInvoice(?int $salesInvoiceId): array
+    {
         $amountRules = ['required', 'integer', 'min:1'];
 
         if ($salesInvoiceId !== null) {

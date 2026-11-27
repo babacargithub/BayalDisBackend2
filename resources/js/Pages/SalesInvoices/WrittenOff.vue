@@ -12,7 +12,7 @@
                         Créances définitivement perdues, exclues du calcul des dettes clients.
                     </p>
                 </div>
-                <Link
+                <a
                     :href="route('sales-invoices.index')"
                     class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition"
                 >
@@ -20,7 +20,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
                     </svg>
                     Retour aux dettes clients
-                </Link>
+                </a>
             </div>
         </template>
 
@@ -36,7 +36,7 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75 14.25 14.25M14.25 9.75 9.75 14.25M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                                 </svg>
                             </div>
-                            <span class="text-sm font-semibold text-rose-100 uppercase tracking-wide">Total radié</span>
+                            <span class="text-sm font-semibold text-rose-100 uppercase tracking-wide">Total perdu</span>
                         </div>
                         <div class="text-2xl font-bold tracking-tight leading-none">
                             {{ formatPrice(totalWrittenOffAmount) }}
@@ -84,6 +84,8 @@
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Téléphone</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Commercial</th>
                                 <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Montant</th>
+                                <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Déjà payé</th>
+                                <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Perte</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Facturée le</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Radiée le</th>
                                 <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Commentaire</th>
@@ -98,7 +100,9 @@
                                 <td class="px-4 py-3 text-sm font-medium text-gray-800">{{ invoice.customer.name }}</td>
                                 <td class="px-4 py-3 text-sm text-gray-500">{{ invoice.customer.phone_number || '—' }}</td>
                                 <td class="px-4 py-3 text-sm text-gray-500">{{ invoice.commercial?.name || '—' }}</td>
-                                <td class="px-4 py-3 text-sm text-right font-semibold text-rose-600">{{ formatPrice(invoice.total_amount) }}</td>
+                                <td class="px-4 py-3 text-sm text-right text-gray-500">{{ formatPrice(invoice.total_amount) }}</td>
+                                <td class="px-4 py-3 text-sm text-right text-gray-500">{{ formatPrice(invoice.total_payments) }}</td>
+                                <td class="px-4 py-3 text-sm text-right font-semibold text-rose-600">{{ formatPrice(invoice.total_remaining) }}</td>
                                 <td class="px-4 py-3 text-sm text-gray-500">{{ formatDate(invoice.created_at) }}</td>
                                 <td class="px-4 py-3 text-sm text-gray-500">{{ formatDate(invoice.written_off_at) }}</td>
                                 <td class="px-4 py-3 text-sm text-gray-500 max-w-xs truncate" :title="invoice.comment || ''">
@@ -107,7 +111,7 @@
                             </tr>
 
                             <tr v-if="filteredInvoices.length === 0">
-                                <td colspan="7" class="px-4 py-10 text-center text-sm text-gray-400">
+                                <td colspan="9" class="px-4 py-10 text-center text-sm text-gray-400">
                                     Aucune facture radiée trouvée.
                                 </td>
                             </tr>
@@ -161,7 +165,7 @@ const filteredInvoices = computed(() => {
 });
 
 const totalWrittenOffAmount = computed(() =>
-    props.invoices.data.reduce((sum, invoice) => sum + invoice.total_amount, 0)
+    props.invoices.data.reduce((sum, invoice) => sum + invoice.total_remaining, 0)
 );
 
 const formatPrice = (price) =>

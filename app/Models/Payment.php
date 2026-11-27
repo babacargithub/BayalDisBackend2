@@ -302,9 +302,13 @@ class Payment extends Model
 
     // ── Relationships ────────────────────────────────────────────────────────
 
+    /**
+     * Includes written-off invoices: money already collected on them stays real,
+     * so reports and commissions must still reach their invoice.
+     */
     public function salesInvoice(): BelongsTo
     {
-        return $this->belongsTo(SalesInvoice::class);
+        return $this->belongsTo(SalesInvoice::class)->withoutGlobalScope(SalesInvoice::SCOPE_NOT_WRITTEN_OFF);
     }
 
     public function cancelledBy(): BelongsTo

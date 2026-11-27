@@ -32,7 +32,8 @@ readonly class BeatService
     private const FORECAST_LOOKBACK_DAYS = 15;
 
     public function __construct(
-        private SalesInvoiceStatsService $salesInvoiceStatsService
+        private SalesInvoiceStatsService $salesInvoiceStatsService,
+        private ArAgingService $arAgingService,
     ) {}
 
     /**
@@ -549,7 +550,9 @@ readonly class BeatService
             ->sum('total_amount');
 
         $totalPaidBeforeRoundDate = (int) Payment::whereHas('salesInvoice', function ($query) use ($customerIds, $roundDate): void {
-            $query->whereIn('customer_id', $customerIds)
+            // Must match the invoiced side, which no longer counts written-off invoices.
+            $query->whereNull('written_off_at')
+                ->whereIn('customer_id', $customerIds)
                 ->whereDate('created_at', '<', $roundDate);
         })
             ->whereDate('created_at', '<', $roundDate)
@@ -764,65 +767,18 @@ readonly class BeatService
      */
     private function buildArBuckets(array $customerIds, string $roundDate): array
     {
-        $bucketDefinitions = [
-            ['labelFr' => '1 à 7 jours',      'labelEn' => '1 to 7 days',   'from' => 1,  'to' => 7],
-            ['labelFr' => '8 à 14 jours',      'labelEn' => '8 to 14 days',  'from' => 8,  'to' => 14],
-            ['labelFr' => '15 à 21 jours',     'labelEn' => '15 to 21 days', 'from' => 15, 'to' => 21],
-            ['labelFr' => '22 à 30 jours',     'labelEn' => '22 to 30 days', 'from' => 22, 'to' => 30],
-            ['labelFr' => 'Plus de 30 jours',  'labelEn' => 'Over 30 days',  'from' => 31, 'to' => null],
-        ];
-
-        if (empty($customerIds)) {
-            return array_map(
-                fn ($def) => new ArBucket(
-                    labelFr: $def['labelFr'],
-                    labelEn: $def['labelEn'],
-                    fromDays: $def['from'],
-                    toDays: $def['to'],
-                    invoiceCount: 0,
-                    totalAmount: 0,
-                    invoices: [],
-                ),
-                $bucketDefinitions,
-            );
-        }
-
         $roundCarbonDate = Carbon::parse($roundDate);
 
-        $invoices = SalesInvoice::whereIn('customer_id', $customerIds)
+        $invoiceRows = empty($customerIds) ? collect() : SalesInvoice::whereIn('customer_id', $customerIds)
             // Written-off invoices are excluded automatically by the SalesInvoice global scope.
             ->whereDate('created_at', '<', $roundDate)
             ->whereColumn('total_amount', '>', 'total_payments')
             ->with('customer:id,name')
             ->get(['id', 'customer_id', 'total_amount', 'total_payments', 'created_at'])
-            ->map(fn (SalesInvoice $invoice) => [
-                'id' => $invoice->id,
-                'customer_id' => $invoice->customer_id,
-                'customer_name' => $invoice->customer->name ?? '',
-                'total_amount' => $invoice->total_amount,
-                'total_payments' => $invoice->total_payments,
-                'remaining' => $invoice->total_amount - $invoice->total_payments,
-                'days_overdue' => (int) Carbon::parse($invoice->created_at)->diffInDays($roundCarbonDate),
-                'created_at' => Carbon::parse($invoice->created_at)->toDateString(),
-            ]);
+            ->toBase()
+            ->map(fn (SalesInvoice $invoice) => $this->arAgingService->buildInvoiceRow($invoice, $roundCarbonDate));
 
-        return array_map(function (array $def) use ($invoices): ArBucket {
-            $bucketInvoices = $invoices
-                ->filter(fn (array $inv) => $inv['days_overdue'] >= $def['from']
-                    && ($def['to'] === null || $inv['days_overdue'] <= $def['to']))
-                ->values()
-                ->all();
-
-            return new ArBucket(
-                labelFr: $def['labelFr'],
-                labelEn: $def['labelEn'],
-                fromDays: $def['from'],
-                toDays: $def['to'],
-                invoiceCount: count($bucketInvoices),
-                totalAmount: (int) array_sum(array_column($bucketInvoices, 'remaining')),
-                invoices: $bucketInvoices,
-            );
-        }, $bucketDefinitions);
+        return $this->arAgingService->groupRowsIntoBuckets($invoiceRows);
     }
 
     /**

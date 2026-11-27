@@ -21,6 +21,8 @@ readonly class ArBucket
      * @param  int|null  $toDays  Inclusive upper bound; null means open-ended (31+).
      * @param  int  $invoiceCount  Number of outstanding invoices in this bucket.
      * @param  int  $totalAmount  Sum of remaining balances (total_amount − total_payments) in XOF.
+     * @param  int  $totalInvoicedAmount  Sum of invoice totals in XOF.
+     * @param  int  $totalPaidAmount  Sum of payments already received in XOF.
      * @param  array<int, array{
      *     id: int,
      *     customer_id: int,
@@ -39,6 +41,8 @@ readonly class ArBucket
         public ?int $toDays,
         public int $invoiceCount,
         public int $totalAmount,
+        public int $totalInvoicedAmount,
+        public int $totalPaidAmount,
         public array $invoices,
     ) {}
 }

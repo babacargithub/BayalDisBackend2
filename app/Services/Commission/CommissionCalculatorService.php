@@ -44,7 +44,8 @@ readonly class CommissionCalculatorService
         }
 
         /** @var SalesInvoice|null $salesInvoice */
-        $salesInvoice = SalesInvoice::with('items.product')->find($payment->sales_invoice_id);
+        // Commission earned on collected cash survives a later write-off of the unpaid balance.
+        $salesInvoice = SalesInvoice::query()->withWrittenOff()->with('items.product')->find($payment->sales_invoice_id);
 
         if ($salesInvoice === null || $salesInvoice->total_amount === 0) {
             return [];

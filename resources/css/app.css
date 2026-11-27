@@ -1,5 +1,41 @@
 @import '@mdi/font/css/materialdesignicons.css';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * Tailwind v4, deliberately imported without cascade layers: Vuetify's CSS is unlayered,
+ * so layered utilities would lose to its reset on every Vue page.
+ */
+@import 'tailwindcss/theme.css';
+@import 'tailwindcss/preflight.css';
+@import './forms.css';
+@import 'tailwindcss/utilities.css' source(none);
+
+@source '../views';
+@source '../js';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views';
+@source '../../storage/framework/views';
+
+@theme {
+    --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* v3 values for the names v4 re-scaled, so existing templates keep their look. */
+    --radius-sm: 0.125rem;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+/* v3 preflight defaults that v4 changed. */
+*,
+::after,
+::before,
+::backdrop,
+::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+}
+
+button:not(:disabled),
+[role='button']:not(:disabled) {
+    cursor: pointer;
+}
+
+[x-cloak] {
+    display: none !important;
+}

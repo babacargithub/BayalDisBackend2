@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\SalesInvoice;
 
+use App\Data\Vente\VenteStatsFilter;
 use App\Exceptions\InvoiceWriteOffException;
 use App\Models\Commercial;
 use App\Models\Customer;
@@ -11,6 +12,8 @@ use App\Models\SalesInvoice;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
+use App\Services\Commission\CommissionCalculatorService;
+use App\Services\PaymentService;
 use App\Services\SalesInvoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -141,16 +144,57 @@ class SalesInvoiceWriteOffTest extends TestCase
         $this->salesInvoiceService->writeOffInvoice($invoice->fresh());
     }
 
-    public function test_write_off_throws_when_invoice_has_payments(): void
+    private function payOnInvoice(SalesInvoice $invoice, int $amount): Payment
+    {
+        return Payment::create([
+            'sales_invoice_id' => $invoice->id,
+            'amount' => $amount,
+            'payment_method' => 'CASH',
+            'user_id' => $this->commercial->user_id,
+        ]);
+    }
+
+    public function test_partially_paid_invoice_can_be_written_off_and_keeps_its_amounts(): void
     {
         $invoice = $this->makeUnpaidInvoice(5000);
+        $this->payOnInvoice($invoice, 1000);
 
-        Payment::create([
-            'sales_invoice_id' => $invoice->id,
-            'amount' => 1000,
-            'payment_method' => 'CASH',
-            'user_id' => User::factory()->create()->id,
-        ]);
+        $this->salesInvoiceService->writeOffInvoice($invoice->fresh());
+
+        $writtenOffInvoice = SalesInvoice::query()->onlyWrittenOff()->findOrFail($invoice->id);
+        $this->assertSame(5000, $writtenOffInvoice->total_amount);
+        $this->assertSame(1000, $writtenOffInvoice->total_payments);
+        $this->assertSame(4000, $writtenOffInvoice->total_remaining);
+        $this->assertSame(0, $this->salesInvoiceService->getTotalUnpaidInvoicesAmount());
+    }
+
+    public function test_money_collected_before_the_write_off_stays_counted_and_linked(): void
+    {
+        $invoice = $this->makeUnpaidInvoice(5000);
+        $payment = $this->payOnInvoice($invoice, 1000);
+        $this->payOnInvoice($invoice, 500);
+        $paymentService = app(PaymentService::class);
+        $commercialFilter = VenteStatsFilter::new()->thatAreMadeByCommercial($this->commercial->id);
+        $commissionCalculator = app(CommissionCalculatorService::class);
+        $commissionLinesBefore = $commissionCalculator->computePaymentLinesForCommercial($payment, $this->commercial);
+
+        $this->salesInvoiceService->writeOffInvoice($invoice->fresh());
+
+        $this->assertSame(1500, $paymentService->sumPayments(VenteStatsFilter::new()));
+        $this->assertSame(1500, $paymentService->sumPayments($commercialFilter));
+        $this->assertSame($invoice->id, $payment->fresh()->salesInvoice?->id);
+        $this->assertCount(2, $paymentService->getPaymentsByDate(now()));
+        $this->assertNotEmpty($commissionLinesBefore);
+        $this->assertEquals(
+            $commissionLinesBefore,
+            $commissionCalculator->computePaymentLinesForCommercial($payment->fresh(), $this->commercial),
+        );
+    }
+
+    public function test_write_off_throws_when_invoice_is_fully_paid(): void
+    {
+        $invoice = $this->makeUnpaidInvoice(5000);
+        $this->payOnInvoice($invoice, 5000);
 
         $this->expectException(InvoiceWriteOffException::class);
 

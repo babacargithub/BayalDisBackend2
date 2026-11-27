@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\SalesInvoiceStatus;
 use App\Exceptions\InsufficientAccountBalanceException;
 use App\Exceptions\PaymentCancellationException;
+use App\Exceptions\SalesInvoiceOperationException;
 use App\Http\Requests\AddInvoiceItemRequest;
 use App\Http\Requests\Api\PaySalesInvoiceRequest;
 use App\Http\Requests\CancelPaymentRequest;
@@ -28,22 +28,17 @@ class SalesInvoiceController extends Controller
         private readonly SalesInvoiceService $salesInvoiceService
     ) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $invoices = SalesInvoice::query()
-            ->with([
-                'customer:id,name,phone_number,address',
-                'commercial:id,name',
-            ])
-            ->where('status', '!=', SalesInvoiceStatus::FullyPaid->value)
-            ->latest()
-            ->paginate(5000);
+        // The page is a Blade/Livewire page: Inertia visits (and redirects that follow an
+        // Inertia action) must do a full browser load, keeping the flash message.
+        if ($request->header('X-Inertia')) {
+            $request->session()->reflash();
 
-        return Inertia::render('SalesInvoices/Index', [
-            'invoices' => SalesInvoiceResource::collection($invoices),
-            'customers' => [],
-            'products' => [],
-        ]);
+            return Inertia::location(route('sales-invoices.index'));
+        }
+
+        return view('sales-invoices.index');
     }
 
     public function writtenOff()
@@ -93,7 +88,7 @@ class SalesInvoiceController extends Controller
             return response()->json(['invoice' => $this->formatInvoiceDetails($salesInvoice)]);
         }
 
-        return Inertia::render('SalesInvoices/Index', ['invoice' => $salesInvoice]);
+        return redirect()->route('sales-invoices.index');
     }
 
     private function formatInvoiceDetails(SalesInvoice $salesInvoice): array
@@ -158,8 +153,10 @@ class SalesInvoiceController extends Controller
 
     public function destroy(SalesInvoice $salesInvoice)
     {
-        if ($salesInvoice->payments()->exists()) {
-            return redirect()->back()->withErrors(['error' => 'Impossible de supprimer une facture avec des paiements.']);
+        try {
+            $this->salesInvoiceService->assertInvoiceCanBeDeleted($salesInvoice);
+        } catch (SalesInvoiceOperationException $e) {
+            return $this->redirectBackWithOperationError($e);
         }
 
         try {
@@ -175,8 +172,10 @@ class SalesInvoiceController extends Controller
 
     public function addItem(AddInvoiceItemRequest $request, SalesInvoice $salesInvoice)
     {
-        if ($salesInvoice->paid) {
-            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée.']);
+        try {
+            $this->salesInvoiceService->assertItemsCanBeModified($salesInvoice);
+        } catch (SalesInvoiceOperationException $e) {
+            return $this->redirectBackWithOperationError($e);
         }
 
         try {
@@ -197,12 +196,11 @@ class SalesInvoiceController extends Controller
 
     public function removeItem(SalesInvoice $salesInvoice, Vente $item)
     {
-        if ($salesInvoice->paid) {
-            return redirect()->back()->withErrors(['error' => 'Impossible de modifier une facture déjà payée.']);
-        }
-
-        if ($item->sales_invoice_id !== $salesInvoice->id || $item->type !== 'INVOICE_ITEM') {
-            return redirect()->back()->withErrors(['error' => 'Cet article n\'appartient pas à cette facture.']);
+        try {
+            $this->salesInvoiceService->assertItemsCanBeModified($salesInvoice);
+            $this->salesInvoiceService->assertItemBelongsToInvoice($salesInvoice, $item);
+        } catch (SalesInvoiceOperationException $e) {
+            return $this->redirectBackWithOperationError($e);
         }
 
         try {
@@ -223,13 +221,10 @@ class SalesInvoiceController extends Controller
 
     public function addPayment(PaySalesInvoiceRequest $request, SalesInvoice $salesInvoice)
     {
-        if ($salesInvoice->paid) {
-            return redirect()->back()->withErrors(['error' => 'La facture est déjà payée.']);
-        }
-
-        $remainingBalanceOnInvoice = $salesInvoice->total_amount - $salesInvoice->total_payments;
-        if ($request->amount > $remainingBalanceOnInvoice) {
-            return redirect()->back()->withErrors(['amount' => 'Le montant du paiement dépasse le solde restant.']);
+        try {
+            $this->salesInvoiceService->assertNewPaymentIsAllowed($salesInvoice, (int) $request->amount);
+        } catch (SalesInvoiceOperationException $e) {
+            return $this->redirectBackWithOperationError($e);
         }
 
         try {
@@ -250,8 +245,10 @@ class SalesInvoiceController extends Controller
 
     public function removePayment(SalesInvoice $salesInvoice, Payment $payment)
     {
-        if ($payment->sales_invoice_id !== $salesInvoice->id) {
-            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture.']);
+        try {
+            $this->salesInvoiceService->assertPaymentBelongsToInvoice($salesInvoice, $payment);
+        } catch (SalesInvoiceOperationException $e) {
+            return $this->redirectBackWithOperationError($e);
         }
 
         try {
@@ -271,8 +268,10 @@ class SalesInvoiceController extends Controller
         Payment $payment,
         PaymentCancellationService $paymentCancellationService,
     ) {
-        if ($payment->sales_invoice_id !== $salesInvoice->id) {
-            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture.']);
+        try {
+            $this->salesInvoiceService->assertPaymentBelongsToInvoice($salesInvoice, $payment);
+        } catch (SalesInvoiceOperationException $e) {
+            return $this->redirectBackWithOperationError($e);
         }
 
         try {
@@ -294,16 +293,11 @@ class SalesInvoiceController extends Controller
 
     public function updatePayment(PaySalesInvoiceRequest $request, SalesInvoice $salesInvoice, Payment $payment)
     {
-        if ($payment->sales_invoice_id !== $salesInvoice->id) {
-            return redirect()->back()->withErrors(['error' => 'Ce paiement n\'appartient pas à cette facture.']);
-        }
-
-        $totalPaidExcludingCurrentPayment = $salesInvoice->payments()
-            ->where('id', '!=', $payment->id)
-            ->sum('amount');
-
-        if ($request->amount + $totalPaidExcludingCurrentPayment > $salesInvoice->total_amount) {
-            return redirect()->back()->withErrors(['amount' => 'Le nouveau montant dépasserait le total de la facture.']);
+        try {
+            $this->salesInvoiceService->assertPaymentBelongsToInvoice($salesInvoice, $payment);
+            $this->salesInvoiceService->assertPaymentAmountCanBeChanged($salesInvoice, $payment, (int) $request->amount);
+        } catch (SalesInvoiceOperationException $e) {
+            return $this->redirectBackWithOperationError($e);
         }
 
         try {
@@ -356,6 +350,11 @@ class SalesInvoiceController extends Controller
 
             return redirect()->back()->withErrors(['error' => 'Échec de la mise à jour de l\'article. Veuillez réessayer.']);
         }
+    }
+
+    private function redirectBackWithOperationError(SalesInvoiceOperationException $exception)
+    {
+        return redirect()->back()->withErrors([$exception->field => $exception->getMessage()]);
     }
 
     public function exportPdf(SalesInvoice $salesInvoice)

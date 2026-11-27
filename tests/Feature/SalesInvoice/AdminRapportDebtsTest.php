@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\SalesInvoice;
 
+use App\Data\SalesInvoice\DebtListFilterDTO;
 use App\Enums\AccountDebtStatus;
 use App\Enums\AccountType;
 use App\Models\Account;
@@ -17,6 +18,7 @@ use App\Models\Supplier;
 use App\Models\Team;
 use App\Models\User;
 use App\Models\Vente;
+use App\Services\SalesInvoiceDebtListService;
 use App\Services\SalesInvoiceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia;
@@ -199,19 +201,11 @@ class AdminRapportDebtsTest extends TestCase
 
         $rapportStatistics = $this->rapportStatistics();
 
-        $indexInvoices = [];
-        $this->actingAs($this->user)
-            ->get(route('sales-invoices.index'))
-            ->assertOk()
-            ->assertInertia(function (AssertableInertia $page) use (&$indexInvoices): void {
-                $indexInvoices = $page->toArray()['props']['invoices']['data'];
-            });
-
-        $indexTotalRemaining = collect($indexInvoices)->sum('total_remaining');
+        $debtList = app(SalesInvoiceDebtListService::class)->buildDebtList(new DebtListFilterDTO);
 
         $this->assertSame(11000, $rapportStatistics['total_unpaid_invoices_amount']);
-        $this->assertSame($rapportStatistics['total_unpaid_invoices_amount'], $indexTotalRemaining);
-        $this->assertCount($rapportStatistics['total_unpaid_invoices_count'], $indexInvoices);
+        $this->assertSame($rapportStatistics['total_unpaid_invoices_amount'], $debtList->totalRemaining);
+        $this->assertSame($rapportStatistics['total_unpaid_invoices_count'], $debtList->invoiceCount);
     }
 
     private function makePurchaseInvoice(array $itemLines, bool $isPaid, int $transportationCost = 0): PurchaseInvoice
